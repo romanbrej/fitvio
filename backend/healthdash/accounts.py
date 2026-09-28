@@ -24,7 +24,7 @@ from .sync.garmindb_runner import SyncBusy, init_user_config, login_interactive,
 log = logging.getLogger(__name__)
 
 MFA_TIMEOUT_S = 300
-FULL_SYNC_TIMEOUT_S = 8 * 3600
+FULL_SYNC_TIMEOUT_S = 12 * 3600  # 5 years × 8 data types at ~1 s/day ≈ 5–6 h
 
 
 # --- account setup steps (shared by CLI and web) --------------------------------
@@ -83,10 +83,17 @@ class Job:
     name: str | None = None
     result: dict | None = None
     log: list[str] = field(default_factory=list)
+    step: str | None = None          # e.g. "Hydration" — GarminDB's current data type
+    step_index: int | None = None    # 0-based
+    step_total: int | None = None
     started_at: str = field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
     finished_at: str | None = None
     _mfa_event: threading.Event = field(default_factory=threading.Event, repr=False)
     _mfa_code: str | None = field(default=None, repr=False)
+
+    def on_step(self, index: int, total: int, key: str, label: str) -> None:
+        self.step, self.step_index, self.step_total = label, index, total
+        self.log.clear()  # the previous step's progress bar is finished; don't show it as current
 
     def line(self, text: str) -> None:
         self.log.append(text)
@@ -143,7 +150,8 @@ def _download_and_import(job: Job, user: UserConfig, db_path: Path, full: bool) 
         job.message = ("Downloading your complete Garmin history — the first time this can take a long while"
                        if full else "Fetching new data from Garmin")
         try:
-            ok = run_sync(conn, user, full=full, timeout_s=FULL_SYNC_TIMEOUT_S if full else 1800, on_line=job.line)
+            ok = run_sync(conn, user, full=full, timeout_s=FULL_SYNC_TIMEOUT_S if full else 1800,
+                          on_line=job.line, on_step=job.on_step)
         except SyncBusy as e:
             job.phase, job.error = "error", str(e)
             return
@@ -198,6 +206,14 @@ def start_sync(user: UserConfig, db_path: Path, full: bool = False) -> Job:
     running = active_for(user.id)
     if running:
         return running
+    if not full:
+        # Nothing imported yet (e.g. the first download was interrupted): "latest" would only look at
+        # the last days, so fetch the whole history. Cached days are skipped, so this resumes quickly.
+        conn = db.connect(db_path)
+        try:
+            full = conn.execute("SELECT 1 FROM sessions WHERE user_id = ? LIMIT 1", (user.id,)).fetchone() is None
+        finally:
+            conn.close()
     job = _add(Job(kind="sync", user_id=user.id, phase="downloading"))
     threading.Thread(target=_download_and_import, args=(job, user, db_path, full),
                      name=f"sync-{job.id}", daemon=True).start()

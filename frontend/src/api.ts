@@ -93,6 +93,7 @@ export interface Job {
   phase: 'logging_in' | 'mfa_required' | 'downloading' | 'importing' | 'done' | 'error'
   message: string; error: string | null; name: string | null; result: { activities: number } | null
   log: string[]; started_at: string; finished_at: string | null
+  step: string | null; step_index: number | null; step_total: number | null
 }
 
 export interface Account {

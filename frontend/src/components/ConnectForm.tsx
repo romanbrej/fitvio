@@ -157,6 +157,15 @@ export function ConnectForm({ onDone, resume }: { onDone: () => void; resume?: J
       {job.phase !== 'error' && job.phase !== 'done' && (
         <div className="progress">
           <div>{job.message}</div>
+          {job.step && job.step_index != null && job.step_total && (
+            <div className="substep">
+              <div className="substep-head">
+                <b>Step {job.step_index + 1} of {job.step_total}</b> · {job.step}
+              </div>
+              <div className="substep-bar" aria-hidden><i style={{ width: `${(job.step_index / job.step_total) * 100}%` }} /></div>
+              <div className="muted">Each step goes through your whole history, so its own progress below restarts at 0 %.</div>
+            </div>
+          )}
           <div className="muted">Running for {elapsed(job.started_at)}{job.phase === 'downloading' ? ' — you can leave this page, it continues in the background' : ''}</div>
           {job.log.length > 0 && <code className="log">{job.log[job.log.length - 1]}</code>}
         </div>

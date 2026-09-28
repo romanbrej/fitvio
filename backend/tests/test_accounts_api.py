@@ -33,7 +33,8 @@ def client(tmp_path, monkeypatch):
             raise RuntimeError("invalid MFA code")
         return "Alex Runner"
 
-    def fake_sync(conn, user, full=False, timeout_s=0, on_line=None):
+    def fake_sync(conn, user, full=False, timeout_s=0, on_line=None, on_step=None):
+        on_step(2, 10, "hydration", "Hydration")
         on_line("Downloading activities: 100%")
         return True
 
@@ -63,6 +64,7 @@ def test_connect_with_mfa_from_the_ui(client, tmp_path):
     assert done["phase"] == "done", done
     assert done["name"] == "Alex Runner" and done["result"] == {"activities": 42}
     assert done["log"] == ["Downloading activities: 100%"]
+    assert (done["step"], done["step_index"], done["step_total"]) == ("Hydration", 2, 10)
 
     users = json.loads((tmp_path / "users.json").read_text())["users"]
     assert [u["id"] for u in users] == ["alex"]

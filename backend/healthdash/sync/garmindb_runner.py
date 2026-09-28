@@ -28,6 +28,12 @@ FAILURE_MARKERS = ("failed to login", "traceback (most recent call last)", "logi
 log = logging.getLogger(__name__)
 
 
+def garmindb_command() -> list[str]:
+    if os.environ.get("HEALTHDASH_PLAIN_GARMINDB") == "1":  # escape hatch: unpatched GarminDB
+        return [garmindb_cli()]
+    return [sys.executable, "-m", "healthdash.sync.garmindb_fast"]
+
+
 def garmindb_cli() -> str:
     exe = Path(sys.executable).parent / "garmindb_cli.py"
     return str(exe) if exe.exists() else (shutil.which("garmindb_cli.py") or "garmindb_cli.py")
@@ -63,6 +69,51 @@ def init_user_config(user: UserConfig, email: str, data_root: Path | None = None
     return cfg_dir
 
 
+# GarminDB works through these in order, each over the whole date range (its progress bar restarts
+# at 0 % for every one). Matched against its log so the UI can say "step 3 of 10: hydration".
+STEPS = [
+    ("activities", "Activities", ("Getting activities", "get_activity_types")),
+    ("summaries", "Daily summaries", ("Getting daily summaries",)),
+    ("hydration", "Hydration", ("Getting hydration",)),
+    ("monitoring", "All-day heart rate & monitoring", ("Getting monitoring",)),
+    ("sleep", "Sleep", ("Getting sleep",)),
+    ("weight", "Weight", ("Getting weight",)),
+    ("rhr", "Resting heart rate", ("Getting rhr",)),
+    ("hrv", "Heart-rate variability", ("Getting hrv",)),
+    ("import", "Importing into the database", ("___Importing",)),
+    ("analyze", "Analysing", ("___Analyzing",)),
+]
+
+
+def step_for(log_line: str) -> tuple[int, str, str] | None:
+    for i, (key, label, markers) in enumerate(STEPS):
+        if any(m in log_line for m in markers):
+            return i, key, label
+    return None
+
+
+class LogFollower:
+    """Reads what GarminDB appended to its log since the last call (it truncates the file on start)."""
+
+    def __init__(self, path: Path):
+        self.path, self.fh, self.buf = path, None, ""
+
+    def new_lines(self) -> list[str]:
+        if self.fh is None:
+            if not self.path.exists():
+                return []
+            self.fh = open(self.path, "r", errors="replace")
+        if self.path.stat().st_size < self.fh.tell():  # truncated → start over
+            self.fh.seek(0)
+        self.buf += self.fh.read()
+        *lines, self.buf = self.buf.split("\n")
+        return lines
+
+    def close(self):
+        if self.fh:
+            self.fh.close()
+
+
 class SyncBusy(RuntimeError):
     """Another sync for this person is running (e.g. the timer while you pressed "Sync now")."""
 
@@ -84,11 +135,14 @@ def sync_lock(user: UserConfig):
 
 
 def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, timeout_s: int = 1800,
-             on_line: Callable[[str], None] | None = None) -> bool:
-    """Run GarminDB for one person. `on_line` receives its output live (progress in the UI)."""
+             on_line: Callable[[str], None] | None = None,
+             on_step: Callable[[int, int, str, str], None] | None = None) -> bool:
+    """Run GarminDB for one person. `on_line` receives its output live, `on_step(index, total, key,
+    label)` which data type it is working on (progress in the UI)."""
     now = datetime.now().isoformat(timespec="seconds")
     row = db.row_to_dict(conn.execute("SELECT * FROM sync_status WHERE user_id = ?", (user.id,)).fetchone()) or {}
-    cmd = [garmindb_cli(), "-f", str(user.garmindb_dir), "--all", "--download", "--import", "--analyze"]
+    # GarminDB's CLI, run through our wrapper with faster, resumable download loops (garmindb_fast.py)
+    cmd = [*garmindb_command(), "-f", str(user.garmindb_dir), "--all", "--download", "--import", "--analyze"]
     if not full:
         cmd.append("--latest")
     log.info("sync %s: %s", user.id, " ".join(cmd))
@@ -96,12 +150,24 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, tim
     lines: list[str] = []
     try:
         with sync_lock(user):
+            # GarminDB writes garmindb.log into its working directory: keep it inside the person's
+            # private data dir (700), not in the project root, and separate per person.
+            workdir = user.garmindb_dir.parent
+            log_file = workdir / "garmindb.log"
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
-                                    stdin=subprocess.DEVNULL)
+                                    stdin=subprocess.DEVNULL, cwd=workdir)
             timer = threading.Timer(timeout_s, proc.kill)
             timer.start()
+            follower = LogFollower(log_file)
+            current = -1
             try:
                 for line in proc.stdout:
+                    if on_step:
+                        for log_line in follower.new_lines():
+                            hit = step_for(log_line)
+                            if hit and hit[0] != current:
+                                current = hit[0]
+                                on_step(hit[0], len(STEPS), hit[1], hit[2])
                     line = line.rstrip()
                     if line:
                         lines.append(line)
@@ -112,6 +178,9 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, tim
             finally:
                 timed_out = not timer.is_alive()
                 timer.cancel()
+                follower.close()
+                if log_file.exists():
+                    os.chmod(log_file, 0o600)
             # GarminDB exits 0 even when the login fails, so also look at what it printed.
             hit = next((ln for ln in lines if any(m in ln.lower() for m in FAILURE_MARKERS)), None)
             if timed_out:

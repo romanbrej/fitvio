@@ -64,7 +64,9 @@ export function Accounts() {
               <div style={{ marginTop: 12, fontSize: 16 }}>
                 {job ? (
                   <>
-                    <div>{PHASE_LABEL[job.phase] ?? job.message}</div>
+                    <div>{PHASE_LABEL[job.phase] ?? job.message}
+                      {job.step && job.step_index != null && <span className="muted"> — step {job.step_index + 1} of {job.step_total}: {job.step}</span>}
+                    </div>
                     {job.log.length > 0 && <code className="log" style={{ display: 'block', fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--faint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.log[job.log.length - 1]}</code>}
                   </>
                 ) : a.sync.last_error ? (

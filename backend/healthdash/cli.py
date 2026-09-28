@@ -193,7 +193,8 @@ def add_person(conn, a) -> int:
     print("Downloading your complete Garmin history. The first time this can take a long while "
           "(years of daily data); later syncs only fetch what is new.")
     user = load_config().user(user_id)
-    ok = run_sync(conn, user, full=True, timeout_s=accounts.FULL_SYNC_TIMEOUT_S, on_line=lambda ln: print("  " + ln))
+    ok = run_sync(conn, user, full=True, timeout_s=accounts.FULL_SYNC_TIMEOUT_S, on_line=lambda ln: print("  " + ln),
+                  on_step=lambda i, n, key, label: print(f"\nStep {i + 1} of {n}: {label}"))
     if not ok:
         err = conn.execute("SELECT last_error FROM sync_status WHERE user_id = ?", (user_id,)).fetchone()[0]
         print(f"Download failed: {err}\nRetry with: healthdash sync --user {user_id} --full", file=sys.stderr)
