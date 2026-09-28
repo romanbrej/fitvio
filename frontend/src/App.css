@@ -1,0 +1,34 @@
+.shell { min-height: 100%; display: flex; flex-direction: column; }
+.main { flex: 1; padding: 0 24px 16px; min-width: 0; }
+.boot {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+.offline {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  background: var(--warn);
+  color: var(--bg);
+  font-weight: 600;
+  padding: 8px 18px;
+  border-radius: 999px;
+}
+.night {
+  position: fixed;
+  inset: 0;
+  border: 0;
+  background: rgba(0, 0, 0, 0.78);
+  cursor: pointer;
+  z-index: 50;
+}
+
+@media (max-width: 640px) {
+  .main { padding: 0 16px 16px; }
+}

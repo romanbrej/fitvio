@@ -1,0 +1,15 @@
+[Unit]
+Description=Health Wall dashboard (API + UI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=__USER__
+WorkingDirectory=__ROOT__
+Environment=HEALTHDASH_CONFIG=__ROOT__/config/users.json
+ExecStart=__ROOT__/.venv/bin/healthdash serve --host 0.0.0.0 --port 8765
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

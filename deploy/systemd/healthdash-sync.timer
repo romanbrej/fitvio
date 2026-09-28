@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the Health Wall sync every 10 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

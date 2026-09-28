@@ -1,0 +1,68 @@
+.connect { display: flex; flex-direction: column; gap: 16px; max-width: 560px; }
+.connect label, .mfa label { display: flex; flex-direction: column; gap: 6px; }
+.connect label span, .mfa label span { font-size: 15px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+.connect input {
+  font: inherit;
+  font-size: 20px;
+  min-height: 52px;
+  padding: 0 14px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.connect input:focus { outline: 3px solid var(--primary); outline-offset: 1px; }
+.mfa input { font-family: var(--mono); letter-spacing: 0.3em; font-size: 28px; max-width: 260px; }
+.mfa { display: flex; flex-direction: column; gap: 12px; }
+
+.btn-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #0b1120;
+  font-weight: 600;
+  justify-content: center;
+}
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.connect-note { display: flex; gap: 8px; align-items: flex-start; font-size: 15px; color: var(--muted); margin: 0; }
+.connect-note svg { flex: none; margin-top: 3px; }
+.connect-error {
+  display: flex; gap: 8px; align-items: center;
+  color: var(--worse);
+  background: color-mix(in srgb, var(--worse) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--worse) 40%, transparent);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.connect-done { display: flex; gap: 8px; align-items: center; color: var(--better); font-size: 20px; font-weight: 600; }
+
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.step { display: flex; align-items: center; gap: 12px; font-size: 19px; color: var(--faint); }
+.step.done { color: var(--muted); }
+.step.now { color: var(--text); font-weight: 600; }
+.step-icon {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center;
+  border: 2px solid var(--border);
+  flex: none;
+}
+.step.done .step-icon { background: var(--better); border-color: var(--better); color: #0b1120; }
+.step.now .step-icon { border-color: var(--primary); color: var(--primary); }
+
+.progress { display: flex; flex-direction: column; gap: 4px; }
+.progress .muted { font-size: 15px; }
+.log {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }

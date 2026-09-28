@@ -1,0 +1,24 @@
+{
+  "users": [
+    {
+      "id": "roman",
+      "name": "Roman",
+      "color": "#3B82F6",
+      "garmindb_config_dir": "data/garmindb/roman/config"
+    },
+    {
+      "id": "partner",
+      "name": "Partner",
+      "color": "#F97316",
+      "garmindb_config_dir": "data/garmindb/partner/config"
+    }
+  ],
+  "wall": {
+    "verdict_minutes": 60,
+    "fresh_activity_hours": 12,
+    "idle_return_seconds": 120,
+    "stale_sync_hours": 24,
+    "night_start": "22:00",
+    "night_end": "06:30"
+  }
+}

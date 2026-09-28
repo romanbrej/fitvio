@@ -1,0 +1,146 @@
+@import '@fontsource/fira-sans/400.css';
+@import '@fontsource/fira-sans/500.css';
+@import '@fontsource/fira-sans/600.css';
+@import '@fontsource/fira-sans/700.css';
+@import '@fontsource/fira-code/500.css';
+@import '@fontsource/fira-code/600.css';
+
+/* Design tokens — dark by default (wall display). See design-system/health-dashboard/pages/wall.md */
+:root {
+  --bg: #0b1120;
+  --surface: #111827;
+  --surface-2: #1a2336;
+  --border: #243049;
+  --text: #e5e7eb;
+  --muted: #94a3b8;
+  --faint: #64748b;
+  --primary: #60a5fa;
+  --accent: #f97316;
+  --better: #22c55e;
+  --inline: #38bdf8;
+  --worse: #f87171;
+  --na: #94a3b8;
+  --load: #a78bfa;
+  --warn: #f59e0b;
+  --fitness: #60a5fa;
+  --fatigue: #f472b6;
+  --form: #facc15;
+
+  --radius: 14px;
+  --gap: 16px;
+  --font: 'Fira Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'Fira Code', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-2: #f1f5f9;
+  --border: #e2e8f0;
+  --text: #1e293b;
+  --muted: #475569;
+  --faint: #64748b;
+  --primary: #2563eb;
+  --better: #15803d;
+  --inline: #0369a1;
+  --worse: #b91c1c;
+  --na: #475569;
+  --load: #6d28d9;
+  --warn: #b45309;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 18px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  overflow-x: hidden;
+}
+
+button { font: inherit; color: inherit; }
+
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+
+.tone-better { color: var(--better); }
+.tone-in_line, .tone-inline { color: var(--inline); }
+.tone-worse { color: var(--worse); }
+.tone-not_comparable, .tone-muted { color: var(--na); }
+.tone-load_only { color: var(--load); }
+.tone-warn { color: var(--warn); }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  min-width: 0;
+}
+
+button.card, a.card {
+  text-align: left;
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color 180ms ease, transform 180ms ease, background-color 180ms ease;
+}
+button.card:active, a.card:active { transform: scale(0.985); border-color: var(--primary); }
+button.card:focus-visible, a.card:focus-visible, button:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 600;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: background-color 180ms ease;
+}
+.btn:active { background: var(--border); }
+.btn svg, .pill svg { flex-shrink: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}

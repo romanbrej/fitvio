@@ -1,0 +1,47 @@
+.detail { display: flex; flex-direction: column; gap: var(--gap); }
+.detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.detail-head h1 { font-size: 30px; margin: 4px 0; line-height: 1.15; }
+.detail-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap); }
+.chart { height: 260px; }
+.chart-tall { height: 340px; }
+
+.table-wrap { overflow-x: auto; }
+table.data { width: 100%; border-collapse: collapse; font-size: 16px; }
+table.data th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+table.data td { padding: 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+table.data tr:last-child td { border-bottom: 0; }
+table.data td.num, table.data th.num { text-align: right; }
+table.data tr.clickable { cursor: pointer; }
+table.data tr.clickable:active { background: var(--surface-2); }
+
+.zbar { position: relative; width: 140px; height: 10px; background: var(--surface-2); border-radius: 5px; }
+.zbar::after { content: ''; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; background: var(--muted); }
+.zbar i { position: absolute; top: 0; bottom: 0; border-radius: 5px; }
+
+.kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px 20px; }
+.kv .k { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.kv .v { font-size: 22px; font-weight: 600; }
+
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.tabs .btn[aria-pressed='true'] { border-color: var(--primary); color: var(--primary); }
+
+.recharts-cartesian-axis-tick-value { fill: var(--muted); font-size: 13px; font-family: var(--mono); }
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px;
+}
+
+@media (max-width: 1100px) {
+  .detail-grid > * { grid-column: span 12 !important; }
+}

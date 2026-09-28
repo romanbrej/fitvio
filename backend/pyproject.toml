@@ -1,0 +1,27 @@
+[project]
+name = "healthdash"
+version = "0.1.0"
+description = "Wall-mounted fitness & health dashboard on top of GarminDB"
+requires-python = ">=3.11"
+dependencies = [
+  "garmindb",
+  "fitdecode>=0.10",
+  "fastapi>=0.110",
+  "uvicorn>=0.29",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+healthdash = "healthdash.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["healthdash*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
