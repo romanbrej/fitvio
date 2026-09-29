@@ -31,13 +31,21 @@ Weather and acclimation are downloaded with each sync. For older history, run `h
 - 6-week trend per sport
 - This week vs last week
 - Recent activities
-- VO₂max
+- VO₂max to one decimal (e.g. 44.1, from Garmin's daily VO₂max history), running and cycling, with the 6-week change
 
 **Glance → tap → detail.** Every card opens a detail page: every number, HR and pace/power charts, laps, sets, the exact baseline sessions you were compared with, and health trends over up to 365 days. The display returns to the wall after 2 minutes idle.
 
 **Multi-user.** Each person has their own Garmin login and their own GarminDB. The newest activity takes over the wall with that person's avatar; tap an avatar to switch.
 
 **Verdict check.** Rate *How did you feel* and *Perceived effort* on your watch after each activity. The app tracks how often the verdicts agree with how you felt, and lists the disagreements.
+
+**Syncing.** Every 10 minutes, and on demand via the sync button in the top bar (at most once a minute), the app runs a *differential* sync:
+- It only downloads days and activities that are new or changed, including today.
+- It only imports files written since the last successful sync.
+- It only recalculates the affected years.
+- Activities you rename or rate afterwards in Garmin Connect (feel, effort) are picked up again without re-taking the wall.
+
+A typical sync takes well under a minute. Garmin has no webhook for private use, so new activities show up with the next sync or when you tap the sync button.
 
 **Failure handling.** If the Garmin sync breaks (GarminDB uses the unofficial Garmin Connect login), the wall shows an amber "Last sync X ago" banner after 24 h. An old verdict is never re-shown as if it were new.
 
@@ -96,11 +104,46 @@ The password is stored `chmod 600` in `data/garmindb/<id>/config/password.txt`, 
 
 ## Raspberry Pi + tablet
 
+### With Docker (recommended)
+
+The compose file runs one image as two containers:
+
+| Container | Job |
+|---|---|
+| `web` | UI and API on port 8765 |
+| `sync` | Differential Garmin sync every 10 minutes |
+
+Your data and logins stay on the host in `./data` and `./config`. They are mounted into the containers and never built into the image (see `.dockerignore`).
+
 ```bash
-git clone … && cd healt-dashboard && ./deploy/install-pi.sh
+git clone https://github.com/romanbrej/fitness-dashboard.git health-wall && cd health-wall
+mkdir -p data config
+printf 'HW_UID=%s\nHW_GID=%s\nTZ=Europe/Berlin\n' "$(id -u)" "$(id -g)" > .env   # containers run as you, not root
+docker compose up -d --build
+docker compose logs -f sync      # watch the sync
+```
+
+Then open `http://<pi-ip>:8765` and connect your Garmin account.
+
+**If `npm ci` fails while building on the Pi** (e.g. "Exit handler never called"), build the image on another machine (arm64, e.g. an Apple Silicon Mac) and copy it over:
+
+```bash
+docker build -t health-wall .                                   # on the Mac, in the repo
+docker save health-wall | gzip | ssh <user>@<pi-ip> 'gunzip | docker load'
+ssh <user>@<pi-ip> 'cd health-wall && git pull && docker compose up -d --no-build'
+```
+
+To update, run `git pull`, then either `docker compose up -d --build` or the three commands above.
+
+### Without Docker (systemd)
+
+```bash
+git clone https://github.com/romanbrej/fitness-dashboard.git health-wall && cd health-wall && ./deploy/install-pi.sh
 ```
 
 This installs `healthdash-api.service` (the UI and API on port 8765) and `healthdash-sync.timer`.
+
+### Display
 - Use an SSD rather than an SD card if you can, because SQLite is written every 10 minutes.
 - **Android tablet:** use *Fully Kiosk Browser* pointed at `http://<pi-ip>:8765`, with screen always on.
 - **iPad:** in Safari, *Add to Home Screen* (it opens fullscreen), then *Guided Access*, and set Auto-Lock to Never.
@@ -137,7 +180,7 @@ healthdash profile [--user ID]         what was read from Garmin, and from where
 healthdash sync [--user ID] [--full]   download (GarminDB) + ingest + verdicts
 healthdash ingest [--user ID] [--full] ingest only
 healthdash evaluate [--user ID]        recompute all verdicts (e.g. after changing max_hr)
-healthdash backfill-extras [--user ID]  Garmin weather + heat acclimation for past activities
+healthdash backfill-extras [--user ID] Garmin weather, heat acclimation + VO₂max history for the past
 healthdash backtest [--user ID] [--sport S]
 healthdash demo [--days N]
 healthdash serve [--host H] [--port P]
@@ -156,16 +199,23 @@ backend/healthdash/
   pipeline.py                 store, evaluate, import health
   wall.py                     wall takeover rules, overview, validation
   api/main.py                 FastAPI + SSE, serves frontend/dist
+  accounts.py                 Garmin login (incl. MFA) and sync jobs with live progress
+  profile.py                  name, sex, max/resting HR, LTHR, FTP read from Garmin
+  sync/garmindb_runner.py     runs GarminDB, differential sync, sync lock
+  sync/garmindb_fast.py       runtime patches: skip cached days, adaptive pacing, changed-only import
+  sync/garmin_extras.py       Garmin weather, heat acclimation, precise VO₂max
 frontend/src/                 React + Vite wall UI (views/Wall*, detail views)
 design-system/                ui-ux-pro-max design system + wall overrides
-deploy/                       Pi install script + systemd units
+deploy/                       Pi install script + systemd units (non-Docker)
+Dockerfile, docker-compose.yml  Docker deployment (web + sync)
 ```
 
 Tests: `cd backend && ../.venv/bin/pytest`.
 
 ## Known limitations
 
-- Wrist temperature reads high because of body heat, so the heat adjustment is deliberately mild.
+- Weather comes from the nearest Garmin weather station at the start, so it doesn't capture sun, shade or temperature changes during long sessions.
+- Garmin has no public webhook, so a new activity appears after the next sync (at most 10 minutes, or instantly with the sync button).
 - Pool HR from a wrist sensor is unreliable. Swimming verdicts rely on pace and SWOLF, not HR.
 - Garmin's strength categories are broad (for example "squat" covers goblet and back squat). The numeric variant is kept in the exercise key so different variants aren't mixed.
 - The FIT parsing has only been tested against GarminDB's documented layout and synthetic data. Check `healthdash backtest` after your first real sync.
