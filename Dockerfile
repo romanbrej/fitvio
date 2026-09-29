@@ -3,7 +3,9 @@
 
 # --- 1. frontend (React/Vite) -----------------------------------------------------------
 # Debian-based on purpose: npm on Alpine/ARM (e.g. Raspberry Pi) can die with "Exit handler never called"
-FROM node:22-bookworm-slim AS frontend
+# $BUILDPLATFORM: dist/ is plain static files, so when cross-building (CI builds arm64 on x86) npm runs
+# natively instead of under emulation.
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS frontend
 # Docker networks usually have no IPv6, but the npm registry resolves to IPv6 first → npm stalls and
 # crashes. Prefer IPv4 during the build.
 ENV NODE_OPTIONS=--dns-result-order=ipv4first

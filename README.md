@@ -117,34 +117,34 @@ The password is stored `chmod 600` in `data/garmindb/<id>/config/password.txt`, 
 
 ### With Docker (recommended)
 
-The compose file runs one image as two containers:
+GitHub Actions builds the image on every push to `main` (tests first, then an arm64 build, see `.github/workflows/build.yml`) and pushes it to `ghcr.io/romanbrej/fitness-dashboard`. The compose file runs it as three containers:
 
 | Container | Job |
 |---|---|
 | `web` | UI and API on port 8765 |
 | `sync` | Auto-sync: checks for a new activity every 2 min, full differential sync hourly |
+| `watchtower` | Checks GHCR every 5 min and restarts `web` + `sync` when a new image is there |
 
 Your data and logins stay on the host in `./data` and `./config`. They are mounted into the containers and never built into the image (see `.dockerignore`).
+
+One-time setup. The image is private, so the Pi needs a GitHub token (classic) with only the `read:packages` scope (github.com/settings/tokens):
 
 ```bash
 git clone https://github.com/romanbrej/fitness-dashboard.git health-wall && cd health-wall
 mkdir -p data config
 printf 'HW_UID=%s\nHW_GID=%s\nTZ=Europe/Berlin\n' "$(id -u)" "$(id -g)" > .env   # containers run as you, not root
-docker compose up -d --build
-docker compose logs -f sync      # watch the sync
+docker login ghcr.io -u romanbrej          # paste the token as password (before the first `up`)
+docker compose pull && docker compose up -d
+docker compose logs -f sync                # watch the sync
 ```
 
 Then open `http://<pi-ip>:8765` and connect your Garmin account.
 
-**If `npm ci` fails while building on the Pi** (e.g. "Exit handler never called"), build the image on another machine (arm64, e.g. an Apple Silicon Mac) and copy it over:
+**Updating:** `git push` to `main`. About 10 min later (build + Watchtower check) the Pi runs the new version; `docker compose logs watchtower` shows it. Only when `docker-compose.yml` itself changed: `git pull && docker compose up -d` on the Pi.
 
-```bash
-docker build -t health-wall .                                   # on the Mac, in the repo
-docker save health-wall | gzip | ssh <user>@<pi-ip> 'gunzip | docker load'
-ssh <user>@<pi-ip> 'cd health-wall && git pull && docker compose up -d --no-build'
-```
+**Rollback:** put `HW_TAG=sha-<commit>` (see the tags in GitHub → Packages) in `.env`, then `docker compose up -d`. Remove it again to follow `latest`. The last 5 builds are kept.
 
-To update, run `git pull`, then either `docker compose up -d --build` or the three commands above.
+**Local build instead:** `docker compose up -d --build` still works (e.g. to try something on the Pi without pushing). Watchtower replaces it with the GHCR image on its next update.
 
 ### Without Docker (systemd)
 
@@ -220,7 +220,8 @@ backend/healthdash/
 frontend/src/                 React + Vite wall UI (views/Wall*, detail views)
 design-system/                ui-ux-pro-max design system + wall overrides
 deploy/                       Pi install script + systemd units (non-Docker)
-Dockerfile, docker-compose.yml  Docker deployment (web + sync)
+Dockerfile, docker-compose.yml  Docker deployment (web + sync + watchtower)
+.github/workflows/build.yml   CI: tests → arm64 image → GHCR
 ```
 
 Tests: `cd backend && ../.venv/bin/pytest`.
