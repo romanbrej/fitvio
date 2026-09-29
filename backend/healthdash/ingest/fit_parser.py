@@ -10,7 +10,7 @@ from pathlib import Path
 
 import fitdecode
 
-from ..activity import ExerciseSet, Lap, Record, SwimLength
+from ..activity import ExerciseSet, Lap, Record, SwimLength, plausible_temp
 
 
 def _get(frame, *names):
@@ -67,7 +67,7 @@ def parse_fit(path: str | Path) -> dict:
                     altitude=_num(_get(frame, "enhanced_altitude", "altitude")),
                     power=_num(_get(frame, "power")),
                     cadence=_num(_get(frame, "cadence")),
-                    temperature=_num(_get(frame, "temperature")),
+                    temperature=plausible_temp(_num(_get(frame, "temperature"))),
                 ))
             elif name == "lap":
                 start = _get(frame, "start_time")
@@ -102,7 +102,7 @@ def parse_fit(path: str | Path) -> dict:
                     "pool_length": _num(_get(frame, "pool_length")),
                     "rpe": _num(_get(frame, "workout_rpe")),
                     "feel": _num(_get(frame, "workout_feel")),
-                    "avg_temp": _num(_get(frame, "avg_temperature")),
+                    "avg_temp": plausible_temp(_num(_get(frame, "avg_temperature"))),
                     "ascent": _num(_get(frame, "total_ascent")),
                 }
     # FIT stores RPE as 10..100

@@ -1,0 +1,16 @@
+# never bake personal data or credentials into the image — they are mounted at runtime
+data/
+config/users.json
+config/secrets/
+.env
+*.db
+garmindb.log
+.git/
+.venv/
+**/__pycache__/
+**/*.pyc
+backend/.pytest_cache/
+backend/*.egg-info/
+frontend/node_modules/
+frontend/dist/
+design-system/

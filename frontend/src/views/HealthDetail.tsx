@@ -37,7 +37,11 @@ const METRICS: Record<string, MetricDef> = {
             { key: 'bb_min', label: 'Body Battery min', color: 'var(--muted)' },
             { key: 'stress_avg', label: 'Avg stress', color: 'var(--accent)' }],
   },
-  vo2max: { title: 'VO₂max', unit: 'ml/kg/min', lines: [{ key: 'vo2max', label: 'VO₂max', color: 'var(--primary)' }] },
+  vo2max: {
+    title: 'VO₂max', unit: 'ml/kg/min', fmt: v => v.toFixed(1),  // Garmin's precise value, e.g. 44.1
+    lines: [{ key: 'vo2max', label: 'Running', color: 'var(--primary)' },
+            { key: 'vo2max_cycling', label: 'Cycling', color: 'var(--accent)' }],
+  },
   steps: { title: 'Steps', unit: '', lines: [{ key: 'steps', label: 'Steps', color: 'var(--primary)', kind: 'bar' }] },
   weight: { title: 'Weight', unit: 'kg', lines: [{ key: 'weight_kg', label: 'Weight', color: 'var(--primary)' }] },
 }

@@ -40,6 +40,8 @@ def client(tmp_path, monkeypatch):
 
     monkeypatch.setattr(accounts, "login_interactive", fake_login)
     monkeypatch.setattr(accounts, "run_sync", fake_sync)
+    import healthdash.cli as cli_mod
+    monkeypatch.setattr(cli_mod, "backfill_extras", lambda user, on_progress=None: on_progress(1, 1))
     monkeypatch.setattr(accounts.pipeline, "ingest_from_garmindb", lambda conn, user, full=False, **kw: {"activities": 42})
     c = TestClient(main.app)
     yield c
@@ -63,8 +65,9 @@ def test_connect_with_mfa_from_the_ui(client, tmp_path):
     done = wait_for(client, job["id"], {"done", "error"})
     assert done["phase"] == "done", done
     assert done["name"] == "Alex Runner" and done["result"] == {"activities": 42}
-    assert done["log"] == ["Downloading activities: 100%"]
-    assert (done["step"], done["step_index"], done["step_total"]) == ("Hydration", 2, 10)
+    # after GarminDB's steps, the first download also loads Garmin's weather + heat acclimation
+    assert (done["step"], done["step_index"], done["step_total"]) == ("Weather & heat acclimation", 10, 11)
+    assert done["log"] == ["1/1 activities"]
 
     users = json.loads((tmp_path / "users.json").read_text())["users"]
     assert [u["id"] for u in users] == ["alex"]

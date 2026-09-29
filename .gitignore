@@ -10,3 +10,4 @@ config/secrets/
 .DS_Store
 garmindb.log
 *.egg-info/
+.env

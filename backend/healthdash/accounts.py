@@ -173,6 +173,15 @@ def _download_and_import(job: Job, user: UserConfig, db_path: Path, full: bool) 
             err = conn.execute("SELECT last_error FROM sync_status WHERE user_id = ?", (user.id,)).fetchone()[0]
             job.phase, job.error = "error", f"Download failed: {err}"
             return
+        if full:
+            # Garmin's weather + heat acclimation for the whole history (what Garmin Connect shows)
+            from .cli import backfill_extras
+            job.message = "Loading weather and heat acclimation for your activities"
+            job.on_step(10, 11, "extras", "Weather & heat acclimation")
+            try:
+                backfill_extras(user, on_progress=lambda i, n: job.line(f"{i}/{n} activities"))
+            except Exception as e:  # nice-to-have: never fail the first import because of it
+                log.warning("extras backfill failed for %s: %s", user.id, e)
         job.phase = "importing"
         job.message = "Analysing your activities and working out every verdict"
         job.result = pipeline.ingest_from_garmindb(conn, user, full=full, changed_since=since)

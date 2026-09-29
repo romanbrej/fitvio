@@ -53,7 +53,7 @@ export interface HealthDay {
   sleep_total_min: number | null; sleep_deep_min: number | null; sleep_light_min: number | null
   sleep_rem_min: number | null; sleep_awake_min: number | null; sleep_score: number | null
   stress_avg: number | null; bb_max: number | null; bb_min: number | null; steps: number | null
-  weight_kg: number | null; vo2max: number | null
+  weight_kg: number | null; vo2max: number | null; vo2max_cycling: number | null
 }
 
 export interface SportTrend {

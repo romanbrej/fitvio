@@ -32,6 +32,11 @@ export function WallAmbient({ ambient: a }: { ambient: Ambient }) {
   const hrvBand: [number, number] | null = h.hrv_baseline_low && h.hrv_baseline_high ? [h.hrv_baseline_low, h.hrv_baseline_high] : null
   const series = a.health_series
 
+  // precise VO2max change over ~6 weeks (latest vs. the last value at least 42 days earlier)
+  const vo2Last = a.vo2max.at(-1)
+  const vo2Then = vo2Last && [...a.vo2max].reverse().find(v => (Date.parse(vo2Last.day) - Date.parse(v.day)) / 86400000 >= 42)
+  const vo2Change = vo2Last && vo2Then ? vo2Last.value - vo2Then.value : null
+
   const weekSports = Array.from(new Set([...Object.keys(a.week), ...Object.keys(a.last_week)])) as Sport[]
   const maxDur = Math.max(1, ...weekSports.map(s => Math.max(a.week[s]?.duration_s ?? 0, a.last_week[s]?.duration_s ?? 0)))
 
@@ -175,7 +180,9 @@ export function WallAmbient({ ambient: a }: { ambient: Ambient }) {
       <div className="span-3 stack" style={{ gap: 'var(--gap)' }}>
         <button className="card" onClick={() => nav(`/u/${u}/health/vo2max`)}>
           <div className="card-title"><Waves size={18} /> VO₂max</div>
-          <div className="row"><span className="mid num">{num(a.vo2max.at(-1)?.value, 1)}</span><span style={{ flex: 1, minWidth: 60 }}><Sparkline values={a.vo2max.map(v => v.value)} height={32} /></span></div>
+          <div className="row"><span className="mid num">{num(a.vo2max.at(-1)?.value, 1)}</span>
+            {vo2Change != null && <span className={`num tone-${vo2Change > 0.05 ? 'better' : vo2Change < -0.05 ? 'worse' : 'inline'}`} style={{ fontSize: 15 }}>
+              {signed(vo2Change, 1)} in 6 wk</span>}<span style={{ flex: 1, minWidth: 60 }}><Sparkline values={a.vo2max.map(v => v.value)} height={32} /></span></div>
         </button>
         <button className="card" onClick={() => nav(`/u/${u}/validation`)}>
           <div className="card-title"><CheckCircle2 size={18} /> Verdict check</div>

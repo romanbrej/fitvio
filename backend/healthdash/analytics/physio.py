@@ -49,14 +49,34 @@ def grade_adjusted_speeds(records: list[Record], window_m: float = 30.0) -> list
     return out
 
 
-def heat_factor(temp_c: float | None) -> float:
-    """Multiplier to normalise efficiency for heat: ~0.35 % per °C above 15 °C (capped).
+# Runners' temperature + dew point rule: sum of both in °F → how much harder the same effort is.
+HEAT_TABLE = [(100, 0.0), (110, 0.5), (120, 1.0), (130, 2.0), (140, 3.0), (150, 4.5), (160, 6.0), (170, 8.0),
+              (180, 10.0)]
+HEAT_MAX_PCT = 12.0
 
-    Wrist sensors read a few degrees high because of body heat, so this is deliberately mild.
+
+def c_to_f(c: float) -> float:
+    return c * 9 / 5 + 32
+
+
+def f_to_c(f: float) -> float:
+    return (f - 32) * 5 / 9
+
+
+def heat_adjustment(temp_c: float | None, dew_point_c: float | None, acclimation_pct: float | None = None) -> float:
+    """% by which heat and humidity made the same effort harder (0 when unknown or cool).
+
+    Uses temperature + dew point (°F), because humidity matters as much as heat. Heat acclimation
+    (Garmin's heatAcclimationPercentage) reduces the effect by up to half — a heuristic.
     """
-    if temp_c is None or temp_c <= 15:
-        return 1.0
-    return 1.0 + 0.0035 * min(temp_c - 15, 20)
+    if temp_c is None:
+        return 0.0
+    dew_c = dew_point_c if dew_point_c is not None else temp_c - 10  # rough mid-humidity fallback
+    total = c_to_f(temp_c) + c_to_f(dew_c)
+    pct = next((p for limit, p in HEAT_TABLE if total <= limit), HEAT_MAX_PCT)
+    if acclimation_pct:
+        pct *= 1 - 0.5 * max(0.0, min(100.0, acclimation_pct)) / 100
+    return round(pct, 2)
 
 
 def steady_slice(records: list[Record], skip_s: float = 300.0) -> list[Record]:

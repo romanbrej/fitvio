@@ -12,7 +12,8 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from ..activity import Lap, ParsedActivity, Record, normalize_sport
+from ..activity import Lap, ParsedActivity, Record, normalize_sport, plausible_temp
+from ..sync import garmin_extras
 from .fit_parser import parse_fit
 
 log = logging.getLogger(__name__)
@@ -56,6 +57,7 @@ class GarminDbReader:
         self.base = Path(base_dir)
         self.db_dir = self.base / "DBs"
         self.fit_dir = self.base / "FitFiles" / "Activities"
+        self.extras_dir = garmin_extras.extras_dir(self.base)
 
     @property
     def available(self) -> bool:
@@ -104,6 +106,8 @@ class GarminDbReader:
                 parsed = self._records_from_db(c, activity_id, _dt(a["start_time"]))
 
         fs = parsed.get("session") or {}
+        start = _dt(a["start_time"])
+        weather = garmin_extras.read_weather(self.extras_dir, str(activity_id))
         sport, indoor = normalize_sport(a.get("sport") or fs.get("sport"), a.get("sub_sport") or fs.get("sub_sport"))
         feel = fs.get("feel") if fs.get("feel") is not None else FEEL.get((a.get("self_eval_feel") or "").lower())
         rpe = fs.get("rpe") if fs.get("rpe") is not None else EFFORT.get((a.get("self_eval_effort") or "").lower())
@@ -119,7 +123,9 @@ class GarminDbReader:
             avg_hr=a.get("avg_hr"),
             max_hr=a.get("max_hr"),
             ascent_m=a.get("ascent") if a.get("ascent") is not None else fs.get("ascent"),
-            avg_temp_c=a.get("avg_temperature") if a.get("avg_temperature") is not None else fs.get("avg_temp"),
+            # Heat comes from Garmin's weather for the activity, not the wrist sensor (body heat skews
+            # it, and GarminDB stores the FIT "no value" marker 127 as if it were °C).
+            avg_temp_c=weather["temp_c"] if weather else None,
             indoor=indoor,
             rpe=rpe,
             feel=feel,
@@ -129,6 +135,8 @@ class GarminDbReader:
             lengths=parsed.get("lengths", []),
             sets=parsed.get("sets", []),
             exercise_labels=parsed.get("exercise_labels", {}),
+            weather=weather,
+            heat_acclimation=garmin_extras.read_acclimation(self.extras_dir, start.date()),
         )
         return act
 
@@ -145,7 +153,7 @@ class GarminDbReader:
                 distance=r["distance"] * 1000 if r["distance"] is not None else None,
                 altitude=r["altitude"],
                 cadence=r["cadence"],
-                temperature=r["temperature"],
+                temperature=plausible_temp(r["temperature"]),
             ))
         laps = []
         for lap in c.execute("SELECT * FROM activity_laps WHERE activity_id = ? ORDER BY lap", (activity_id,)):
@@ -195,9 +203,11 @@ class GarminDbReader:
             if "weight" in tables:
                 for r in c.execute("SELECT day, weight FROM weight WHERE day >= ?", (day0,)):
                     put(r["day"], weight_kg=r["weight"])
-        # VO2max lives on the activity (running/cycling tables)
+        precise = garmin_extras.read_vo2max(self.extras_dir)
+        # Fallback only: GarminDB's rounded VO2max on the activity (44 instead of 44.1). Never mixed
+        # with the precise history — that would create false jumps like 44.1 → 44 → 44.2.
         with _ro(self.db_dir / "garmin_activities.db") as c:
-            for tbl in ("steps_activities", "cycle_activities"):
+            for tbl in (() if precise else ("steps_activities", "cycle_activities")):
                 try:
                     q = (f"SELECT a.start_time, s.vo2_max FROM {tbl} s JOIN activities a USING(activity_id) "
                          "WHERE s.vo2_max IS NOT NULL AND a.start_time >= ?")
@@ -205,6 +215,10 @@ class GarminDbReader:
                         put(r["start_time"], vo2max=r["vo2_max"])
                 except sqlite3.OperationalError:
                     pass
+        # precise VO2max (one decimal) from Garmin's daily history, if downloaded
+        for day, v in precise.items():
+            if day >= day0:
+                put(day, vo2max=v.get("running"), vo2max_cycling=v.get("cycling"))  # replaces the rounded value
         return sorted(days.values(), key=lambda d: d["day"])
 
 

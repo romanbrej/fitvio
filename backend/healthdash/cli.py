@@ -40,6 +40,8 @@ def main(argv=None) -> int:
         s = sub.add_parser(name)
         s.add_argument("--user")
         s.add_argument("--full", action="store_true", help="full history instead of latest")
+    s = sub.add_parser("backfill-extras", help="download Garmin's weather + heat acclimation for past activities")
+    s.add_argument("--user")
     s = sub.add_parser("backtest")
     s.add_argument("--user")
     s.add_argument("--sport")
@@ -107,6 +109,11 @@ def main(argv=None) -> int:
             print(u.id, pipeline.ingest_from_garmindb(conn, u, full=a.full))
         return 0
 
+    if a.cmd == "backfill-extras":
+        for u in _users(cfg, a.user):
+            print(u.id, backfill_extras(u))
+        return 0
+
     if a.cmd == "evaluate":
         for u in _users(cfg, a.user):
             print(u.id, pipeline.evaluate_all(conn, u.id), "verdicts")
@@ -142,6 +149,22 @@ def main(argv=None) -> int:
         print(generate(conn, cfg, days=a.days))
         return 0
     return 1
+
+
+def backfill_extras(user, on_progress=None) -> dict:
+    """Garmin's weather + heat acclimation for every activity this person has (missing ones only)."""
+    from .ingest.garmindb_reader import GarminDbReader, base_dir_from_config
+    from .sync import garmin_extras
+    from .sync.garmindb_runner import garmin_client
+
+    reader = GarminDbReader(base_dir_from_config(user.garmindb_dir))
+    if not reader.available:
+        return {"missing": 0, "fetched": 0, "failed": 0}
+    items = [(aid, str(start)[:10]) for aid, start in reader.activity_ids(None)]
+    client = garmin_client(user)
+    result = garmin_extras.backfill(client.connectapi, reader.extras_dir, items, on_progress=on_progress)
+    result["vo2max_days"] = garmin_extras.update_vo2max(client.connectapi, reader.extras_dir)
+    return result
 
 
 LABELS = {"name": "Name", "sex": "Sex", "max_hr": "Max HR", "rest_hr": "Resting HR", "lthr": "Threshold HR", "ftp": "FTP"}

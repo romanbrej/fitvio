@@ -47,7 +47,17 @@ function facts(s: SessionDetail): [string, string][] {
     ['Training load', num(s.load)],
   ]
   if (s.ascent_m) out.push(['Ascent', `${num(s.ascent_m)} m`])
-  if (s.avg_temp_c != null) out.push(['Temperature', `${num(s.avg_temp_c)} °C`])
+  // Garmin's weather for this activity (station near the start) — not the wrist sensor
+  const w = f.weather
+  if (w) {
+    out.push(['Weather', `${num(w.temp_c)} °C${w.desc ? ` · ${w.desc}` : ''}`])
+    if (w.feels_like_c != null) out.push(['Feels like', `${num(w.feels_like_c)} °C`])
+    if (w.humidity != null) out.push(['Humidity', `${num(w.humidity)} %${w.dew_point_c != null ? ` · dew pt ${num(w.dew_point_c)} °C` : ''}`])
+    if (w.wind_kmh != null) out.push(['Wind', `${num(w.wind_kmh)} km/h${w.wind_dir ? ` ${w.wind_dir}` : ''}`])
+    if (w.station) out.push(['Weather station', w.station])
+  }
+  if (f.heat_acclimation != null) out.push(['Heat acclimation', `${num(f.heat_acclimation)} %`])
+  if (f.heat_adj_pct) out.push(['Heat adjustment', `+${num(f.heat_adj_pct, 1)} % efficiency`])
   if (s.sport === 'running') {
     out.push(['Avg pace', `${pace(f.avg_speed)} /km`], ['Grade-adj. pace', `${pace(f.gap_speed)} /km`],
       ['Efficiency', num(f.ef_adj, 2)], ['HR drift', f.decoupling != null ? `${num(f.decoupling, 1)} %` : '—'],

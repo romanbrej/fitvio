@@ -64,10 +64,19 @@ class FakeDownload:
 
     def __init__(self, summaries, details):
         self.summaries, self.details = summaries, details
-        self.detail_requests, self.fit_downloads = [], []
+        self.detail_requests, self.fit_downloads, self.extra_requests = [], [], []
         self.garmin = SimpleNamespace(connectapi=self._connectapi)
 
     def _connectapi(self, url):
+        if url.endswith("/weather"):
+            self.extra_requests.append(url)
+            return {"temp": 75, "dewPoint": 59}
+        if "/maxmet/daily/" in url:
+            self.extra_requests.append(url)
+            return []
+        if "heataltitudeacclimation" in url:
+            self.extra_requests.append(url)
+            return {"heatAcclimationPercentage": 8}
         aid = url.rsplit("/", 1)[1]
         self.detail_requests.append(aid)
         return self.details[aid]
@@ -95,7 +104,15 @@ def save(directory, base, data, age_s=10 * 86400):
     return p
 
 
-def test_activities_compared_with_saved_copies(tmp_path):
+@pytest.fixture
+def act_dir(tmp_path):
+    d = tmp_path / "HealthData" / "FitFiles" / "Activities"
+    d.mkdir(parents=True)
+    return d
+
+
+def test_activities_compared_with_saved_copies(act_dir):
+    tmp_path = act_dir
     old = summary("1", 30)
     renamed = summary("2", 30, name="Tempo 10k")
     recent = summary("3", 1)
@@ -114,6 +131,7 @@ def test_activities_compared_with_saved_copies(tmp_path):
     fast.get_activities(d, str(tmp_path), 25)
 
     assert sorted(d.detail_requests) == ["2", "3", "4"]   # old + unchanged: no request at all
+    assert sum("/maxmet/daily/" in u for u in d.extra_requests) == 1  # precise VO2max: one request per sync
     assert d.fit_downloads == ["4"]                       # recordings of known activities never again
     after = {p.name: p.stat().st_mtime for p in tmp_path.glob("*.json")}
     assert after["activity_1.json"] == before["activity_1.json"]            # untouched → not re-imported
@@ -123,7 +141,11 @@ def test_activities_compared_with_saved_copies(tmp_path):
     assert (tmp_path / "activity_4.json").exists()
 
 
-def test_recent_but_unchanged_activity_is_not_rewritten(tmp_path):
+def test_recent_but_unchanged_activity_is_not_rewritten(act_dir):
+    tmp_path = act_dir
+    (act_dir.parent.parent / "Extras").mkdir()
+    for f in ("weather_3.json", f"acclimation_{summary('3', 1)['startTimeLocal'][:10]}.json"):
+        (act_dir.parent.parent / "Extras" / f).write_text("{}")  # extras already there → no requests
     recent = summary("3", 1)
     save(tmp_path, "activity_3", recent)
     p = save(tmp_path, "activity_details_3", {"summaryDTO": {"directWorkoutFeel": 50}})
@@ -212,7 +234,8 @@ def test_result_message(result, full, text):
     assert accounts.result_message(result, full) == text
 
 
-def test_non_numeric_activity_ids_never_become_file_names(tmp_path):
+def test_non_numeric_activity_ids_never_become_file_names(act_dir):
+    tmp_path = act_dir
     evil = {"activityId": "../../config/password", "activityName": "x", "startTimeLocal": "2026-09-29 07:00:00"}
     d = FakeDownload([evil], {})
     fast.get_activities(d, str(tmp_path), 25)

@@ -1,0 +1,35 @@
+# Health Wall on Docker (e.g. a Raspberry Pi 4 with 64-bit OS).
+#   docker compose up -d --build        start / update
+#   docker compose logs -f sync         watch the Garmin sync
+# Data and settings stay on the host in ./data and ./config (credentials, tokens, health data).
+# Set HW_UID / HW_GID in .env to the host user owning those folders (id -u / id -g).
+
+x-common: &common
+  image: health-wall
+  user: "${HW_UID:-1000}:${HW_GID:-1000}"
+  environment:
+    TZ: ${TZ:-Europe/Berlin}
+  volumes:
+    - ./data:/app/data
+    - ./config:/app/config
+  restart: unless-stopped
+
+services:
+  web:
+    <<: *common
+    build: .
+    command: ["healthdash", "serve", "--host", "0.0.0.0", "--port", "8765"]
+    ports:
+      - "8765:8765"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/health', timeout=5)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  sync:
+    <<: *common
+    # differential Garmin sync every 10 minutes (only new/changed data, ~1 min on a Pi 4)
+    command: ["sh", "-c", "while true; do healthdash sync; sleep 600; done"]
+    depends_on:
+      - web

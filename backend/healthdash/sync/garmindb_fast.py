@@ -39,6 +39,8 @@ from tqdm import tqdm
 
 import garmindb.download as dl
 
+from healthdash.sync import garmin_extras
+
 root_logger = logging.getLogger()
 
 BASE_PAUSE_S = float(os.environ.get("HEALTHDASH_GARMIN_PAUSE", "0.25"))
@@ -191,6 +193,7 @@ def get_activities(self, directory, count, overwrite=False):
     self.temp_dir = tempfile.mkdtemp()
     root_logger.info("Getting activities: '%s' (%d) temp %s", directory, count, self.temp_dir)
     activities = self._Download__get_activity_summaries(0, count) or []
+    extras = garmin_extras.extras_dir(Path(directory).parent.parent)  # <HealthData>/Extras
     pace = Pace()
     new = updated = 0
     for activity in tqdm(activities, unit="activities"):
@@ -201,8 +204,13 @@ def get_activities(self, directory, count, overwrite=False):
         base = f"{directory}/activity_{aid}"
         is_new = not os.path.isfile(base + ".json")
         summary_changed = _write_if_changed(base, activity)  # the list already holds the current summary
+        # Garmin's weather + heat acclimation for this activity (what Garmin Connect shows), once
+        day = str(activity.get("startTimeLocal") or "")[:10]
+        if day and any(garmin_extras.missing(extras, aid, day)):
+            _fetch_with_retries(lambda: garmin_extras.fetch_extras(self.garmin.connectapi, extras, aid, day), pace, aid)
+            pace.wait()
         if not (is_new or overwrite or summary_changed or _is_recent(self, activity)):
-            continue  # unchanged and old: no request at all
+            continue  # unchanged and old: no more requests
 
         def fetch(aid=aid, is_new=is_new):
             details = self.garmin.connectapi(f"{self.garmin_connect_activity_service_url}/{aid}")
@@ -222,6 +230,10 @@ def get_activities(self, directory, count, overwrite=False):
     self._Download__unzip_files(directory)
     shutil.rmtree(self.temp_dir, ignore_errors=True)
     root_logger.info("Activities: %d new, %d updated", new, updated)
+    try:  # precise VO2max history (44.1 instead of GarminDB's 44) — one request
+        root_logger.info("VO2max: %d days with precise values", garmin_extras.update_vo2max(self.garmin.connectapi, extras))
+    except Exception as e:  # nice-to-have, never fail the sync because of it
+        root_logger.warning("VO2max update failed: %s", e)
 
 
 # --- differential import + analyze ---------------------------------------------

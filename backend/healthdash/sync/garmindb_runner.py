@@ -257,10 +257,9 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, tim
     return error is None
 
 
-def login_interactive(user: UserConfig, mfa_prompt: Callable[[], str] | None = None) -> str | None:
-    """First login in this process, so Garmin's MFA prompt (if enabled) can be answered — in the
-    terminal by default, or via `mfa_prompt` (the web UI). GarminDB caches the resulting tokens in
-    the config dir; background syncs reuse them. Returns the full name from the Garmin profile."""
+def garmin_client(user: UserConfig, mfa_prompt: Callable[[], str] | None = None):
+    """A logged-in Garmin Connect client for this person (GarminDB's auth adapter). Uses the cached
+    login tokens; only falls back to the password (and MFA) when they are missing or expired."""
     from garmindb.garmin_connect_auth_adapter import GarminConnectAuthAdapter
     from garmindb.garmin_connect_config_manager import GarminConnectConfigManager
 
@@ -273,4 +272,12 @@ def login_interactive(user: UserConfig, mfa_prompt: Callable[[], str] | None = N
         gc.get_password = lambda: path.read_text().strip()
     adapter = GarminConnectAuthAdapter(gc, mfa_prompt=mfa_prompt)
     adapter.login()  # raises GarminConnectAuthError on bad credentials
+    return adapter
+
+
+def login_interactive(user: UserConfig, mfa_prompt: Callable[[], str] | None = None) -> str | None:
+    """First login in this process, so Garmin's MFA prompt (if enabled) can be answered — in the
+    terminal by default, or via `mfa_prompt` (the web UI). GarminDB caches the resulting tokens in
+    the config dir; background syncs reuse them. Returns the full name from the Garmin profile."""
+    adapter = garmin_client(user, mfa_prompt)
     return adapter.full_name or adapter.display_name

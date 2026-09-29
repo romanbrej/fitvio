@@ -66,6 +66,9 @@ class ParsedActivity:
     lengths: list[SwimLength] = field(default_factory=list)
     sets: list[ExerciseSet] = field(default_factory=list)
     exercise_labels: dict[str, str] = field(default_factory=dict)  # set key -> display name
+    # Garmin's weather for the activity (station near the start, at start time) and heat acclimation %
+    weather: dict | None = None
+    heat_acclimation: float | None = None
 
     @property
     def has_power(self) -> bool:
@@ -95,3 +98,13 @@ def normalize_sport(sport: str | None, sub_sport: str | None) -> tuple[str, bool
     if sub == "strength_training" or (s in STRENGTH_SPORTS and sub in {"strength_training", ""}):
         return "strength", True
     return "other", indoor
+
+
+FIT_INVALID_TEMPS = {127, -128, 255}  # FIT "no value" markers for (s)int8 temperature fields
+
+
+def plausible_temp(v) -> float | None:
+    """A temperature in °C, or None for FIT 'no value' markers and physically implausible values."""
+    if not isinstance(v, (int, float)) or v in FIT_INVALID_TEMPS or not -40 <= v <= 60:
+        return None
+    return float(v)

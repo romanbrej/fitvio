@@ -50,17 +50,19 @@ def compute_features(act: ParsedActivity, user: UserConfig) -> dict:
         gap_all = physio.grade_adjusted_speeds(recs)
         gap = gap_all[len(recs) - len(steady):]
         ef = physio.efficiency_factor(steady, gap)
-        heat = physio.heat_factor(act.avg_temp_c)
+        w = act.weather or {}
+        heat_pct = 0.0 if act.indoor else physio.heat_adjustment(w.get("temp_c"), w.get("dew_point_c"),
+                                                                 act.heat_acclimation)
         f.update({
             "ef": ef,                                      # grade-adjusted m/min per beat
-            "ef_adj": ef * heat if ef else None,           # also heat-normalised
+            "ef_adj": ef * (1 + heat_pct / 100) if ef else None,  # also heat/humidity-normalised
             "decoupling": physio.decoupling(steady, gap),
             "speed_at_ref_hr": physio.speed_at_hr(steady, gap, ref_hr(user)),
             "ref_hr": ref_hr(user),
             "avg_speed": act.distance_m / act.duration_s if act.distance_m and act.duration_s else None,
             "gap_speed": (sum(s for s in gap if s) / max(1, sum(1 for s in gap if s))) if gap else None,
             "avg_cadence": _avg([r.cadence for r in recs]),
-            "heat_factor": heat,
+            "heat_adj_pct": heat_pct,
         })
     elif act.sport == "cycling":
         if act.has_power:
@@ -110,6 +112,10 @@ def compute_features(act: ParsedActivity, user: UserConfig) -> dict:
         f["total_volume"] = round(sum(d["volume"] for d in per_ex.values()), 1)
         f["total_sets"] = sum(d["sets"] for d in per_ex.values())
 
+    if act.weather:
+        f["weather"] = act.weather
+    if act.heat_acclimation is not None:
+        f["heat_acclimation"] = act.heat_acclimation
     session_type = classify_session(act, zones, _lap_speed_cv(act))
     load = physio.trimp(recs, user.rest_hr, user.max_hr, user.sex, act.avg_hr, act.duration_s)
     return {"features": _round(f), "session_type": session_type, "load": round(load, 1)}

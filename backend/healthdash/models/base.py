@@ -176,9 +176,18 @@ class SportModel:
 
     def context_notes(self, session: dict, health: dict | None, health_base: dict | None, trend: dict) -> list[dict]:
         notes = []
-        t = session.get("avg_temp_c")
-        if t is not None and t >= 24 and not session.get("indoor"):
-            notes.append({"kind": "heat", "text": f"Warm: {t:.0f} °C (wrist sensor), efficiency heat-adjusted"})
+        f = session.get("features") or {}
+        heat, w = f.get("heat_adj_pct") or 0, f.get("weather") or {}
+        if heat > 0 and w.get("temp_c") is not None:
+            text = f"Warm & humid: {w['temp_c']:.0f} °C"
+            if w.get("dew_point_c") is not None:
+                text += f", dew point {w['dew_point_c']:.0f} °C"
+            if w.get("station"):
+                text += f" ({w['station']})"
+            text += f" — efficiency adjusted +{heat:.1f} %"
+            if f.get("heat_acclimation") is not None:
+                text += f"; heat acclimation {f['heat_acclimation']:.0f} %"
+            notes.append({"kind": "heat", "text": text})
         if session.get("ascent_m") and session.get("distance_m") and self.sport == "running":
             per_km = session["ascent_m"] / (session["distance_m"] / 1000)
             if per_km >= 15:

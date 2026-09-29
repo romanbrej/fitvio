@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS health_days (
     steps               REAL,
     weight_kg           REAL,
     vo2max              REAL,
+    vo2max_cycling      REAL,
     PRIMARY KEY (user_id, day)
 );
 
@@ -116,7 +117,16 @@ def connect(path: str | Path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")  # API reads while the sync writes
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Add columns introduced after a database was created."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(health_days)")}
+    if "vo2max_cycling" not in cols:
+        conn.execute("ALTER TABLE health_days ADD COLUMN vo2max_cycling REAL")
+        conn.commit()
 
 
 def row_to_dict(row: sqlite3.Row | None) -> dict | None:

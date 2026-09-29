@@ -22,6 +22,9 @@ When there are fewer than 3 comparable sessions it says **"Not comparable yet"**
 | Gym | Estimated 1-rep max per exercise (Epley) vs the best of your last 3 sessions, plus PRs. Needs reps and weight logged on the watch |
 | Everything else | Training load and recovery impact |
 
+**Heat and humidity.** Running efficiency is adjusted with **Garmin's own weather for the activity** (the same weather box Garmin Connect shows, taken from a station near the start at start time) and **Garmin's heat acclimation**. It uses the runners' temperature + dew point rule: the sum in °F sets how much harder the same effort was (0 % up to 100 °F, up to 12 % above 180 °F). Heat acclimation reduces that effect by up to half, which is a heuristic. Indoor and treadmill sessions get no heat adjustment. The wrist temperature sensor isn't used for this, because body heat skews it, and FIT files use 127 as a "no value" marker.
+Weather and acclimation are downloaded with each sync. For older history, run `healthdash backfill-extras` once (a first download does this automatically).
+
 **Overview.**
 - Form, fitness and fatigue, from heart-rate-based training load so all sports count on one scale
 - Last night's HRV against your baseline, resting HR against your usual, sleep with stages, Body Battery and stress
@@ -134,6 +137,7 @@ healthdash profile [--user ID]         what was read from Garmin, and from where
 healthdash sync [--user ID] [--full]   download (GarminDB) + ingest + verdicts
 healthdash ingest [--user ID] [--full] ingest only
 healthdash evaluate [--user ID]        recompute all verdicts (e.g. after changing max_hr)
+healthdash backfill-extras [--user ID]  Garmin weather + heat acclimation for past activities
 healthdash backtest [--user ID] [--sport S]
 healthdash demo [--days N]
 healthdash serve [--host H] [--port P]
