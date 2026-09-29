@@ -79,9 +79,10 @@ def main(argv=None) -> int:
         return 0
 
     if a.cmd == "sync":
-        from .sync.garmindb_runner import SyncBusy, run_sync
+        from .sync.garmindb_runner import SyncBusy, changed_since, run_sync
         rc = 0
         for u in _users(cfg, a.user):
+            since = None if a.full else changed_since(conn, u.id)  # before the sync moves it
             try:
                 ok = run_sync(conn, u, full=a.full)
             except SyncBusy as e:
@@ -91,7 +92,7 @@ def main(argv=None) -> int:
                 err = conn.execute("SELECT last_error FROM sync_status WHERE user_id = ?", (u.id,)).fetchone()[0]
                 print(f"{u.id}: sync failed — {err}", file=sys.stderr)
             try:
-                print(u.id, pipeline.ingest_from_garmindb(conn, u, full=a.full))
+                print(u.id, pipeline.ingest_from_garmindb(conn, u, full=a.full, changed_since=since))
             except RuntimeError as e:  # e.g. nothing downloaded yet
                 print(f"{u.id}: ingest skipped — {e}", file=sys.stderr)
                 rc = 1

@@ -12,6 +12,13 @@ This wrapper patches only the download loops (nothing else) and then runs the un
     doubled on errors / rate limiting up to 8 s, and eased back down after successes
   * monitoring remembers finished days in `.downloaded_days.json`, so it resumes too
   * hydration is skipped (Health Wall doesn't use it; HEALTHDASH_HYDRATION=1 keeps it)
+  * activities are compared with what is saved: a summary or details file is only rewritten when
+    Garmin's version differs (renamed, RPE/feel added, …), recent activities are always checked
+
+Differential import (HEALTHDASH_SYNC_SINCE = start of the last successful sync, set by run_sync):
+  * `--latest` imports only files written since then, instead of GarminDB's "last 24 hours".
+    Files are only written when new or changed, so this is a real comparison.
+  * the analyze step only recalculates the affected year(s) instead of all of them
 
 Usage (done by run_sync): python -m healthdash.sync.garmindb_fast <garmindb_cli args…>
 """
@@ -37,6 +44,17 @@ root_logger = logging.getLogger()
 BASE_PAUSE_S = float(os.environ.get("HEALTHDASH_GARMIN_PAUSE", "0.25"))
 MAX_PAUSE_S = 8.0
 KEEP_HYDRATION = os.environ.get("HEALTHDASH_HYDRATION") == "1"
+
+
+def _sync_since() -> datetime.datetime | None:
+    raw = os.environ.get("HEALTHDASH_SYNC_SINCE")
+    try:
+        return datetime.datetime.fromisoformat(raw) if raw else None
+    except ValueError:
+        return None
+
+
+SYNC_SINCE = _sync_since()
 
 # day function name → where GarminDB saves that day (".json" is appended by save_json_to_file)
 _CACHED = {
@@ -86,10 +104,18 @@ def _fetch_with_retries(fn, pace: Pace, day) -> bool:
     return False
 
 
+def _through_today(date, days: int) -> int:
+    """GarminDB's ranges stop at yesterday (range(0, today - start)). Garmin files last night's
+    sleep, HRV and resting HR under *today's* date, so include today when the range ends yesterday."""
+    if date + datetime.timedelta(days=days) == datetime.date.today():
+        return days + 1
+    return days
+
+
 def get_stat(self, stat_function, directory, date, days, overwrite):
     cached = _CACHED.get(stat_function.__name__)
     pace = Pace()
-    for n in tqdm(range(0, days), unit="days"):
+    for n in tqdm(range(0, _through_today(date, days)), unit="days"):
         day = date + datetime.timedelta(days=n)
         refresh = overwrite or _needs_refresh(self, day)
         if cached and not refresh and cached(directory, day).exists():
@@ -106,7 +132,7 @@ def get_monitoring(self, directory_func, date, days):
     except (OSError, ValueError):
         done = set()
     pace = Pace()
-    for n in tqdm(range(0, days), unit="days"):
+    for n in tqdm(range(0, _through_today(date, days)), unit="days"):
         day = date + datetime.timedelta(days=n)
         if day.isoformat() in done and not _needs_refresh(self, day):
             continue
@@ -136,10 +162,106 @@ def get_hydration(self, directory_func, date, days, overwrite):
 _original_hydration = dl.Download.get_hydration
 
 
+# --- activities: compare with what is saved ------------------------------------
+
+def _write_if_changed(base: str, data) -> bool:
+    """Save GarminDB-style `<base>.json` only when the content differs. Returns True if written.
+    Unchanged files keep their mtime, which is what the differential import keys on."""
+    path = Path(base + ".json")
+    new = json.loads(json.dumps(data, default=str))
+    try:
+        if json.loads(path.read_text()) == new:
+            return False
+    except (OSError, ValueError):
+        pass
+    path.write_text(json.dumps(new))
+    return True
+
+
+def _is_recent(self, activity: dict) -> bool:
+    start = str(activity.get("startTimeLocal") or activity.get("startTimeGMT") or "")[:10]
+    try:
+        return (datetime.date.today() - datetime.date.fromisoformat(start)).days <= self.download_days_overlap
+    except ValueError:
+        return False
+
+
+def get_activities(self, directory, count, overwrite=False):
+    """GarminDB's activity download, plus change detection for activities it already has."""
+    self.temp_dir = tempfile.mkdtemp()
+    root_logger.info("Getting activities: '%s' (%d) temp %s", directory, count, self.temp_dir)
+    activities = self._Download__get_activity_summaries(0, count) or []
+    pace = Pace()
+    new = updated = 0
+    for activity in tqdm(activities, unit="activities"):
+        aid = str(activity.get("activityId", ""))
+        if not aid.isdigit():  # used in file names: never trust it to be a plain number
+            root_logger.warning("get_activities: skipping activity with unexpected id %r", aid[:40])
+            continue
+        base = f"{directory}/activity_{aid}"
+        is_new = not os.path.isfile(base + ".json")
+        summary_changed = _write_if_changed(base, activity)  # the list already holds the current summary
+        if not (is_new or overwrite or summary_changed or _is_recent(self, activity)):
+            continue  # unchanged and old: no request at all
+
+        def fetch(aid=aid, is_new=is_new):
+            details = self.garmin.connectapi(f"{self.garmin_connect_activity_service_url}/{aid}")
+            details_changed = _write_if_changed(f"{directory}/activity_details_{aid}", details)
+            if is_new or overwrite or not os.path.isfile(f"{directory}/{aid}.fit"):
+                self._Download__save_activity_file(aid)
+            return details_changed
+
+        result = {}
+        ok = _fetch_with_retries(lambda: result.__setitem__("changed", fetch()), pace, aid)
+        if is_new:
+            new += 1
+        elif ok and (summary_changed or result.get("changed")):
+            updated += 1
+            root_logger.info("get_activities: %s changed in Garmin Connect", aid)
+        pace.wait()
+    self._Download__unzip_files(directory)
+    shutil.rmtree(self.temp_dir, ignore_errors=True)
+    root_logger.info("Activities: %d new, %d updated", new, updated)
+
+
+# --- differential import + analyze ---------------------------------------------
+
+def _patch_differential_import(since: datetime.datetime) -> None:
+    from idbutils.file_processor import FileProcessor
+
+    import garmindb.analyze as an
+
+    original_dir_to_files = FileProcessor.dir_to_files.__func__
+    since_ts = since.timestamp()
+
+    def dir_to_files(cls, input_dir, file_regex, latest=False, recursive=False):
+        files = original_dir_to_files(cls, input_dir, file_regex, False, recursive)
+        if not latest:
+            return files
+        changed = [f for f in files if os.stat(f).st_mtime > since_ts]
+        root_logger.info("Import: %d of %d files in %s changed since %s", len(changed), len(files), input_dir, since)
+        return changed
+
+    FileProcessor.dir_to_files = classmethod(dir_to_files)
+
+    def summary(self):
+        years = sorted(set(an.Monitoring.get_years(self.garmin_mon_db) + an.Activities.get_years(self.garmin_act_db)
+                           + an.SleepEvents.get_years(self.garmin_db)))
+        affected = [y for y in years if y >= since.year]
+        root_logger.info("Analyze: only %s (of %s), data before %s is unchanged", affected, years, since.date())
+        for year in affected:
+            self._Analyze__calculate_year(year)
+
+    an.Analyze.summary = summary
+
+
 def install() -> None:
     dl.Download._Download__get_stat = get_stat
     dl.Download.get_monitoring = get_monitoring
     dl.Download.get_hydration = get_hydration
+    dl.Download.get_activities = get_activities
+    if SYNC_SINCE is not None:
+        _patch_differential_import(SYNC_SINCE)
 
 
 def main() -> None:

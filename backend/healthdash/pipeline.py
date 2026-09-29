@@ -88,8 +88,12 @@ def store_health(conn: sqlite3.Connection, user_id: str, days: list[dict]) -> No
     conn.commit()
 
 
-def ingest_from_garmindb(conn: sqlite3.Connection, user: UserConfig, full: bool = False) -> dict:
-    """Pull new activities + recent health days from this user's GarminDB into app.db."""
+def ingest_from_garmindb(conn: sqlite3.Connection, user: UserConfig, full: bool = False,
+                         changed_since: datetime | None = None) -> dict:
+    """Pull new activities + recent health days from this user's GarminDB into app.db.
+
+    With `changed_since` (start of the last successful sync), activities that were edited in
+    Garmin Connect since then (name, RPE/feel, …) are re-read too."""
     from .ingest.garmindb_reader import GarminDbReader, base_dir_from_config, default_since
 
     if not user.garmindb_dir:
@@ -107,12 +111,20 @@ def ingest_from_garmindb(conn: sqlite3.Connection, user: UserConfig, full: bool 
         log.info("%s: heart-rate profile changed — reprocessing %d activities", user.id, len(known))
     new_ids = [aid for aid, _ in reader.activity_ids(None if reprocess else default_since())
                if reprocess or aid not in known]
+    edited = set()
+    if changed_since and not reprocess:
+        edited = (reader.changed_activity_ids(changed_since) & known) - set(new_ids)
     stored = []
-    for aid in new_ids:
+    n_new = n_updated = 0
+    for aid in [*new_ids, *sorted(edited)]:
         act = reader.load_activity(aid)
         if act is None:
             continue
         stored.append(store_activity(conn, user, act))
+        if aid in edited:
+            n_updated += 1
+        else:
+            n_new += 1
     health_since = default_since(400 if full or not known else 14)
     store_health(conn, user.id, reader.health_days(health_since))
     if reprocess:
@@ -123,5 +135,5 @@ def ingest_from_garmindb(conn: sqlite3.Connection, user: UserConfig, full: bool 
         for sid in stored:
             evaluate_session(conn, user.id, sid, sessions)
     conn.commit()
-    return {"activities": len(stored), "reprocessed": reprocess,
+    return {"activities": n_new, "updated": n_updated, "reprocessed": reprocess,
             "profile": {k: v["value"] for k, v in profile.describe(conn, user).items()}}

@@ -28,7 +28,9 @@ def base_dir_from_config(config_dir: Path) -> Path:
     base = d.get("base_dir", "HealthData")
     if d.get("relative_to_home", True):
         return Path.home() / base
-    return Path(base).expanduser()
+    path = Path(base).expanduser()
+    # relative paths are relative to the person's folder (data/garmindb/<id>/), where GarminDB runs
+    return path if path.is_absolute() else config_dir.parent / path
 
 
 def _ro(path: Path) -> sqlite3.Connection:
@@ -67,6 +69,19 @@ class GarminDbReader:
                 q += " AND start_time >= ?"
                 args = (since.isoformat(sep=" "),)
             return [(r["activity_id"], r["start_time"]) for r in c.execute(q + " ORDER BY start_time", args)]
+
+    def changed_activity_ids(self, since: datetime) -> set[str]:
+        """Activities whose summary/details were (re)written since `since`, e.g. renamed or
+        RPE/feel added in Garmin Connect. The download only rewrites these files when they differ."""
+        ts = since.timestamp()
+        out = set()
+        if not self.fit_dir.exists():
+            return out
+        for f in self.fit_dir.glob("activity_*.json"):
+            name = f.stem.removeprefix("activity_").removeprefix("details_")
+            if name.isdigit() and f.stat().st_mtime > ts:
+                out.add(name)
+        return out
 
     def find_fit(self, activity_id: str) -> Path | None:
         hits = sorted(self.fit_dir.glob(f"{activity_id}*.fit")) if self.fit_dir.exists() else []

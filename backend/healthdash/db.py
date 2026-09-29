@@ -6,6 +6,7 @@ GarminDB `--rebuild_db` or schema change can never corrupt our analytics.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 
@@ -109,6 +110,7 @@ def connect(path: str | Path) -> sqlite3.Connection:
     path = Path(path)
     if str(path) != ":memory:":
         path.parent.mkdir(parents=True, exist_ok=True)
+        os.chmod(path.parent, 0o700)  # health data: dashboard user only
         path.touch(mode=0o600, exist_ok=True)
     conn = sqlite3.connect(str(path), check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row

@@ -40,7 +40,7 @@ def client(tmp_path, monkeypatch):
 
     monkeypatch.setattr(accounts, "login_interactive", fake_login)
     monkeypatch.setattr(accounts, "run_sync", fake_sync)
-    monkeypatch.setattr(accounts.pipeline, "ingest_from_garmindb", lambda conn, user, full=False: {"activities": 42})
+    monkeypatch.setattr(accounts.pipeline, "ingest_from_garmindb", lambda conn, user, full=False, **kw: {"activities": 42})
     c = TestClient(main.app)
     yield c
     main.app.dependency_overrides.clear()
@@ -86,3 +86,21 @@ def test_wrong_password_leaves_nothing_behind(client, tmp_path):
 def test_mfa_code_when_not_asked_is_rejected(client):
     main.app.dependency_overrides[main.local_network_only] = lambda: None
     assert client.post("/api/jobs/nope/mfa", json={"code": "123456"}).status_code == 409
+
+
+@pytest.mark.parametrize("new, message", [(0, "Up to date"), (1, "1 new activity"), (3, "3 new activities")])
+def test_sync_now_reports_what_arrived(client, tmp_path, monkeypatch, new, message):
+    from healthdash import db
+    main.app.dependency_overrides[main.local_network_only] = lambda: None
+    (tmp_path / "users.json").write_text(json.dumps({"users": [{"id": "alex", "garmindb_config_dir": "x/config"}]}))
+    main.reset_config()
+    conn = db.connect(tmp_path / "app.db")  # an existing activity → this is a "latest" sync, not a first download
+    conn.execute("INSERT INTO sessions (id, user_id, activity_id, sport, start_time) VALUES ('alex:1','alex','1','running','2026-09-01T07:00:00')")
+    conn.commit()
+    fulls = []
+    monkeypatch.setattr(accounts.pipeline, "ingest_from_garmindb",
+                        lambda conn, user, full=False, **kw: (fulls.append(full), {"activities": new})[1])
+    job = client.post("/api/users/alex/sync").json()
+    done = wait_for(client, job["id"], {"done", "error"})
+    assert done["phase"] == "done" and done["message"] == message
+    assert fulls == [False]  # only the latest days, not the whole history

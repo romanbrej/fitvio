@@ -1,8 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api } from './api'
-import type { AppConfig, WallState } from './api'
+import type { AppConfig, Job, WallState } from './api'
 import { TopBar } from './components/TopBar'
+import type { SyncOutcome } from './components/TopBar'
 import './App.css'
 
 interface Ctx {
@@ -19,6 +20,8 @@ const AppCtx = createContext<Ctx | null>(null)
 export const useApp = () => useContext(AppCtx)!
 
 const POLL_MS = 60_000
+const JOB_POLL_MS = 1500
+const OUTCOME_MS = { ok: 6_000, failed: 15_000 }
 
 function inNight(start: string, end: string, d = new Date()): boolean {
   const m = d.getHours() * 60 + d.getMinutes()
@@ -38,6 +41,8 @@ export default function App() {
   const nav = useNavigate()
   const loc = useLocation()
   const idleTimer = useRef<number | undefined>(undefined)
+  const [syncJob, setSyncJob] = useState<Job | null>(null)
+  const [syncOutcome, setSyncOutcome] = useState<SyncOutcome>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -104,6 +109,39 @@ export default function App() {
     if (loc.pathname !== '/') nav('/')
   }, [refresh, loc.pathname, nav])
 
+  // Manual "sync now" for the person on screen: fetch the latest from Garmin, then refresh the wall.
+  const syncNow = useCallback(async (user: string) => {
+    if (syncJob) return
+    setSyncOutcome(null)
+    let job: Job
+    try {
+      job = await api.syncNow(user)
+    } catch (e) {
+      setSyncOutcome({ ok: false, text: `Sync failed: ${String(e).replace(/^Error: /, '')}` })
+      return
+    }
+    setSyncJob(job)
+    while (job.phase !== 'done' && job.phase !== 'error') {
+      await new Promise(r => setTimeout(r, JOB_POLL_MS))
+      try {
+        job = await api.job(job.id)
+        setSyncJob(job)
+      } catch {
+        // server restarting or connection blip: keep polling
+      }
+    }
+    setSyncJob(null)
+    const ok = job.phase === 'done'
+    setSyncOutcome({ ok, text: ok ? job.message || 'Up to date' : (job.error ?? 'Sync failed') })
+    await refresh()
+  }, [syncJob, refresh])
+
+  useEffect(() => {
+    if (!syncOutcome) return
+    const t = setTimeout(() => setSyncOutcome(null), syncOutcome.ok ? OUTCOME_MS.ok : OUTCOME_MS.failed)
+    return () => clearTimeout(t)
+  }, [syncOutcome])
+
   const dismiss = useCallback(async (sid: string) => {
     await api.dismiss(sid)
     await refresh()
@@ -116,12 +154,14 @@ export default function App() {
   const routeUser = loc.pathname.match(/^\/u\/([^/]+)/)?.[1] ?? (loc.pathname.startsWith('/session/')
     ? decodeURIComponent(loc.pathname.slice(9)).split(':')[0] : null)
   const userId = routeUser ?? (wall.mode === 'setup' ? null : wall.user_id)
-  const sync = wall.mode === 'setup' ? null : wall.ambient.sync
+  // the sync status we have is the wall person's; don't show it on another person's detail page
+  const sync = wall.mode !== 'setup' && wall.user_id === userId ? wall.ambient.sync : null
 
   return (
     <AppCtx.Provider value={{ config, wall, userId, refresh, reload, select, dismiss }}>
       <div className="shell">
-        <TopBar users={config.users} activeUser={userId} onSelect={select} sync={sync} />
+        <TopBar users={config.users} activeUser={userId} onSelect={select} sync={sync}
+                syncJob={syncJob} syncOutcome={syncOutcome} onSync={() => userId && syncNow(userId)} />
         <main className="main"><Outlet /></main>
         {error && <div className="offline" role="status">Connection lost — showing last data</div>}
       </div>

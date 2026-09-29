@@ -65,3 +65,29 @@ echo "INFO:__main__:___Importing All Data___" >> garmindb.log; echo "done"
     assert steps == [(2, 10, "Daily summaries"), (3, 10, "Hydration"), (9, 10, "Importing into the database")]
     log = user.garmindb_dir.parent / "garmindb.log"  # not in the project root
     assert log.exists() and log.stat().st_mode & 0o077 == 0
+
+
+def test_moved_project_config_is_repaired_to_relative_paths(tmp_path):
+    from healthdash.ingest.garmindb_reader import base_dir_from_config
+    person = tmp_path / "data" / "garmindb" / "alex"
+    cfg_dir = person / "config"
+    cfg_dir.mkdir(parents=True)
+    old = "/Users/someone/Documents/old-place/data/garmindb/alex"
+    (cfg_dir / "GarminConnectConfig.json").write_text(json.dumps({
+        "directories": {"relative_to_home": False, "base_dir": f"{old}/HealthData"},
+        "credentials": {"user": "a@example.com", "password_file": f"{old}/config/password.txt"}}))
+    garmindb_runner.normalize_config(cfg_dir)
+    cfg = json.loads((cfg_dir / "GarminConnectConfig.json").read_text())
+    assert cfg["directories"]["base_dir"] == "HealthData"
+    assert cfg["credentials"]["password_file"] == "config/password.txt"
+    assert base_dir_from_config(cfg_dir) == person / "HealthData"
+    assert (cfg_dir / "GarminConnectConfig.json").stat().st_mode & 0o077 == 0
+
+
+def test_new_configs_use_relative_paths(tmp_path, monkeypatch):
+    monkeypatch.setattr(garmindb_runner, "PROJECT_ROOT", tmp_path)
+    user = UserConfig(id="sam", garmindb_config_dir=str(tmp_path / "data/garmindb/sam/config"))
+    cfg_dir = garmindb_runner.init_user_config(user, "sam@example.com")
+    cfg = json.loads((cfg_dir / "GarminConnectConfig.json").read_text())
+    assert cfg["directories"]["base_dir"] == "HealthData"
+    assert cfg["credentials"]["password_file"] == "config/password.txt"

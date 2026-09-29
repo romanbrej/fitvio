@@ -6,7 +6,7 @@ import ipaddress
 import json
 import os
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -303,9 +303,20 @@ def post_mfa(job_id: str, body: Mfa):
     return {"ok": True}
 
 
+SYNC_COOLDOWN_S = 60  # protect the Garmin account from rapid repeated syncs (rate limiting / blocking)
+
+
 @app.post("/api/users/{user_id}/sync", dependencies=[Depends(local_network_only)])
-def sync_now(user_id: str, full: bool = False, c: AppConfig = Depends(cfg)):
-    return accounts.start_sync(_user_or_404(c, user_id), c.db_path, full=full).public()
+def sync_now(user_id: str, full: bool = False, c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    user = _user_or_404(c, user_id)
+    if (running := accounts.active_for(user.id)):
+        return running.public()
+    row = cn.execute("SELECT last_attempt FROM sync_status WHERE user_id = ?", (user.id,)).fetchone()
+    if row and row[0]:
+        wait = SYNC_COOLDOWN_S - (datetime.now() - datetime.fromisoformat(row[0])).total_seconds()
+        if wait > 0:
+            raise HTTPException(429, f"just synced — try again in {int(wait) + 1} s")
+    return accounts.start_sync(user, c.db_path, full=full).public()
 
 
 @app.get("/api/health")

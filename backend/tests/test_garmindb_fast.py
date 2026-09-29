@@ -101,3 +101,13 @@ def test_install_patches_garmindb_and_skips_hydration(caplog):
     with caplog.at_level("INFO"):
         dl.Download.get_hydration(object(), None, datetime.date(2022, 1, 1), 10, False)
     assert "Getting hydration: skipped" in caplog.text  # still logged, so the UI step list stays correct
+
+
+def test_ranges_ending_yesterday_include_today(tmp_path):
+    """Last night's sleep/HRV is filed under today's date — it must be fetched today, not tomorrow."""
+    d = FakeDownload()
+    today = datetime.date.today()
+    start = today - datetime.timedelta(days=2)
+    fast.get_stat(d, sleep_fn(d), tmp_path, start, 2, overwrite=False)  # GarminDB: start .. yesterday
+    assert d.calls[-1] == today
+    assert fast._through_today(datetime.date(2022, 1, 1), 5) == 5       # historic ranges unchanged

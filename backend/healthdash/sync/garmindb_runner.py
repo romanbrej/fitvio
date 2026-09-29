@@ -14,7 +14,7 @@ import subprocess
 import sys
 import threading
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
@@ -50,7 +50,8 @@ def init_user_config(user: UserConfig, email: str, data_root: Path | None = None
     # Credentials, tokens and health data: readable by the dashboard's user only.
     for d in (cfg_dir, cfg_dir.parent):
         os.chmod(d, 0o700)
-    data_dir = (data_root or cfg_dir.parent / "HealthData").expanduser()
+    # Paths relative to the person's folder, so the project can be moved or copied to the Pi.
+    data_dir = data_root.expanduser() if data_root else Path("HealthData")
     example = Path(garmindb.__file__).parent / "GarminConnectConfig.json.example"
     cfg = json.loads(example.read_text())
     pw_file = cfg_dir / "password.txt"
@@ -58,7 +59,7 @@ def init_user_config(user: UserConfig, email: str, data_root: Path | None = None
         pw_file.write_text("")
     os.chmod(pw_file, 0o600)
     start = (since or datetime.now().replace(year=datetime.now().year - 5)).strftime("%m/%d/%Y")
-    cfg["credentials"].update({"user": email, "password": "", "password_file": str(pw_file)})
+    cfg["credentials"].update({"user": email, "password": "", "password_file": f"{cfg_dir.name}/password.txt"})
     cfg["directories"].update({"relative_to_home": False, "base_dir": str(data_dir)})
     cfg["settings"]["metric"] = True
     for k in ("weight_start_date", "sleep_start_date", "rhr_start_date", "hrv_start_date", "monitoring_start_date"):
@@ -114,6 +115,50 @@ class LogFollower:
             self.fh.close()
 
 
+def normalize_config(config_dir: Path) -> None:
+    """Rewrite absolute data/password paths into paths relative to the person's folder.
+
+    Older configs stored absolute paths; after moving the project (or copying it to the Pi) they
+    point to a folder that no longer exists. Everything below .../<person>/ is kept.
+    """
+    # credentials, tokens, health data and logs: readable by the dashboard's user only
+    # (accounts created before this existed had a world-readable person folder)
+    for d in (config_dir, config_dir.parent):
+        if d.exists():
+            os.chmod(d, 0o700)
+    f = config_dir / "GarminConnectConfig.json"
+    if not f.exists():
+        return
+    cfg = json.loads(f.read_text())
+    person = config_dir.parent.name
+    changed = False
+    for section, key in (("directories", "base_dir"), ("credentials", "password_file")):
+        value = cfg.get(section, {}).get(key)
+        if not value or not Path(value).is_absolute():
+            continue
+        parts = Path(value).parts
+        if person in parts:
+            i = len(parts) - 1 - parts[::-1].index(person)
+            cfg[section][key] = str(Path(*parts[i + 1:]))
+            changed = True
+    if changed:
+        f.write_text(json.dumps(cfg, indent=4))
+        os.chmod(f, 0o600)
+        log.info("made GarminDB paths relative in %s", f)
+
+
+SINCE_MARGIN = timedelta(minutes=2)
+
+
+def changed_since(conn: sqlite3.Connection, user_id: str) -> datetime | None:
+    """Start of the last successful sync (minus a safety margin): everything written after it is
+    new or changed. None until a first sync has succeeded — then everything is imported."""
+    row = conn.execute("SELECT last_success FROM sync_status WHERE user_id = ?", (user_id,)).fetchone()
+    if not row or not row[0]:
+        return None
+    return datetime.fromisoformat(row[0]) - SINCE_MARGIN
+
+
 class SyncBusy(RuntimeError):
     """Another sync for this person is running (e.g. the timer while you pressed "Sync now")."""
 
@@ -143,9 +188,15 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, tim
     row = db.row_to_dict(conn.execute("SELECT * FROM sync_status WHERE user_id = ?", (user.id,)).fetchone()) or {}
     # GarminDB's CLI, run through our wrapper with faster, resumable download loops (garmindb_fast.py)
     cmd = [*garmindb_command(), "-f", str(user.garmindb_dir), "--all", "--download", "--import", "--analyze"]
+    env = os.environ.copy()
     if not full:
         cmd.append("--latest")
-    log.info("sync %s: %s", user.id, " ".join(cmd))
+        since = changed_since(conn, user.id)
+        if since:
+            # differential import: only files written since the last successful sync (garmindb_fast.py)
+            env["HEALTHDASH_SYNC_SINCE"] = since.isoformat(timespec="seconds")
+    normalize_config(user.garmindb_dir)
+    log.info("sync %s: %s (changes since %s)", user.id, " ".join(cmd), env.get("HEALTHDASH_SYNC_SINCE", "-"))
     error = None
     lines: list[str] = []
     try:
@@ -155,7 +206,7 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, tim
             workdir = user.garmindb_dir.parent
             log_file = workdir / "garmindb.log"
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
-                                    stdin=subprocess.DEVNULL, cwd=workdir)
+                                    stdin=subprocess.DEVNULL, cwd=workdir, env=env)
             timer = threading.Timer(timeout_s, proc.kill)
             timer.start()
             follower = LogFollower(log_file)
@@ -213,6 +264,13 @@ def login_interactive(user: UserConfig, mfa_prompt: Callable[[], str] | None = N
     from garmindb.garmin_connect_auth_adapter import GarminConnectAuthAdapter
     from garmindb.garmin_connect_config_manager import GarminConnectConfigManager
 
-    adapter = GarminConnectAuthAdapter(GarminConnectConfigManager(str(user.garmindb_dir)), mfa_prompt=mfa_prompt)
+    normalize_config(user.garmindb_dir)
+    gc = GarminConnectConfigManager(str(user.garmindb_dir))
+    pw_file = gc.get_node_value_default("credentials", "password_file", None)
+    if pw_file and not Path(pw_file).is_absolute():
+        # relative to the person's folder; this process runs elsewhere, so resolve it here
+        path = user.garmindb_dir.parent / pw_file
+        gc.get_password = lambda: path.read_text().strip()
+    adapter = GarminConnectAuthAdapter(gc, mfa_prompt=mfa_prompt)
     adapter.login()  # raises GarminConnectAuthError on bad credentials
     return adapter.full_name or adapter.display_name

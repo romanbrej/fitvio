@@ -25,19 +25,40 @@
 .avatar.active { border-color: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 30%, transparent); }
 .avatar:active { transform: scale(0.95); }
 .topbar-name { font-size: 22px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sync { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 16px; }
-.sync.stale {
-  color: var(--bg);
-  background: var(--warn);
-  padding: 6px 14px;
+/* Sync status is also the "sync now" button (touch target ≥ 48px). */
+.sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 16px;
   border-radius: 999px;
-  font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 340px;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
 }
+.sync svg { flex-shrink: 0; }
+.sync-text { overflow: hidden; text-overflow: ellipsis; }
+.sync:active:not(:disabled) { background: var(--surface-2); border-color: var(--primary); }
+.sync:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+.sync:disabled { cursor: progress; }
+.sync.stale { color: var(--bg); background: var(--warn); border-color: var(--warn); font-weight: 600; }
+.sync.busy { color: var(--primary); border-color: var(--primary); }
+.sync.done { color: var(--better); border-color: color-mix(in srgb, var(--better) 50%, transparent); }
+.sync.failed { color: var(--worse); border-color: color-mix(in srgb, var(--worse) 50%, transparent); }
 .clock { font-size: 30px; font-weight: 600; }
 
 @media (max-width: 640px) {
   .topbar { padding: 10px 16px; }
-  .topbar-name, .sync:not(.stale) { display: none; }
+  .topbar-name { display: none; }
+  .sync { padding: 0 14px; }
+  .sync:not(.stale):not(.failed) .sync-text { display: none; } /* icon-only button on phones */
   .clock { font-size: 22px; }
 }
 
