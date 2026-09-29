@@ -33,7 +33,7 @@ def garmindb_dir(tmp_path, rhr_values=(50, 52, 51, 49, 50, 53), activity_maxes=(
 def watch(monkeypatch):
     """Stand-in for the zones_target/user_profile messages inside the FIT files."""
     data = {"zones_target": {"max_heart_rate": 192, "threshold_heart_rate": 170, "functional_threshold_power": 245},
-            "user_profile": {"gender": "female", "resting_heart_rate": 58}}
+            "user_profile": {"gender": "female", "resting_heart_rate": 58}, "sport": {"sport": "cycling"}}
     from healthdash.ingest import fit_parser
     monkeypatch.setattr(fit_parser, "parse_fit_profile", lambda path: data)
     return data
@@ -47,6 +47,26 @@ def test_everything_comes_from_garmin(tmp_path, watch):
     assert found["rest_hr"][0] == 50  # measured daily resting HR beats the watch setting (58)
     assert found["ftp"][0] == 245
     assert found["lthr"][0] == 168  # user settings come first
+
+
+def test_ftp_comes_from_rides_not_running_power(tmp_path, monkeypatch):
+    """In a run's FIT file the FTP field is the running power threshold (e.g. 369 W) — never the cycling FTP."""
+    base = garmindb_dir(tmp_path)
+    acts = base / "FitFiles" / "Activities"
+    names = ["100_ACTIVITY.fit", "101_ACTIVITY.fit", *[f"{200 + n}_ACTIVITY.fit" for n in range(25)]]
+    for name in reversed(names):  # written in reverse, so file times would pick the older ride
+        (acts / name).write_bytes(b"")
+    ride = {"sport": {"sport": "cycling"}}
+    files = {  # two rides, far behind 25 newer runs
+        "100_ACTIVITY.fit": {**ride, "zones_target": {"functional_threshold_power": 190}},
+        "101_ACTIVITY.fit": {**ride, "zones_target": {"functional_threshold_power": 204}},
+    }
+    run = {"zones_target": {"functional_threshold_power": 369, "max_heart_rate": 194}, "sport": {"sport": "running"}}
+    from healthdash.ingest import fit_parser
+    monkeypatch.setattr(fit_parser, "parse_fit_profile", lambda path: files.get(path.name, run))
+    found = profile.derive(base)
+    assert found["ftp"][0] == 204
+    assert found["max_hr"][0] == 194
 
 
 def test_outdated_watch_max_hr_is_replaced_by_measured(tmp_path, watch):

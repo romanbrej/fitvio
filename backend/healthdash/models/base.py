@@ -81,7 +81,7 @@ class SportModel:
                                 [], context, trend, [s["id"] for s in similar])
 
         deltas = self.compare(session, similar)
-        used = [d for d in deltas if d["z"] is not None]
+        used = [d for d in deltas if d["z"] is not None and d["weight"] > 0]
         if not used:
             return self._result(session, "not_comparable", "low", None, "Not enough data in this session to compare",
                                 ["The key metrics could not be computed (missing HR, pace or power data)."],

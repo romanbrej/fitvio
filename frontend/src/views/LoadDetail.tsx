@@ -60,7 +60,7 @@ export function LoadDetail() {
           <div className="card span-12">
             <div className="card-title">Your heart-rate profile — read from Garmin</div>
             <div className="kv">
-              {([['max_hr', 'Max HR', ' bpm'], ['rest_hr', 'Resting HR', ' bpm'], ['lthr', 'Threshold HR', ' bpm'], ['ftp', 'FTP', ' W'], ['sex', 'Sex', '']] as const).map(([k, label, unit]) => (
+              {([['max_hr', 'Max HR', ' bpm'], ['rest_hr', 'Resting HR', ' bpm'], ['lthr', 'Threshold HR', ' bpm'], ['ftp', 'FTP', ' W'], ['weight_kg', 'Weight', ' kg'], ['sex', 'Sex', '']] as const).map(([k, label, unit]) => (
                 <div key={k}>
                   <div className="k">{label}</div>
                   <div className="v num">{prof[k].value == null ? '—' : typeof prof[k].value === 'number' ? `${Math.round(prof[k].value as number)}${unit}` : String(prof[k].value)}</div>

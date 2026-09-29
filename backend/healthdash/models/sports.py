@@ -25,7 +25,8 @@ class RunningModel(SportModel):
     primary = "ef_adj"
     metrics = [
         MetricSpec("ef_adj", "Aerobic efficiency", +1, 0.45, fmt_num(2, " m/beat")),
-        MetricSpec("speed_at_ref_hr", "Pace at fixed HR", +1, 0.35, fmt_pace_km),
+        MetricSpec("speed_at_ref_hr", "Pace at fixed HR", +1, 0.35, fmt_pace_km,
+                   get=lambda f: f.get("speed_at_ref_hr_adj") or f.get("speed_at_ref_hr")),  # heat-adjusted
         MetricSpec("decoupling", "HR drift", -1, 0.20, fmt_num(1, " %"), mode="abs", noise=1.5),
     ]
 
@@ -42,6 +43,8 @@ class CyclingModel(SportModel):
         MetricSpec("decoupling", "Power:HR drift", -1, 0.2, fmt_num(1, " %"), mode="abs", noise=1.5),
         MetricSpec("p300", "Best 5-min power", +1, 0.3, fmt_num(0, " W"), noise=0.02,
                    get=lambda f: (f.get("power_curve") or {}).get("300")),
+        # informational (weight 0): shown as W/kg in "What improved", doesn't move the verdict
+        MetricSpec("power_at_ref_hr", "Power at fixed HR", +1, 0.0, fmt_num(0, " W")),
     ]
 
     def load_only_reason(self, session):

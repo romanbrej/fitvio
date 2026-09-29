@@ -113,10 +113,11 @@ def parse_fit(path: str | Path) -> dict:
 
 
 def parse_fit_profile(path: str | Path) -> dict[str, dict]:
-    """Only the watch's settings: zones_target (max/threshold HR, FTP) and user_profile.
-    These messages sit at the start of the file, so stop at the first data record."""
+    """Only the watch's settings: zones_target (max/threshold HR, FTP), user_profile and sport.
+    These messages sit at the start of the file, so stop at the first data record.
+    zones_target is sport-specific: in a run, "functional_threshold_power" is the running power threshold."""
     out: dict[str, dict] = {}
-    wanted = {"zones_target", "user_profile"}
+    wanted = {"zones_target", "user_profile", "sport"}
     with fitdecode.FitReader(str(path)) as fit:
         for frame in fit:
             if not isinstance(frame, fitdecode.FitDataMessage):

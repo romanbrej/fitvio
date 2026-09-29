@@ -31,6 +31,13 @@ export interface Session {
   avg_hr: number | null; max_hr: number | null; ascent_m: number | null; avg_temp_c: number | null
   indoor: number; has_power: number; load: number | null; rpe: number | null; feel: number | null
   features: Record<string, any>; verdict: Verdict | null
+  improvements?: Improvement[]
+}
+
+/** One line of "What improved" after an activity (backend: improvements.py). */
+export interface Improvement {
+  kind: string; label: string; value_fmt: string; change_fmt: string
+  tone: 'improving' | 'steady' | 'declining' | 'best' | null
 }
 
 export interface Streams {
@@ -70,6 +77,11 @@ export interface SyncInfo {
 
 export interface Ambient {
   user_id: string; pmc: PmcDay[]; form: PmcDay | null
+  fitness_change_6w: number | null
+  last_workout: {
+    id: string; name: string | null; sport: Sport; session_type: string; start_time: string
+    verdict: VerdictKind; headline: string; form_tomorrow: number | null; improvements: Improvement[]
+  } | null
   health_latest: Partial<HealthDay>; health_baseline: Record<string, number | null>
   health_series: HealthDay[]; week: WeekTotals; last_week: WeekTotals
   trends: Partial<Record<Sport, SportTrend>>
@@ -101,7 +113,7 @@ export interface Account {
   activities: number; profile: Profile
 }
 
-export type Profile = Record<'name' | 'sex' | 'max_hr' | 'rest_hr' | 'lthr' | 'ftp', { value: string | number | null; source: string }>
+export type Profile = Record<'name' | 'sex' | 'max_hr' | 'rest_hr' | 'lthr' | 'ftp' | 'weight_kg', { value: string | number | null; source: string }>
 
 async function get<T>(path: string): Promise<T> {
   const r = await fetch(path)

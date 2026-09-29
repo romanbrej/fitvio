@@ -167,14 +167,14 @@ def backfill_extras(user, on_progress=None) -> dict:
     return result
 
 
-LABELS = {"name": "Name", "sex": "Sex", "max_hr": "Max HR", "rest_hr": "Resting HR", "lthr": "Threshold HR", "ftp": "FTP"}
+LABELS = {"name": "Name", "sex": "Sex", "max_hr": "Max HR", "rest_hr": "Resting HR", "lthr": "Threshold HR", "ftp": "FTP", "weight_kg": "Weight"}
 
 
 def print_profile(user, prof: dict) -> None:
     print(f"\n{prof['name']['value'] or user.id}  ({user.id})")
     for f, label in LABELS.items():
         v = prof[f]["value"]
-        unit = {"max_hr": " bpm", "rest_hr": " bpm", "lthr": " bpm", "ftp": " W"}.get(f, "")
+        unit = {"max_hr": " bpm", "rest_hr": " bpm", "lthr": " bpm", "ftp": " W", "weight_kg": " kg"}.get(f, "")
         shown = f"{v:.0f}{unit}" if isinstance(v, (int, float)) else (v or "—")
         print(f"  {label:<13} {shown:<22} {prof[f]['source']}")
 

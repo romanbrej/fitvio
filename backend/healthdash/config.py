@@ -26,6 +26,7 @@ class UserConfig:
     sex: str | None = None  # used for the TRIMP weighting factor
     ftp: float | None = None  # cycling; estimated from 20-min power if unknown
     lthr: float | None = None  # lactate threshold HR
+    weight_kg: float | None = None  # W/kg when no weigh-in exists
 
     @property
     def display_name(self) -> str:

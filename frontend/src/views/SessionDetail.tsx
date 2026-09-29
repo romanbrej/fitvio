@@ -4,8 +4,8 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { api } from '../api'
 import type { Delta, SessionDetail } from '../api'
 import { SportIcon, VerdictPill } from '../components/icons'
-import { Sparkline } from '../components/Sparkline'
-import { distance, duration, feelLabel, formState, kmh, num, pace, signed, SPORT_LABEL, TYPE_LABEL, when } from '../format'
+import { Improvements } from '../components/Improvements'
+import { distance, duration, feelLabel, kmh, num, pace, SPORT_LABEL, TYPE_LABEL, when } from '../format'
 import { useFetch } from '../useFetch'
 import { deltaTone } from './WallVerdict'
 import './Detail.css'
@@ -162,21 +162,10 @@ export function SessionDetailView() {
           </div>
         )}
         {t && (
-          <button className="card span-5" onClick={() => nav(`/u/${s.user_id}/load`)}>
-            <div className="card-title">Training impact</div>
-            <div className="kv">
-              <div><div className="k">Fitness</div><div className="v num">{num(t.fitness_before, 1)} → {num(t.fitness_after, 1)}</div></div>
-              <div><div className="k">Fatigue</div><div className="v num">{num(t.fatigue_before, 1)} → {num(t.fatigue_after, 1)}</div></div>
-              <div><div className="k">Form tomorrow</div><div className="v num">{signed(t.form_tomorrow, 0)}</div><div className={`tone-${formState(t.form_tomorrow).tone}`} style={{ fontSize: 15 }}>{formState(t.form_tomorrow).label}</div></div>
-              <div><div className="k">7-day ramp</div><div className="v num">{signed(t.ramp_7d, 1)}</div></div>
-            </div>
-            {t.trend_points && t.trend_points.length > 1 && (
-              <div style={{ marginTop: 12 }}>
-                <div className="k muted" style={{ fontSize: 13 }}>{t.trend_metric}, last 6 weeks · {t.trend_pct_per_week == null ? '—' : `${signed(t.trend_pct_per_week, 1, '%')}/week`}</div>
-                <Sparkline values={t.trend_points.map(p => p.value)} />
-              </div>
-            )}
-          </button>
+          <div className="span-5">
+            <Improvements items={s.improvements ?? []} formTomorrow={t.form_tomorrow}
+                          onClick={() => nav(`/u/${s.user_id}/load`)} />
+          </div>
         )}
 
         {v && v.deltas.length > 0 && (

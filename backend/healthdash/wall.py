@@ -5,7 +5,7 @@ import sqlite3
 from datetime import date, datetime, timedelta
 from statistics import median
 
-from . import db
+from . import db, improvements
 from .analytics import load as load_model
 from .config import AppConfig
 from .pipeline import user_sessions
@@ -52,7 +52,7 @@ def session_card(conn: sqlite3.Connection, session_id: str) -> dict | None:
     if not s:
         return None
     s["verdict"] = db.row_to_dict(conn.execute("SELECT * FROM verdicts WHERE session_id = ?", (session_id,)).fetchone())
-    return s
+    return improvements.attach(conn, s)
 
 
 def session_detail(conn: sqlite3.Connection, session_id: str) -> dict | None:
@@ -97,6 +97,18 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
     today = date.today()
     series = load_model.pmc(load_model.daily_loads(sessions), None, today) if sessions else []
     pmc_42 = series[-42:]
+    # the wall's main card: what your last workout did ("What improved"), with the fitness curve as footer
+    fitness_change_6w = round(series[-1]["fitness"] - series[-43]["fitness"], 1) if len(series) > 42 else None
+    last = conn.execute(
+        """SELECT s.id FROM verdicts v JOIN sessions s ON s.id = v.session_id
+           WHERE s.user_id = ? ORDER BY s.start_time DESC LIMIT 1""", (user_id,)).fetchone()
+    last_workout = None
+    card = session_card(conn, last["id"]) if last else None
+    if card:
+        v = card["verdict"]
+        last_workout = {k: card[k] for k in ("id", "name", "sport", "session_type", "start_time", "improvements")}
+        last_workout.update(verdict=v["verdict"], headline=v["headline"],
+                            form_tomorrow=(v.get("trend") or {}).get("form_tomorrow"))
     health = _health_series(conn, user_id, 42)
     latest = health[-1] if health else {}
     base = {}
@@ -137,8 +149,10 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
     vo2 = [{"day": h["day"], "value": h["vo2max"]} for h in _health_series(conn, user_id, 365) if h.get("vo2max")]
     return {
         "user_id": user_id,
-        "pmc": pmc_42,
+        "pmc": series[-182:],
         "form": pmc_42[-1] if pmc_42 else None,
+        "fitness_change_6w": fitness_change_6w,
+        "last_workout": last_workout,
         "health_latest": latest,
         "health_baseline": base,
         "health_series": health,

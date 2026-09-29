@@ -3,28 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../App'
 import type { Ambient, Delta, Session } from '../api'
 import { SportIcon, VerdictIcon } from '../components/icons'
-import { Sparkline } from '../components/Sparkline'
-import { distance, duration, formState, kmh, num, pace, signed, SPORT_LABEL, TYPE_LABEL, VERDICT_LABEL, when } from '../format'
+import { Improvements } from '../components/Improvements'
+import { distance, duration, kmh, num, pace, SPORT_LABEL, TYPE_LABEL, VERDICT_LABEL, when } from '../format'
 import './Wall.css'
 
 export function deltaTone(d: Delta): string {
   if (d.z == null) return 'muted'
   return d.z >= 0.6 ? 'better' : d.z <= -0.6 ? 'worse' : 'inline'
-}
-
-function DeltaCard({ d, onClick }: { d: Delta; onClick: () => void }) {
-  const tone = deltaTone(d)
-  const shown = d.delta_fmt ?? '—'
-  return (
-    <button className="card delta" onClick={onClick}>
-      <div className="card-title">{d.label}</div>
-      <div className="delta-value num">{d.value_fmt}</div>
-      <div className="delta-foot">
-        <span className="muted">vs {d.baseline_fmt}{d.n ? ` · ${d.n} similar` : ''}</span>
-        <span className={`pill tone-${tone}`}>{tone === 'better' ? '▲' : tone === 'worse' ? '▼' : '●'} {shown}</span>
-      </div>
-    </button>
-  )
 }
 
 function facts(s: Session): [string, string][] {
@@ -48,9 +33,6 @@ export function WallVerdict({ session, ambient: _ambient }: { session: Session; 
   const t = v.trend
   const user = config.users.find(u => u.id === session.user_id)
   const open = () => nav(`/session/${encodeURIComponent(session.id)}`)
-  const deltas = v.deltas.filter(d => d.value != null).slice(0, 4)
-  const fs = formState(t.form_tomorrow)
-  const trendPts = (t.trend_points ?? []).map(p => p.value)
 
   return (
     <div className="verdict-wall">
@@ -87,46 +69,13 @@ export function WallVerdict({ session, ambient: _ambient }: { session: Session; 
       </section>
 
       <section className="verdict-side">
-        {deltas.length > 0 && (
-          <div className={`delta-grid ${deltas.length % 2 ? 'odd' : ''}`}>
-            {deltas.map(d => <DeltaCard key={d.key} d={d} onClick={open} />)}
-          </div>
-        )}
+        <Improvements items={session.improvements ?? []} formTomorrow={t.form_tomorrow}
+                      onClick={() => nav(`/u/${session.user_id}/load`)} />
 
         <button className="card facts" onClick={open}>
           {facts(session).map(([k, val]) => (
             <div key={k}><div className="fact-k">{k}</div><div className="fact-v num">{val}</div></div>
           ))}
-        </button>
-
-        <button className="card impact" onClick={() => nav(`/u/${session.user_id}/load`)}>
-          <div className="card-title">Impact on your training</div>
-          <div className="impact-row">
-            <div>
-              <div className="fact-k">Fitness</div>
-              <div className="fact-v num" style={{ color: 'var(--fitness)' }}>{num(t.fitness_after)}</div>
-              <div className="muted num">{signed(t.fitness_after - t.fitness_before, 1)}</div>
-            </div>
-            <div>
-              <div className="fact-k">Fatigue</div>
-              <div className="fact-v num" style={{ color: 'var(--fatigue)' }}>{num(t.fatigue_after)}</div>
-              <div className="muted num">{signed(t.fatigue_after - t.fatigue_before, 1)}</div>
-            </div>
-            <div>
-              <div className="fact-k">Form tomorrow</div>
-              <div className="fact-v num" style={{ color: 'var(--form)' }}>{signed(t.form_tomorrow, 0)}</div>
-              <div className={`tone-${fs.tone}`}>{fs.label}</div>
-            </div>
-            {t.trend_metric && (
-              <div className="impact-trend">
-                <div className="fact-k">{t.trend_metric}, 6 weeks</div>
-                <Sparkline values={trendPts} />
-                <div className={t.trend_pct_per_week == null ? 'muted' : t.trend_pct_per_week > 0.2 ? 'tone-better' : t.trend_pct_per_week < -0.2 ? 'tone-worse' : 'tone-inline'}>
-                  {t.trend_pct_per_week == null ? 'Not enough data' : `${signed(t.trend_pct_per_week, 1, '%')} per week`}
-                </div>
-              </div>
-            )}
-          </div>
         </button>
 
         <div className="verdict-actions">

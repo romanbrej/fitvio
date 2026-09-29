@@ -1,8 +1,9 @@
-import { BatteryMedium, BedDouble, Brain, CheckCircle2, Gauge, HeartPulse, Waves } from 'lucide-react'
+import { BatteryMedium, BedDouble, Brain, CheckCircle2, HeartPulse, TrendingUp, Waves } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { Area, AreaChart, Line, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from 'recharts'
+import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 import type { Ambient, Sport } from '../api'
 import { SportIcon, VerdictPill } from '../components/icons'
+import { ImprovementList, improvedCount } from '../components/Improvements'
 import { Sparkline } from '../components/Sparkline'
 import { distance, duration, formState, hoursMinutes, num, signed, SPORT_LABEL, TYPE_LABEL, when } from '../format'
 import './Wall.css'
@@ -16,6 +17,8 @@ function vsBaseline(v: number | null | undefined, base: number | null | undefine
 }
 
 const SPORTS: Sport[] = ['running', 'cycling', 'swimming', 'strength']
+
+const monthLabel = (day: string) => new Date(day).toLocaleDateString([], { month: 'short' })
 
 function shortWhen(iso: string): string {
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
@@ -37,37 +40,71 @@ export function WallAmbient({ ambient: a }: { ambient: Ambient }) {
   const vo2Then = vo2Last && [...a.vo2max].reverse().find(v => (Date.parse(vo2Last.day) - Date.parse(v.day)) / 86400000 >= 42)
   const vo2Change = vo2Last && vo2Then ? vo2Last.value - vo2Then.value : null
 
+  const change6w = a.fitness_change_6w
+  const lw = a.last_workout
+  const up = lw ? improvedCount(lw.improvements) : 0
+  const monthTicks = a.pmc.filter(p => p.day.endsWith('-01')).map(p => p.day)
+
   const weekSports = Array.from(new Set([...Object.keys(a.week), ...Object.keys(a.last_week)])) as Sport[]
   const maxDur = Math.max(1, ...weekSports.map(s => Math.max(a.week[s]?.duration_s ?? 0, a.last_week[s]?.duration_s ?? 0)))
 
   return (
     <div className="ambient">
-      {/* Form / fitness / fatigue */}
-      <button className="card span-7" onClick={() => nav(`/u/${u}/load`)}>
-        <div className="card-title"><Gauge size={18} /> Training form</div>
-        <div className="form-card">
-          <div className="stack">
-            <div className="big num" style={{ color: 'var(--form)' }}>{signed(a.form?.form, 0)}</div>
-            <div className={`mid tone-${fs.tone}`} style={{ fontSize: 22 }}>{fs.label}</div>
-            <div className="row muted" style={{ fontSize: 16 }}>
-              <span>Fitness <b className="num" style={{ color: 'var(--fitness)' }}>{num(a.form?.fitness)}</b></span>
-              <span>Fatigue <b className="num" style={{ color: 'var(--fatigue)' }}>{num(a.form?.fatigue)}</b></span>
+      {/* Last workout: what it did for you — the first thing you see when you come home */}
+      {lw ? (
+        <div className="card span-7 last-workout">
+          <button className="last-workout-main" onClick={() => nav(`/session/${encodeURIComponent(lw.id)}`)}>
+            <div className="between">
+              <span className="card-title" style={{ margin: 0 }}>
+                <SportIcon sport={lw.sport} size={18} /> Last workout · {lw.name || TYPE_LABEL[lw.session_type] || SPORT_LABEL[lw.sport]} · {shortWhen(lw.start_time)}
+              </span>
+              <VerdictPill verdict={lw.verdict} />
+            </div>
+            <div className="last-workout-head">
+              What improved <span className={`tone-${up ? 'better' : 'inline'}`}>{up} of {lw.improvements.length}</span>
+            </div>
+            <ImprovementList items={lw.improvements} max={5} compact />
+          </button>
+          <button className="fitness-strip" onClick={() => nav(`/u/${u}/load`)}>
+            <span>Fitness <b className="num" style={{ color: 'var(--fitness)' }}>{num(a.form?.fitness)}</b></span>
+            {change6w != null && (
+              <span className={`tone-${change6w >= 0.5 ? 'better' : change6w <= -0.5 ? 'worse' : 'inline'}`}>
+                {change6w >= 0.5 ? '▲' : change6w <= -0.5 ? '▼' : '●'} {signed(change6w, 1)} in 6 weeks
+              </span>
+            )}
+            <span className="fitness-strip-spark"><Sparkline values={a.pmc.map(p => p.fitness)} height={30} color="var(--fitness)" /></span>
+            <span className="muted">Form <b className="num" style={{ color: 'var(--form)' }}>{signed(a.form?.form, 0)}</b> {fs.label}</span>
+          </button>
+        </div>
+      ) : (
+        <button className="card span-7" onClick={() => nav(`/u/${u}/load`)}>
+          <div className="card-title"><TrendingUp size={18} /> Fitness · 6 months</div>
+          <div className="fitness-card">
+            <div className="stack" style={{ gap: 2 }}>
+              <div className="big num" style={{ color: 'var(--fitness)' }}>{num(a.form?.fitness)}</div>
+              {change6w != null && (
+                <div className={`fitness-change tone-${change6w >= 0.5 ? 'better' : change6w <= -0.5 ? 'worse' : 'inline'}`}>
+                  {change6w >= 0.5 ? '▲' : change6w <= -0.5 ? '▼' : '●'} {signed(change6w, 1)} in 6 weeks
+                </div>
+              )}
+              <div className="row muted" style={{ fontSize: 14, marginTop: 4 }}>
+                <span>Form <b className="num" style={{ color: 'var(--form)' }}>{signed(a.form?.form, 0)}</b> <span className={`tone-${fs.tone}`}>{fs.label}</span></span>
+              </div>
+            </div>
+            <div style={{ height: 150 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={a.pmc} margin={{ top: 6, right: 6, bottom: 0, left: 6 }}>
+                  <XAxis dataKey="day" ticks={monthTicks} tickFormatter={monthLabel} tickLine={false} axisLine={false}
+                         tick={{ fill: 'var(--muted)', fontSize: 13 }} interval={0} />
+                  <YAxis hide domain={['dataMin - 3', 'dataMax + 3']} />
+                  <Area type="monotone" dataKey="fitness" stroke="var(--fitness)" fill="var(--fitness)" fillOpacity={0.18}
+                        strokeWidth={2.5} isAnimationActive={false} dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           </div>
-          <div style={{ height: 120 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={a.pmc} margin={{ top: 6, right: 4, bottom: 0, left: 4 }}>
-                <XAxis dataKey="day" hide />
-                <YAxis hide domain={['auto', 'auto']} />
-                <ReferenceLine y={0} stroke="var(--border)" />
-                <Area type="monotone" dataKey="fitness" stroke="var(--fitness)" fill="var(--fitness)" fillOpacity={0.15} strokeWidth={2.5} isAnimationActive={false} />
-                <Line type="monotone" dataKey="fatigue" stroke="var(--fatigue)" strokeWidth={2} dot={false} strokeDasharray="5 4" isAnimationActive={false} />
-                <Line type="monotone" dataKey="form" stroke="var(--form)" strokeWidth={2} dot={false} isAnimationActive={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </button>
+        </button>
+      )}
 
       {/* Recovery */}
       <div className="card span-5">

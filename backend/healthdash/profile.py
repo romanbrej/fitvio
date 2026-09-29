@@ -26,10 +26,10 @@ from .config import UserConfig
 
 log = logging.getLogger(__name__)
 
-FIELDS = ("name", "sex", "max_hr", "rest_hr", "lthr", "ftp")
+FIELDS = ("name", "sex", "max_hr", "rest_hr", "lthr", "ftp", "weight_kg")
 DEFAULTS = {"max_hr": 190.0, "rest_hr": 55.0, "sex": "male"}
 # Changing these changes zones, session types and training load → reprocess history.
-THRESHOLD_TOLERANCE = {"max_hr": 2.0, "rest_hr": 3.0}
+THRESHOLD_TOLERANCE = {"max_hr": 2.0, "rest_hr": 3.0, "ftp": 5.0}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS profiles (
@@ -133,22 +133,35 @@ def derive(base_dir: Path, fit_limit: int = 20) -> dict[str, tuple[object, str]]
 
     put("name", _find(social, ("fullName", "displayName")) or _find(personal, ("fullName",)), "Garmin profile")
     put("sex", _sex(_find(settings, ("gender",)) or _find(personal, ("gender",))), "Garmin user settings")
+    w = _find(settings, ("weight",)) or _find(personal, ("weight",))
+    put("weight_kg", round(float(w) / 1000, 1) if isinstance(w, (int, float)) and w > 1000 else None,
+        "Garmin user settings")  # stored in grams
     lt = _find(settings, ("lactateThresholdHeartRate",))
     put("lthr", float(lt) if isinstance(lt, (int, float)) else None, "Garmin user settings")
 
     # Watch settings travel inside every activity file; newest first.
-    fits = sorted((fit_root / "Activities").glob("*.fit"), key=lambda p: p.stat().st_mtime, reverse=True) \
+    # Garmin activity ids grow over time; file times don't help (a first download writes all at once).
+    def newest_first(p: Path):
+        aid = p.name.split("_")[0].split(".")[0]
+        return (int(aid) if aid.isdigit() else -1, p.stat().st_mtime)
+    fits = sorted((fit_root / "Activities").glob("*.fit"), key=newest_first, reverse=True) \
         if (fit_root / "Activities").exists() else []
-    for path in fits[:fit_limit]:
+    for i, path in enumerate(fits):
+        # rides can be rare, so keep looking (cheap: only the file header is read) until the FTP is found
+        if i >= fit_limit and ("ftp" in found or i >= fit_limit * 10):
+            break
         try:
             prof = parse_fit_profile(path)
         except Exception as e:  # a corrupt file must not break profile detection
             log.debug("profile parse failed for %s: %s", path, e)
             continue
         z, u = prof.get("zones_target", {}), prof.get("user_profile", {})
-        put("max_hr", z.get("max_heart_rate"), "HR zones on your watch")
-        put("lthr", z.get("threshold_heart_rate"), "lactate threshold on your watch")
-        put("ftp", z.get("functional_threshold_power"), "FTP on your watch")
+        if i < fit_limit:
+            put("max_hr", z.get("max_heart_rate"), "HR zones on your watch")
+            put("lthr", z.get("threshold_heart_rate"), "lactate threshold on your watch")
+        # FTP only from rides: in a run the same field holds the running power threshold
+        if str(prof.get("sport", {}).get("sport", "")).lower() == "cycling":
+            put("ftp", z.get("functional_threshold_power"), "FTP on your watch (latest ride)")
         put("sex", _sex(u.get("gender")), "user profile on your watch")
         put("max_hr", u.get("default_max_heart_rate"), "user profile on your watch")
         put("rest_hr_watch", u.get("resting_heart_rate"), "user profile on your watch")

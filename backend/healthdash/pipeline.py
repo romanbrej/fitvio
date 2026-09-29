@@ -108,7 +108,7 @@ def ingest_from_garmindb(conn: sqlite3.Connection, user: UserConfig, full: bool 
     known = {r["activity_id"] for r in conn.execute("SELECT activity_id FROM sessions WHERE user_id = ?", (user.id,))}
     reprocess = full or (thresholds_changed and bool(known))
     if reprocess and known and not full:
-        log.info("%s: heart-rate profile changed — reprocessing %d activities", user.id, len(known))
+        log.info("%s: HR or power profile changed — reprocessing %d activities", user.id, len(known))
     new_ids = [aid for aid, _ in reader.activity_ids(None if reprocess else default_since())
                if reprocess or aid not in known]
     edited = set()

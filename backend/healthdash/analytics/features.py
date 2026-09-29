@@ -53,11 +53,13 @@ def compute_features(act: ParsedActivity, user: UserConfig) -> dict:
         w = act.weather or {}
         heat_pct = 0.0 if act.indoor else physio.heat_adjustment(w.get("temp_c"), w.get("dew_point_c"),
                                                                  act.heat_acclimation)
+        v_ref = physio.speed_at_hr(steady, gap, ref_hr(user))
         f.update({
+            "speed_at_ref_hr_adj": v_ref * (1 + heat_pct / 100) if v_ref else None,  # wall progress: pace at same HR
             "ef": ef,                                      # grade-adjusted m/min per beat
             "ef_adj": ef * (1 + heat_pct / 100) if ef else None,  # also heat/humidity-normalised
             "decoupling": physio.decoupling(steady, gap),
-            "speed_at_ref_hr": physio.speed_at_hr(steady, gap, ref_hr(user)),
+            "speed_at_ref_hr": v_ref,
             "ref_hr": ref_hr(user),
             "avg_speed": act.distance_m / act.duration_s if act.distance_m and act.duration_s else None,
             "gap_speed": (sum(s for s in gap if s) / max(1, sum(1 for s in gap if s))) if gap else None,
@@ -74,6 +76,8 @@ def compute_features(act: ParsedActivity, user: UserConfig) -> dict:
                 "avg_power": _avg([r.power for r in recs]),
                 "np": np_,
                 "ef": physio.efficiency_factor(steady, use_power=True),   # W per beat
+                "power_at_ref_hr": physio.speed_at_hr(steady, [r.power for r in steady], ref_hr(user)),
+                "ref_hr": ref_hr(user),
                 "decoupling": physio.decoupling(steady, use_power=True),
                 "power_curve": curve,
                 "eftp": curve["1200"] * 0.95 if "1200" in curve else None,

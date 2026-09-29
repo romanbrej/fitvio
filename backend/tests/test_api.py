@@ -42,6 +42,16 @@ def test_wall_shows_fresh_verdict_then_select_goes_ambient(client):
         assert w["user_id"] == "b"
 
 
+def test_verdict_shows_what_improved_and_wall_shows_fitness_curve(client):
+    sessions = client.get("/api/users/a/sessions?limit=1").json()
+    d = client.get(f"/api/sessions/{sessions[0]['id']}").json()
+    assert "fitness" in [i["kind"] for i in d["improvements"]]
+    a = client.get("/api/users/a/ambient").json()
+    assert len(a["pmc"]) > 42 and "fitness_change_6w" in a
+    lw = a["last_workout"]  # the wall's first card: the newest workout and what it improved
+    assert lw["id"] == sessions[0]["id"] and lw["improvements"] and lw["verdict"]
+
+
 def test_session_detail_and_lists(client):
     sessions = client.get("/api/users/a/sessions?limit=5").json()
     assert len(sessions) == 5
