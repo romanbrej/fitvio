@@ -7,12 +7,20 @@ import './TopBar.css'
 
 export type SyncOutcome = { ok: boolean; text: string } | null
 
-function SyncButton({ sync, job, outcome, onSync }: {
-  sync: SyncInfo; job: Job | null; outcome: SyncOutcome; onSync: () => void
+function SyncButton({ sync, job, outcome, onSync, onFix }: {
+  sync: SyncInfo; job: Job | null; outcome: SyncOutcome; onSync: () => void; onFix: () => void
 }) {
   let icon = sync.stale ? <CloudOff size={18} /> : <RefreshCw size={18} />
   let text = sync.stale ? `Last sync ${ago(sync.last_success)}` : `Synced ${ago(sync.last_success)}`
   let tone = sync.stale ? 'stale' : ''
+  let onClick = onSync
+  if (sync.login_expired && !job) {
+    // the auto-sync check stopped because the cached Garmin login expired — fix it in Accounts
+    icon = <AlertTriangle size={18} />
+    text = 'Garmin login expired — tap to fix'
+    tone = 'stale'
+    onClick = onFix
+  }
   if (job) {
     icon = <RefreshCw size={18} className="spin" />
     text = job.phase === 'importing' ? 'Analysing…' : job.step ? `Syncing · ${job.step}` : 'Syncing…'
@@ -23,7 +31,7 @@ function SyncButton({ sync, job, outcome, onSync }: {
     tone = outcome.ok ? 'done' : 'failed'
   }
   return (
-    <button className={`sync ${tone}`} onClick={onSync} disabled={!!job}
+    <button className={`sync ${tone}`} onClick={onClick} disabled={!!job}
             title={job ? 'Fetching the latest data from Garmin' : sync.last_error ?? 'Tap to fetch the latest data from Garmin now'}
             aria-label={job ? 'Syncing with Garmin' : `${text}. Tap to sync now`}>
       {icon}
@@ -66,7 +74,8 @@ export function TopBar({ users, activeUser, onSelect, sync, syncJob, syncOutcome
         {activeUser && <span className="topbar-name">{users.find(u => u.id === activeUser)?.name}</span>}
       </div>
       <div className="topbar-right">
-        {sync && activeUser && <SyncButton sync={sync} job={syncJob} outcome={syncOutcome} onSync={onSync} />}
+        {sync && activeUser && <SyncButton sync={sync} job={syncJob} outcome={syncOutcome} onSync={onSync}
+                                                   onFix={() => nav('/accounts')} />}
         <button className="btn icon-btn" onClick={() => nav('/accounts')} aria-label="Garmin accounts and settings">
           <UserCog size={24} />
         </button>

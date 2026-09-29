@@ -102,3 +102,17 @@ def test_app_data_dir_is_private(tmp_path):
     from healthdash import db
     db.connect(tmp_path / "data" / "app.db")
     assert (tmp_path / "data").stat().st_mode & 0o077 == 0
+
+
+def test_auto_sync_switch(client):
+    assert client.get("/api/settings/activity-check").json()["enabled"] is True
+    # changing it is home-network only (TestClient's address "testclient" isn't a LAN address)
+    assert client.post("/api/settings/activity-check", json={"enabled": False}).status_code == 403
+    main.app.dependency_overrides[main.local_network_only] = lambda: None
+    assert client.post("/api/settings/activity-check", json={"enabled": False},
+                       headers={"Origin": "https://evil.example"}).status_code == 403
+    for bad in ({"enabled": "no"}, {"enabled": 0}, {"enabled": False, "x": 1}, {}):
+        assert client.post("/api/settings/activity-check", json=bad).status_code == 422, bad
+    r = client.post("/api/settings/activity-check", json={"enabled": False})
+    assert r.status_code == 200 and r.json()["enabled"] is False
+    assert client.get("/api/settings/activity-check").json()["enabled"] is False

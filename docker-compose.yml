@@ -29,7 +29,8 @@ services:
 
   sync:
     <<: *common
-    # differential Garmin sync every 10 minutes (only new/changed data, ~1 min on a Pi 4)
-    command: ["sh", "-c", "while true; do healthdash sync; sleep 600; done"]
+    # auto-sync: checks Garmin for a new activity every 2 min (05:00–24:00) and syncs right away;
+    # full differential sync (health data) hourly. Switch the check off in Accounts.
+    command: ["healthdash", "watch"]
     depends_on:
       - web

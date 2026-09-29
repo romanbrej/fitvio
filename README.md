@@ -39,13 +39,24 @@ Weather and acclimation are downloaded with each sync. For older history, run `h
 
 **Verdict check.** Rate *How did you feel* and *Perceived effort* on your watch after each activity. The app tracks how often the verdicts agree with how you felt, and lists the disagreements.
 
-**Syncing.** Every 10 minutes, and on demand via the sync button in the top bar (at most once a minute), the app runs a *differential* sync:
+**Syncing.** Every hour, on a new activity (see *Auto-sync* below), and on demand via the sync button in the top bar (at most once a minute), the app runs a *differential* sync:
 - It only downloads days and activities that are new or changed, including today.
 - It only imports files written since the last successful sync.
 - It only recalculates the affected years.
 - Activities you rename or rate afterwards in Garmin Connect (feel, effort) are picked up again without re-taking the wall.
 
-A typical sync takes well under a minute. Garmin has no webhook for private use, so new activities show up with the next sync or when you tap the sync button.
+A typical sync takes well under a minute.
+
+**Auto-sync on new activity.** Garmin offers webhooks only to approved business partners, so the app does the next best thing:
+- **Quick check:** every 2 minutes (05:00–24:00) it asks Garmin for the newest activity id only. That's one tiny request per person, and nothing is downloaded.
+- **Sync on change:** if the id is new, the normal differential sync starts, and the workout is on the wall about 2–3 minutes after your watch uploaded it.
+- **Hourly sync:** sleep, HRV, resting HR and the other health data sync hourly, day and night.
+
+It protects your Garmin account, because the app uses the unofficial Garmin Connect login:
+- **Expired login:** the check only uses the cached login tokens, never your password or MFA. If the tokens expire, the check pauses for that person and the top bar says *Garmin login expired*. Tap it, then *Sync now* in Accounts to log in again with the saved password.
+- **Rate limit:** if Garmin answers "too many requests", the check pauses for everyone for 6 hours.
+- **Stuck activity:** an activity that doesn't arrive after 3 syncs is left alone, so it never syncs in a loop.
+- **Off switch:** you can turn it off in *Accounts → Auto-sync on new activity*. The hourly sync and the sync button keep working.
 
 **Failure handling.** If the Garmin sync breaks (GarminDB uses the unofficial Garmin Connect login), the wall shows an amber "Last sync X ago" banner after 24 h. An old verdict is never re-shown as if it were new.
 
@@ -111,7 +122,7 @@ The compose file runs one image as two containers:
 | Container | Job |
 |---|---|
 | `web` | UI and API on port 8765 |
-| `sync` | Differential Garmin sync every 10 minutes |
+| `sync` | Auto-sync: checks for a new activity every 2 min, full differential sync hourly |
 
 Your data and logins stay on the host in `./data` and `./config`. They are mounted into the containers and never built into the image (see `.dockerignore`).
 
@@ -144,7 +155,7 @@ git clone https://github.com/romanbrej/fitness-dashboard.git health-wall && cd h
 This installs `healthdash-api.service` (the UI and API on port 8765) and `healthdash-sync.timer`.
 
 ### Display
-- Use an SSD rather than an SD card if you can, because SQLite is written every 10 minutes.
+- Use an SSD rather than an SD card if you can, because SQLite is written regularly.
 - **Android tablet:** use *Fully Kiosk Browser* pointed at `http://<pi-ip>:8765`, with screen always on.
 - **iPad:** in Safari, *Add to Home Screen* (it opens fullscreen), then *Guided Access*, and set Auto-Lock to Never.
 - The screen dims automatically between `night_start` and `night_end` (tap to wake).
@@ -178,6 +189,7 @@ Not protected, by design: anyone on your home network can *view* the dashboard. 
 healthdash add-person                  connect a Garmin account (only asks email + password)
 healthdash profile [--user ID]         what was read from Garmin, and from where
 healthdash sync [--user ID] [--full]   download (GarminDB) + ingest + verdicts
+healthdash watch                       auto-sync: new-activity check every 2 min + hourly sync
 healthdash ingest [--user ID] [--full] ingest only
 healthdash evaluate [--user ID]        recompute all verdicts (e.g. after changing max_hr)
 healthdash backfill-extras [--user ID] Garmin weather, heat acclimation + VO₂max history for the past
@@ -204,6 +216,7 @@ backend/healthdash/
   sync/garmindb_runner.py     runs GarminDB, differential sync, sync lock
   sync/garmindb_fast.py       runtime patches: skip cached days, adaptive pacing, changed-only import
   sync/garmin_extras.py       Garmin weather, heat acclimation, precise VO₂max
+  sync/activity_watch.py      auto-sync: new-activity check (cached tokens only) + hourly sync
 frontend/src/                 React + Vite wall UI (views/Wall*, detail views)
 design-system/                ui-ux-pro-max design system + wall overrides
 deploy/                       Pi install script + systemd units (non-Docker)
@@ -215,7 +228,7 @@ Tests: `cd backend && ../.venv/bin/pytest`.
 ## Known limitations
 
 - Weather comes from the nearest Garmin weather station at the start, so it doesn't capture sun, shade or temperature changes during long sessions.
-- Garmin has no public webhook, so a new activity appears after the next sync (at most 10 minutes, or instantly with the sync button).
+- Garmin has no public webhook. A new activity is found by polling (every 2 min, 05:00–24:00); at night it waits for the hourly sync.
 - Pool HR from a wrist sensor is unreliable. Swimming verdicts rely on pace and SWOLF, not HR.
 - Garmin's strength categories are broad (for example "squat" covers goblet and back squat). The numeric variant is kept in the exercise key so different variants aren't mixed.
 - The FIT parsing has only been tested against GarminDB's documented layout and synthetic data. Check `healthdash backtest` after your first real sync.

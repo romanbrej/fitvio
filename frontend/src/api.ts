@@ -73,6 +73,14 @@ export interface WeekTotals { [sport: string]: { count: number; duration_s: numb
 export interface SyncInfo {
   last_success: string | null; last_attempt: string | null; last_error: string | null
   age_hours: number | null; stale: boolean
+  login_expired?: boolean  // the auto-sync check found the cached Garmin login expired
+}
+
+/** Auto-sync on new activity (backend: sync/activity_watch.py). */
+export interface ActivityCheck {
+  enabled: boolean; interval_s: number; active_hours: string
+  backoff_until: string | null; last_error: string | null
+  users: Record<string, { last_check: string | null; login_expired: boolean }>
 }
 
 export interface Ambient {
@@ -149,4 +157,6 @@ export const api = {
   job: (id: string) => get<Job>(`/api/jobs/${id}`),
   mfa: (id: string, code: string) => post<{ ok: boolean }>(`/api/jobs/${id}/mfa`, { code }),
   syncNow: (user: string) => post<Job>(`/api/users/${user}/sync`, {}),
+  activityCheck: () => get<ActivityCheck>('/api/settings/activity-check'),
+  setActivityCheck: (enabled: boolean) => post<ActivityCheck>('/api/settings/activity-check', { enabled }),
 }

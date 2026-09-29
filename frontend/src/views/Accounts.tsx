@@ -1,8 +1,8 @@
-import { AlertTriangle, Loader2, RefreshCw, UserPlus } from 'lucide-react'
+import { AlertTriangle, Loader2, RefreshCw, UserPlus, Zap } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useApp } from '../App'
 import { api } from '../api'
-import type { Account } from '../api'
+import type { Account, ActivityCheck } from '../api'
 import { ConnectForm } from '../components/ConnectForm'
 import { ago } from '../format'
 import './Detail.css'
@@ -34,6 +34,19 @@ export function Accounts() {
 
   const connected = useCallback(() => { load(); reload() }, [load, reload])
 
+  // auto-sync kill switch
+  const [check, setCheck] = useState<ActivityCheck | null>(null)
+  const [saving, setSaving] = useState(false)
+  useEffect(() => { api.activityCheck().then(setCheck).catch(() => setCheck(null)) }, [])
+  const toggleCheck = async () => {
+    if (!check) return
+    setSaving(true)
+    setErr(null)
+    try { setCheck(await api.setActivityCheck(!check.enabled)) } catch (e) { setErr(String(e).replace(/^Error: /, '')) }
+    setSaving(false)
+  }
+  const lastCheck = check && Object.values(check.users).map(u => u.last_check).filter((x): x is string => !!x).sort().at(-1)
+
   return (
     <div className="detail">
       <div className="detail-head">
@@ -45,6 +58,28 @@ export function Accounts() {
       {err && <div className="card tone-worse"><AlertTriangle size={18} /> {err}</div>}
 
       <div className="detail-grid">
+        {check && (
+          <div className="card span-12 auto-sync">
+            <div className="between">
+              <div className="stack" style={{ gap: 2 }}>
+                <b style={{ fontSize: 20 }}><Zap size={18} /> Auto-sync on new activity</b>
+                <span className="muted" style={{ fontSize: 15 }}>
+                  Checks Garmin every {Math.round(check.interval_s / 60)} min for a new activity ({check.active_hours}) and syncs
+                  right away. Health data (sleep, HRV …) syncs every hour.
+                </span>
+              </div>
+              <button role="switch" aria-checked={check.enabled} className={`switch ${check.enabled ? 'on' : ''}`}
+                      onClick={toggleCheck} disabled={saving} aria-label="Auto-sync on new activity">
+                <span />
+              </button>
+            </div>
+            <div style={{ marginTop: 8, fontSize: 15 }}>
+              {!check.enabled ? <span className="muted">Off — only the hourly sync and the Sync button.</span>
+                : check.backoff_until ? <span className="tone-warn"><AlertTriangle size={15} /> Paused until {check.backoff_until.slice(11, 16)}: {check.last_error ?? 'Garmin rate limit'}</span>
+                : <span className="muted">On{lastCheck ? ` · last check ${ago(lastCheck)}` : ''}</span>}
+            </div>
+          </div>
+        )}
         {accounts?.map(a => {
           const job = a.job
           return (
@@ -69,6 +104,9 @@ export function Accounts() {
                     </div>
                     {job.log.length > 0 && <code className="log" style={{ display: 'block', fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--faint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.log[job.log.length - 1]}</code>}
                   </>
+                ) : a.sync.login_expired ? (
+                  <span className="tone-warn"><AlertTriangle size={15} /> Garmin login expired — auto-sync is paused for {a.name}.
+                    Tap <b>Sync now</b> to log in again with the saved password.</span>
                 ) : a.sync.last_error ? (
                   <span className="tone-warn"><AlertTriangle size={15} /> Last sync failed: {a.sync.last_error}</span>
                 ) : (

@@ -19,6 +19,7 @@ from .. import accounts, db, profile, wall
 from ..analytics import load as load_model
 from ..config import PROJECT_ROOT, AppConfig, load_config
 from ..pipeline import user_sessions
+from ..sync import activity_watch
 
 app = FastAPI(title="Health Dashboard", docs_url=None, redoc_url=None, openapi_url=None)
 _cfg: AppConfig | None = None
@@ -317,6 +318,26 @@ def sync_now(user_id: str, full: bool = False, c: AppConfig = Depends(cfg), cn=D
         if wait > 0:
             raise HTTPException(429, f"just synced — try again in {int(wait) + 1} s")
     return accounts.start_sync(user, c.db_path, full=full).public()
+
+
+class ActivityCheck(BaseModel):
+    model_config = {"extra": "forbid"}
+    enabled: bool = Field(strict=True)
+
+
+@app.get("/api/settings/activity-check")
+def get_activity_check(c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    return activity_watch.status(cn, c)
+
+
+@app.post("/api/settings/activity-check", dependencies=[Depends(local_network_only)])
+def set_activity_check(body: ActivityCheck, c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    """The kill switch for the auto-sync check (the separate `healthdash watch` process reads it each round)."""
+    activity_watch.set_enabled(cn, body.enabled)
+    if body.enabled:  # switching it back on also ends a rate-limit pause
+        db.set_state(cn, activity_watch.K_BACKOFF, "")
+        db.set_state(cn, activity_watch.K_ERROR, "")
+    return activity_watch.status(cn, c)
 
 
 @app.get("/api/health")

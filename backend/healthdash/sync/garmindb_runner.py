@@ -257,6 +257,20 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, tim
     return error is None
 
 
+def sync_user(conn: sqlite3.Connection, user: UserConfig, full: bool = False) -> tuple[bool, dict | None]:
+    """Download (GarminDB) + ingest + verdicts for one person — what `healthdash sync` does per person.
+    Returns (download ok, ingest result or None). Raises SyncBusy when another sync holds the lock."""
+    from .. import pipeline
+
+    since = None if full else changed_since(conn, user.id)  # before the sync moves it
+    ok = run_sync(conn, user, full=full)
+    try:
+        return ok, pipeline.ingest_from_garmindb(conn, user, full=full, changed_since=since)
+    except RuntimeError as e:  # e.g. nothing downloaded yet
+        log.warning("%s: ingest skipped — %s", user.id, e)
+        return ok, None
+
+
 def garmin_client(user: UserConfig, mfa_prompt: Callable[[], str] | None = None):
     """A logged-in Garmin Connect client for this person (GarminDB's auth adapter). Uses the cached
     login tokens; only falls back to the password (and MFA) when they are missing or expired."""

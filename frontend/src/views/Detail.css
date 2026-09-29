@@ -32,6 +32,20 @@ table.data tr.clickable:active { background: var(--surface-2); }
 .kv .k { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .kv .v { font-size: 22px; font-weight: 600; }
 
+/* on/off switch (Accounts → auto-sync); 44px touch target */
+.switch {
+  flex: none; width: 64px; height: 36px; border-radius: 18px; border: 2px solid var(--border);
+  background: var(--surface-2); position: relative; cursor: pointer; transition: background 0.15s;
+}
+.switch span {
+  position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--muted); transition: transform 0.15s, background 0.15s;
+}
+.switch.on { background: var(--better); border-color: var(--better); }
+.switch.on span { transform: translateX(28px); background: #fff; }
+.switch:disabled { opacity: 0.6; cursor: wait; }
+.auto-sync b svg { vertical-align: -2px; }
+
 .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
 .tabs .btn[aria-pressed='true'] { border-color: var(--primary); color: var(--primary); }
 

@@ -2,6 +2,7 @@
 
   healthdash init-user <user_id> <garmin_email>   create the GarminDB config for a user
   healthdash sync [--user ID] [--full]            GarminDB download + ingest + verdicts
+  healthdash watch                                auto-sync on new activities (+ hourly full sync)
   healthdash ingest [--user ID] [--full]          ingest only (GarminDB data already present)
   healthdash evaluate [--user ID]                 recompute all verdicts
   healthdash backtest [--user ID] [--sport S]     print verdicts over history
@@ -40,6 +41,7 @@ def main(argv=None) -> int:
         s = sub.add_parser(name)
         s.add_argument("--user")
         s.add_argument("--full", action="store_true", help="full history instead of latest")
+    sub.add_parser("watch", help="auto-sync: check Garmin for new activities every 2 min, full sync hourly")
     s = sub.add_parser("backfill-extras", help="download Garmin's weather + heat acclimation for past activities")
     s.add_argument("--user")
     s = sub.add_parser("backtest")
@@ -81,28 +83,32 @@ def main(argv=None) -> int:
         return 0
 
     if a.cmd == "sync":
-        from .sync.garmindb_runner import SyncBusy, changed_since, run_sync
+        from .sync.garmindb_runner import SyncBusy, sync_user
         rc = 0
         for u in _users(cfg, a.user):
-            since = None if a.full else changed_since(conn, u.id)  # before the sync moves it
             try:
-                ok = run_sync(conn, u, full=a.full)
+                ok, result = sync_user(conn, u, full=a.full)
             except SyncBusy as e:
                 print(f"{u.id}: skipped — {e}", file=sys.stderr)
+                continue
+            except Exception:  # keep going for the other users
+                logging.exception("sync failed for %s", u.id)
+                rc = 1
                 continue
             if not ok:
                 err = conn.execute("SELECT last_error FROM sync_status WHERE user_id = ?", (u.id,)).fetchone()[0]
                 print(f"{u.id}: sync failed — {err}", file=sys.stderr)
-            try:
-                print(u.id, pipeline.ingest_from_garmindb(conn, u, full=a.full, changed_since=since))
-            except RuntimeError as e:  # e.g. nothing downloaded yet
-                print(f"{u.id}: ingest skipped — {e}", file=sys.stderr)
+            if result is None:
                 rc = 1
-            except Exception:  # keep going for the other users
-                logging.exception("ingest failed for %s", u.id)
-                rc = 1
+            else:
+                print(u.id, result)
             rc = rc or (0 if ok else 1)
         return rc
+
+    if a.cmd == "watch":
+        from .sync.activity_watch import watch_loop
+        watch_loop(cfg, conn)
+        return 0
 
     if a.cmd == "ingest":
         for u in _users(cfg, a.user):
