@@ -1,5 +1,5 @@
 # Test, then build the arm64 image (Raspberry Pi) and push it to GHCR.
-# The Pi picks up :latest by itself via a systemd timer (deploy/install-autoupdate.sh).
+# Then the `deploy` job runs on the Pi (self-hosted runner, deploy/install-runner.sh) and restarts the app.
 name: build
 
 on:
@@ -80,3 +80,24 @@ jobs:
           package-name: ${{ github.event.repository.name }}
           package-type: container
           min-versions-to-keep: 5
+
+  deploy:
+    needs: image
+    runs-on: [self-hosted, pi]
+    concurrency: deploy
+    steps:
+      - name: Pull latest image and restart
+        run: |
+          cd "$HOME/health-wall"
+          docker compose pull --quiet
+          docker compose up -d --no-build --remove-orphans
+          docker image prune -f
+      - name: Health check
+        run: |
+          for i in $(seq 1 30); do
+            curl -fsS -m 5 http://127.0.0.1:8765/api/health && exit 0
+            sleep 2
+          done
+          echo "web did not become healthy" >&2
+          cd "$HOME/health-wall" && docker compose ps && docker compose logs --tail 50 web
+          exit 1

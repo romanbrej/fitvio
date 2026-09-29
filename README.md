@@ -117,7 +117,7 @@ The password is stored `chmod 600` in `data/garmindb/<id>/config/password.txt`, 
 
 ### With Docker (recommended)
 
-GitHub Actions builds the image on every push to `main` (tests first, then an arm64 build, see `.github/workflows/build.yml`) and pushes it to `ghcr.io/romanbrej/fitness-dashboard`. The compose file runs it as two containers:
+GitHub Actions builds the image on every push to `main` (tests first, then an arm64 build, see `.github/workflows/build.yml`), pushes it to `ghcr.io/romanbrej/fitness-dashboard`, and then deploys it: a `deploy` job runs on the Pi itself (self-hosted runner) and does `docker compose pull && up -d`. The compose file runs it as two containers:
 
 | Container | Job |
 |---|---|
@@ -135,16 +135,24 @@ printf 'HW_UID=%s\nHW_GID=%s\nTZ=Europe/Berlin\n' "$(id -u)" "$(id -g)" > .env  
 docker login ghcr.io -u romanbrej          # paste the token as password (before the first `up`)
 docker compose pull && docker compose up -d
 docker compose logs -f sync                # watch the sync
-./deploy/install-autoupdate.sh             # auto-update: pull + restart every 5 min (systemd user timer)
 ```
 
 Then open `http://<pi-ip>:8765` and connect your Garmin account.
 
-**Updating:** `git push` to `main`. About 10 min later (build + next timer run) the Pi runs the new version; `journalctl --user -u health-wall-update` shows it. Only when `docker-compose.yml` itself changed: `git pull && docker compose up -d` on the Pi.
+Deploy on build: install the GitHub Actions runner on the Pi (systemd user service, only connects out to GitHub):
+
+```bash
+# on the Mac — registration token, valid 1 h
+gh api -X POST repos/romanbrej/fitness-dashboard/actions/runners/registration-token --jq .token
+# on the Pi, in health-wall/
+./deploy/install-runner.sh <token>
+```
+
+**Updating:** `git push` to `main`. About 6 min later (tests + build + deploy) the Pi runs the new version; the `deploy` job in GitHub Actions shows it, including a health check. Only when `docker-compose.yml` itself changed: `git pull && docker compose up -d` on the Pi.
 
 **Rollback:** put `HW_TAG=sha-<commit>` (see the tags in GitHub → Packages) in `.env`, then `docker compose up -d`. Remove it again to follow `latest`. The last 5 builds are kept.
 
-**Local build instead:** `docker compose up -d --build` still works (e.g. to try something on the Pi without pushing). The next timer run replaces it with the GHCR image.
+**Local build instead:** `docker compose up -d --build` still works (e.g. to try something on the Pi without pushing). The next deploy replaces it with the GHCR image.
 
 ### Without Docker (systemd)
 
@@ -220,7 +228,7 @@ backend/healthdash/
 frontend/src/                 React + Vite wall UI (views/Wall*, detail views)
 design-system/                ui-ux-pro-max design system + wall overrides
 deploy/                       Pi install scripts + systemd units (non-Docker, and Docker auto-update)
-Dockerfile, docker-compose.yml  Docker deployment (web + sync); deploy/install-autoupdate.sh pulls new images
+Dockerfile, docker-compose.yml  Docker deployment (web + sync); deploy/install-runner.sh sets up deploy-on-build
 .github/workflows/build.yml   CI: tests → arm64 image → GHCR
 ```
 
