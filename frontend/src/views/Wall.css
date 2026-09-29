@@ -77,8 +77,6 @@
 .stack { display: flex; flex-direction: column; gap: 6px; }
 
 .form-card { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; }
-.fitness-card { display: grid; grid-template-columns: minmax(170px, auto) 1fr; gap: 20px; align-items: center; }
-.fitness-change { font-size: 20px; font-weight: 600; }
 
 .last-workout { display: flex; flex-direction: column; gap: 6px; }
 .last-workout-main { background: none; border: 0; padding: 0; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 4px; }
@@ -136,7 +134,7 @@
   .delta-grid, .sport-cards, .recovery-grid { grid-template-columns: 1fr; }
   .impact-row { grid-template-columns: repeat(3, auto); }
   .impact-trend { grid-column: span 3; }
-  .form-card, .fitness-card { grid-template-columns: 1fr; }
+  .form-card { grid-template-columns: 1fr; }
   .fitness-strip { grid-template-columns: 1fr 1fr; }
   .fitness-strip-spark { grid-column: span 2; }
 }

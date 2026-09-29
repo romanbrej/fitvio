@@ -92,18 +92,23 @@ def _health_series(conn, user_id: str, days: int) -> list[dict]:
         "SELECT * FROM health_days WHERE user_id = ? AND day >= ? ORDER BY day", (user_id, d0))]
 
 
+def _is_today(start_time: str, now: datetime | None = None) -> bool:
+    """The 'Last workout' card is only for the day of the workout; at midnight the wall resets."""
+    return start_time[:10] == (now or _now()).date().isoformat()
+
+
 def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
     sessions = user_sessions(conn, user_id)
     today = date.today()
     series = load_model.pmc(load_model.daily_loads(sessions), None, today) if sessions else []
     pmc_42 = series[-42:]
-    # the wall's main card: what your last workout did ("What improved"), with the fitness curve as footer
+    # the wall's main card on the day of a workout: what it did ("What improved"); otherwise training form
     fitness_change_6w = round(series[-1]["fitness"] - series[-43]["fitness"], 1) if len(series) > 42 else None
     last = conn.execute(
-        """SELECT s.id FROM verdicts v JOIN sessions s ON s.id = v.session_id
+        """SELECT s.id, s.start_time FROM verdicts v JOIN sessions s ON s.id = v.session_id
            WHERE s.user_id = ? ORDER BY s.start_time DESC LIMIT 1""", (user_id,)).fetchone()
     last_workout = None
-    card = session_card(conn, last["id"]) if last else None
+    card = session_card(conn, last["id"]) if last and _is_today(last["start_time"]) else None
     if card:
         v = card["verdict"]
         last_workout = {k: card[k] for k in ("id", "name", "sport", "session_type", "start_time", "improvements")}

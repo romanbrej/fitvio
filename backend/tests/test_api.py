@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -48,8 +49,17 @@ def test_verdict_shows_what_improved_and_wall_shows_fitness_curve(client):
     assert "fitness" in [i["kind"] for i in d["improvements"]]
     a = client.get("/api/users/a/ambient").json()
     assert len(a["pmc"]) > 42 and "fitness_change_6w" in a
-    lw = a["last_workout"]  # the wall's first card: the newest workout and what it improved
-    assert lw["id"] == sessions[0]["id"] and lw["improvements"] and lw["verdict"]
+    lw = a["last_workout"]  # the wall's first card on the day of a workout: what it improved
+    if sessions[0]["start_time"][:10] == datetime.now().date().isoformat():
+        assert lw["id"] == sessions[0]["id"] and lw["improvements"] and lw["verdict"]
+    else:
+        assert lw is None
+
+
+def test_last_workout_card_resets_at_midnight():
+    from healthdash.wall import _is_today
+    assert _is_today("2026-09-29T19:30:00", datetime(2026, 9, 29, 23, 59))
+    assert not _is_today("2026-09-29T19:30:00", datetime(2026, 9, 30, 0, 0))
 
 
 def test_session_detail_and_lists(client):
