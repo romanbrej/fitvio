@@ -53,21 +53,5 @@ def test_session_detail_and_lists(client):
     assert "agreement_pct" in client.get("/api/users/a/validation").json()
 
 
-def test_ambient_leads_with_fitness_progress(client):
-    p = client.get("/api/users/a/ambient").json()["progress"]
-    assert p["weeks"] == 6 and p["items"]
-    order = {"improving": 0, "steady": 1, "declining": 2}
-    tones = [order[i["tone"]] for i in p["items"]]
-    assert tones == sorted(tones)  # improvements first
-    assert p["improving"] == sum(i["tone"] == "improving" for i in p["items"])
-
-
-def test_progress_tone_respects_direction():
-    from healthdash.wall import _item
-    assert _item("rhr", "Resting HR", 48, -2, " bpm", 0, False, 1.0)["tone"] == "improving"  # lower RHR = fitter
-    assert _item("hrv", "HRV", 60, -5, " ms", 0, True, 2.0)["tone"] == "declining"
-    assert _item("vo2max", "VO₂max", 44.1, 0.02, "", 1, True, 0.05)["tone"] == "steady"
-
-
 def test_unknown_user_404(client):
     assert client.get("/api/users/nope/ambient").status_code == 404

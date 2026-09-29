@@ -1,6 +1,7 @@
-import { BatteryMedium, BedDouble, Brain, CheckCircle2, Gauge, HeartPulse, TrendingUp, Waves } from 'lucide-react'
+import { BatteryMedium, BedDouble, Brain, CheckCircle2, Gauge, HeartPulse, Waves } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import type { Ambient, ProgressItem, Sport } from '../api'
+import { Area, AreaChart, Line, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from 'recharts'
+import type { Ambient, Sport } from '../api'
 import { SportIcon, VerdictPill } from '../components/icons'
 import { Sparkline } from '../components/Sparkline'
 import { distance, duration, formState, hoursMinutes, num, signed, SPORT_LABEL, TYPE_LABEL, when } from '../format'
@@ -15,8 +16,6 @@ function vsBaseline(v: number | null | undefined, base: number | null | undefine
 }
 
 const SPORTS: Sport[] = ['running', 'cycling', 'swimming', 'strength']
-const TONE: Record<ProgressItem['tone'], string> = { improving: 'better', steady: 'inline', declining: 'worse' }
-const ARROW: Record<ProgressItem['tone'], string> = { improving: '▲', steady: '●', declining: '▼' }
 
 function shortWhen(iso: string): string {
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
@@ -32,7 +31,6 @@ export function WallAmbient({ ambient: a }: { ambient: Ambient }) {
   const sleepTotal = h.sleep_total_min ?? 0
   const hrvBand: [number, number] | null = h.hrv_baseline_low && h.hrv_baseline_high ? [h.hrv_baseline_low, h.hrv_baseline_high] : null
   const series = a.health_series
-  const p = a.progress ?? { weeks: 6, items: [], improving: 0, declining: 0 }
 
   // precise VO2max change over ~6 weeks (latest vs. the last value at least 42 days earlier)
   const vo2Last = a.vo2max.at(-1)
@@ -44,40 +42,32 @@ export function WallAmbient({ ambient: a }: { ambient: Ambient }) {
 
   return (
     <div className="ambient">
-      {/* Fitness progress: the headline of the wall */}
-      <div className="card span-7 progress-card">
-        <div className="between">
-          <div className="card-title" style={{ margin: 0 }}><TrendingUp size={18} /> Fitness progress · last {p.weeks} weeks</div>
-          {p.items.length > 0 && (
-            <span className={`progress-sum tone-${p.improving > p.declining ? 'better' : p.declining > p.improving ? 'worse' : 'inline'}`}>
-              Improving in {p.improving} of {p.items.length}
-            </span>
-          )}
+      {/* Form / fitness / fatigue */}
+      <button className="card span-7" onClick={() => nav(`/u/${u}/load`)}>
+        <div className="card-title"><Gauge size={18} /> Training form</div>
+        <div className="form-card">
+          <div className="stack">
+            <div className="big num" style={{ color: 'var(--form)' }}>{signed(a.form?.form, 0)}</div>
+            <div className={`mid tone-${fs.tone}`} style={{ fontSize: 22 }}>{fs.label}</div>
+            <div className="row muted" style={{ fontSize: 16 }}>
+              <span>Fitness <b className="num" style={{ color: 'var(--fitness)' }}>{num(a.form?.fitness)}</b></span>
+              <span>Fatigue <b className="num" style={{ color: 'var(--fatigue)' }}>{num(a.form?.fatigue)}</b></span>
+            </div>
+          </div>
+          <div style={{ height: 120 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={a.pmc} margin={{ top: 6, right: 4, bottom: 0, left: 4 }}>
+                <XAxis dataKey="day" hide />
+                <YAxis hide domain={['auto', 'auto']} />
+                <ReferenceLine y={0} stroke="var(--border)" />
+                <Area type="monotone" dataKey="fitness" stroke="var(--fitness)" fill="var(--fitness)" fillOpacity={0.15} strokeWidth={2.5} isAnimationActive={false} />
+                <Line type="monotone" dataKey="fatigue" stroke="var(--fatigue)" strokeWidth={2} dot={false} strokeDasharray="5 4" isAnimationActive={false} />
+                <Line type="monotone" dataKey="form" stroke="var(--form)" strokeWidth={2} dot={false} isAnimationActive={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-        <div className="progress-body">
-          <button className="progress-hero" onClick={() => nav(`/u/${u}/health/vo2max`)}>
-            <div className="metric-label"><Waves size={14} /> VO₂max</div>
-            <div className="big num">{num(vo2Last?.value, 1)}</div>
-            {vo2Change != null
-              ? <span className={`mid num tone-${vo2Change > 0.05 ? 'better' : vo2Change < -0.05 ? 'worse' : 'inline'}`} style={{ fontSize: 22 }}>
-                  {signed(vo2Change, 1)}</span>
-              : <span className="muted vs">no 6-week history yet</span>}
-            <Sparkline values={a.vo2max.slice(-180).map(v => v.value)} height={40} />
-          </button>
-          <ul className="progress-list">
-            {p.items.filter(i => i.key !== 'vo2max').slice(0, 5).map(i => (
-              <li key={i.key}>
-                <button onClick={() => nav(i.sport ? `/u/${u}/sport/${i.sport}` : i.link ? `/u/${u}/health/${i.link}` : `/u/${u}/load`)}>
-                  <span className={`progress-dot tone-${TONE[i.tone]}`}>{ARROW[i.tone]}</span>
-                  <span className="progress-label">{i.sport && <SportIcon sport={i.sport} size={16} />} {i.label}</span>
-                  <span className={`num tone-${TONE[i.tone]}`}>{signed(i.change, i.dp, i.unit)}</span>
-                </button>
-              </li>
-            ))}
-            {p.items.length === 0 && <li className="muted">Needs a few weeks of data</li>}
-          </ul>
-        </div>
-      </div>
+      </button>
 
       {/* Recovery */}
       <div className="card span-5">
@@ -186,16 +176,13 @@ export function WallAmbient({ ambient: a }: { ambient: Ambient }) {
         </ul>
       </div>
 
-      {/* Training form (secondary) + validation */}
+      {/* VO2max + validation */}
       <div className="span-3 stack" style={{ gap: 'var(--gap)' }}>
-        <button className="card" onClick={() => nav(`/u/${u}/load`)}>
-          <div className="card-title"><Gauge size={18} /> Training form</div>
-          <div className="row"><span className="mid num" style={{ color: 'var(--form)' }}>{signed(a.form?.form, 0)}</span>
-            <span className={`tone-${fs.tone}`} style={{ fontSize: 15 }}>{fs.label}</span></div>
-          <div className="row muted" style={{ fontSize: 14 }}>
-            <span>Fitness <b className="num" style={{ color: 'var(--fitness)' }}>{num(a.form?.fitness)}</b></span>
-            <span>Fatigue <b className="num" style={{ color: 'var(--fatigue)' }}>{num(a.form?.fatigue)}</b></span>
-          </div>
+        <button className="card" onClick={() => nav(`/u/${u}/health/vo2max`)}>
+          <div className="card-title"><Waves size={18} /> VO₂max</div>
+          <div className="row"><span className="mid num">{num(a.vo2max.at(-1)?.value, 1)}</span>
+            {vo2Change != null && <span className={`num tone-${vo2Change > 0.05 ? 'better' : vo2Change < -0.05 ? 'worse' : 'inline'}`} style={{ fontSize: 15 }}>
+              {signed(vo2Change, 1)} in 6 wk</span>}<span style={{ flex: 1, minWidth: 60 }}><Sparkline values={a.vo2max.map(v => v.value)} height={32} /></span></div>
         </button>
         <button className="card" onClick={() => nav(`/u/${u}/validation`)}>
           <div className="card-title"><CheckCircle2 size={18} /> Verdict check</div>

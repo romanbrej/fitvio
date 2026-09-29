@@ -75,15 +75,8 @@ export interface Ambient {
   trends: Partial<Record<Sport, SportTrend>>
   recent: (Pick<Session, 'id' | 'name' | 'sport' | 'session_type' | 'start_time' | 'duration_s' | 'distance_m' | 'load'> & { verdict: VerdictKind | null; headline: string | null })[]
   vo2max: { day: string; value: number }[]
-  progress: Progress
   sync: SyncInfo
 }
-
-export interface ProgressItem {
-  key: string; label: string; value: number | null; change: number; unit: string; dp: number
-  tone: 'improving' | 'steady' | 'declining'; sport: Sport | null; link: string | null
-}
-export interface Progress { weeks: number; items: ProgressItem[]; improving: number; declining: number }
 
 export type WallState =
   | { mode: 'setup'; job: Job | null; user_id?: string }
