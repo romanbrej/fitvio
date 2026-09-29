@@ -1,12 +1,13 @@
 # Health Wall on Docker (e.g. a Raspberry Pi 4 with 64-bit OS).
 # The image is built by GitHub Actions on every push to main (.github/workflows/build.yml) and pushed to
-# GHCR; Watchtower below pulls it and restarts web + sync within 5 min. See README "Raspberry Pi + tablet".
+# GHCR; a systemd timer on the Pi pulls it and restarts web + sync within 5 min
+# (deploy/install-autoupdate.sh). See README "Raspberry Pi + tablet".
 #   docker compose pull && docker compose up -d   start / apply compose changes
 #   docker compose up -d --build                  build locally instead (uses the same image name)
 #   docker compose logs -f sync                   watch the Garmin sync
 # Data and settings stay on the host in ./data and ./config (credentials, tokens, health data).
 # Set HW_UID / HW_GID in .env to the host user owning those folders (id -u / id -g).
-# Rollback: HW_TAG=sha-<commit> in .env, then docker compose up -d (Watchtower then keeps that tag).
+# Rollback: HW_TAG=sha-<commit> in .env, then docker compose up -d (the auto-update then keeps that tag).
 
 x-common: &common
   image: ghcr.io/romanbrej/fitness-dashboard:${HW_TAG:-latest}
@@ -16,8 +17,6 @@ x-common: &common
   volumes:
     - ./data:/app/data
     - ./config:/app/config
-  labels:
-    com.centurylinklabs.watchtower.enable: "true"
   restart: unless-stopped
 
 services:
@@ -41,15 +40,3 @@ services:
     depends_on:
       - web
 
-  # Auto-update: checks GHCR every 5 min and restarts only the labelled containers (web, sync) on a new image.
-  # Maintained fork — the original containrrr/watchtower is unmaintained and fails on Docker Engine >= 29.
-  # Pull auth for the private image comes from `docker login ghcr.io` on the host (~/.docker/config.json).
-  watchtower:
-    image: nickfedor/watchtower:latest
-    command: ["--label-enable", "--cleanup", "--interval", "300"]
-    environment:
-      TZ: ${TZ:-Europe/Berlin}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ${HOME}/.docker/config.json:/config.json:ro
-    restart: unless-stopped

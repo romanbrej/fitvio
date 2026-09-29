@@ -1,0 +1,13 @@
+[Unit]
+Description=Health Wall: pull the latest image from GHCR and restart web + sync if it changed
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__ROOT__
+# up -d only recreates containers whose image (or compose config) changed; pull auth: `docker login ghcr.io`
+ExecStart=/usr/bin/docker compose pull --quiet
+ExecStart=/usr/bin/docker compose up -d --no-build --remove-orphans
+ExecStart=/usr/bin/docker image prune -f
+TimeoutStartSec=15min

@@ -1,5 +1,5 @@
 # Test, then build the arm64 image (Raspberry Pi) and push it to GHCR.
-# The Pi picks up :latest by itself via Watchtower (see docker-compose.yml).
+# The Pi picks up :latest by itself via a systemd timer (deploy/install-autoupdate.sh).
 name: build
 
 on:
