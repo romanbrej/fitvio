@@ -77,6 +77,24 @@
 .stack { display: flex; flex-direction: column; gap: 6px; }
 
 .form-card { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; }
+
+.progress-card { border-color: color-mix(in srgb, var(--better) 35%, var(--border)); }
+.progress-sum { font-size: 17px; font-weight: 600; }
+.progress-body { display: grid; grid-template-columns: minmax(150px, 2fr) minmax(0, 3fr); gap: 20px; margin-top: 8px; align-items: stretch; }
+.progress-hero {
+  display: flex; flex-direction: column; gap: 2px; justify-content: center;
+  background: var(--surface-2); border: 0; border-radius: 12px; padding: 10px 14px; cursor: pointer; text-align: left;
+}
+.progress-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.progress-list li { border-top: 1px solid var(--border); }
+.progress-list li:first-child { border-top: 0; }
+.progress-list button {
+  width: 100%; min-height: 44px; display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: center;
+  background: none; border: 0; padding: 2px 0; cursor: pointer; text-align: left; font-size: 17px;
+}
+.progress-label { display: inline-flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.progress-list .num { font-size: 19px; font-weight: 600; }
+.progress-dot { font-size: 13px; text-align: center; }
 .recovery-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .recovery-grid .card { padding: 8px 12px; }
 .recovery-grid .mid { font-size: 26px; }
@@ -123,5 +141,5 @@
   .delta-grid, .sport-cards, .recovery-grid { grid-template-columns: 1fr; }
   .impact-row { grid-template-columns: repeat(3, auto); }
   .impact-trend { grid-column: span 3; }
-  .form-card { grid-template-columns: 1fr; }
+  .form-card, .progress-body { grid-template-columns: 1fr; }
 }

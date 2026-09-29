@@ -92,6 +92,73 @@ def _health_series(conn, user_id: str, days: int) -> list[dict]:
         "SELECT * FROM health_days WHERE user_id = ? AND day >= ? ORDER BY day", (user_id, d0))]
 
 
+PROGRESS_WEEKS = 6
+SPORT_NAMES = {"running": "Running", "cycling": "Cycling", "swimming": "Swimming", "strength": "Gym"}
+
+
+def _change_over(points: list[tuple[str, float]], days: int) -> tuple[float, float] | None:
+    """(latest, change) vs the last value at least `days` before the latest one."""
+    if not points:
+        return None
+    last_day, last = points[-1]
+    cutoff = (date.fromisoformat(last_day[:10]) - timedelta(days=days)).isoformat()
+    before = [v for d, v in points if d[:10] <= cutoff]
+    return (last, last - before[-1]) if before else None
+
+
+def _window_change(values: list[tuple[str, float]], days: int) -> tuple[float, float] | None:
+    """Median of the last 7 days vs the 7 days `days` ago (smooths day-to-day noise)."""
+    end = date.today()
+    now = [v for d, v in values if d >= (end - timedelta(days=7)).isoformat()]
+    then = [v for d, v in values
+            if (end - timedelta(days=days + 7)).isoformat() <= d < (end - timedelta(days=days)).isoformat()]
+    if len(now) < 3 or len(then) < 3:
+        return None
+    return median(now), median(now) - median(then)
+
+
+def _item(key, label, value, change, unit, dp, higher_is_better, steady, sport=None, link=None) -> dict:
+    good = change > 0 if higher_is_better else change < 0
+    tone = "steady" if abs(change) < steady else ("improving" if good else "declining")
+    return {"key": key, "label": label, "value": None if value is None else round(value, dp),
+            "change": round(change, dp), "unit": unit, "dp": dp, "tone": tone, "score": abs(change) / steady,
+            "sport": sport, "link": link}
+
+
+def progress(conn: sqlite3.Connection, user_id: str, trends: dict, pmc: list[dict]) -> dict:
+    """Where you are getting fitter over the last 6 weeks — the wall's headline.
+
+    Only real fitness markers: Garmin VO2max, efficiency trend per sport (pace/power per heartbeat,
+    e1RM), resting HR, HRV and chronic training load. Improvements first, then steady, then declining."""
+    days = PROGRESS_WEEKS * 7
+    health = _health_series(conn, user_id, 400)
+    items = []
+    for col, label in (("vo2max", "VO₂max running"), ("vo2max_cycling", "VO₂max cycling")):
+        c = _change_over([(h["day"], h[col]) for h in health if h.get(col)], days)
+        if c:
+            items.append(_item(col, label, *c, "", 1, True, 0.05, link="vo2max"))
+    active_since = (date.today() - timedelta(days=days)).isoformat()
+    for sport, t in trends.items():
+        if t.get("pct_per_week") is not None and t.get("last_time", "") >= active_since:
+            # the metric's raw value means little on its own; the % change does
+            items.append(_item(f"trend_{sport}", f"{SPORT_NAMES.get(sport, sport)} · {t['metric'] or 'e1RM'}",
+                               None, t["pct_per_week"] * PROGRESS_WEEKS, "%", 1, True, 1.0, sport=sport))
+    rhr = _window_change([(h["day"], h["rhr"]) for h in health if h.get("rhr")], days)
+    if rhr:
+        items.append(_item("rhr", "Resting HR", *rhr, " bpm", 0, False, 1.0, link="rhr"))
+    hrv = _window_change([(h["day"], h["hrv_last_night"]) for h in health if h.get("hrv_last_night")], days)
+    if hrv:
+        items.append(_item("hrv", "HRV", *hrv, " ms", 0, True, 2.0, link="hrv"))
+    if len(pmc) > days:
+        items.append(_item("fitness", "Training fitness", pmc[-1]["fitness"],
+                           pmc[-1]["fitness"] - pmc[-1 - days]["fitness"], "", 0, True, 2.0))
+    order = {"improving": 0, "steady": 1, "declining": 2}
+    items.sort(key=lambda i: (order[i["tone"]], -i["score"]))
+    return {"weeks": PROGRESS_WEEKS, "items": items,
+            "improving": sum(i["tone"] == "improving" for i in items),
+            "declining": sum(i["tone"] == "declining" for i in items)}
+
+
 def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
     sessions = user_sessions(conn, user_id)
     today = date.today()
@@ -147,6 +214,7 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
         "trends": trends,
         "recent": [dict(r) for r in recent],
         "vo2max": vo2,
+        "progress": progress(conn, user_id, trends, series),
         "sync": sync_info(conn, cfg, user_id),
     }
 
