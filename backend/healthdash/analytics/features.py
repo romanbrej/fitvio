@@ -1,6 +1,7 @@
 """Turn a ParsedActivity into a flat feature dict + session row + chart streams."""
 from __future__ import annotations
 
+import re
 from statistics import median, pstdev
 
 from ..activity import ParsedActivity
@@ -8,7 +9,33 @@ from ..config import UserConfig
 from . import physio
 
 
-def classify_session(act: ParsedActivity, zones: list[float], lap_speed_cv: float | None) -> str:
+# Workout-name keywords (German + English), checked in this order: the planned workout says what the
+# session was meant to be, which HR alone can't tell (a "Basis" run in warm weather looks like tempo).
+NAME_TYPES = [
+    ("intervals", re.compile(r"\bvo2|\bintervall?|\bfartlek|\bhügel|\bhill|\bberg(lauf|sprints?)?\b|\bsprint"
+                             r"|\b\d+\s*[x×]\s*\d+")),
+    ("tempo", re.compile(r"\btempo|\bschwelle|\bthreshold|\bsweet ?spot")),
+    ("long", re.compile(r"\blong\b|\blongrun|\blang(e|er)?\b|\blanglauf")),
+    ("easy", re.compile(r"\bbasis|\bbase\b|\bgrundlage|\bga ?1\b|\beasy|\blocker|\brecovery|\bregeneration"
+                        r"|\breko\b|\bendurance|\bdauerlauf")),
+]
+LONG_THRESHOLD_S = {"running": 75 * 60, "cycling": 150 * 60, "swimming": 60 * 60}
+
+
+def type_from_name(name: str | None) -> str | None:
+    name = (name or "").lower()
+    return next((t for t, rx in NAME_TYPES if rx.search(name)), None)
+
+
+def workout_key(name: str | None) -> str | None:
+    """The workout part of a Garmin name ("City - VO2max" → "vo2max"), to compare like with like."""
+    if not name:
+        return None
+    return name.rsplit(" - ", 1)[-1].strip().lower() or None
+
+
+def classify_session(act: ParsedActivity, zones: list[float], lap_speed_cv: float | None,
+                     lthr: float | None = None, steady_hr: float | None = None) -> str:
     if act.sport == "strength":
         return "strength"
     if act.sport not in {"running", "cycling", "swimming"}:
@@ -16,15 +43,20 @@ def classify_session(act: ParsedActivity, zones: list[float], lap_speed_cv: floa
     name = (act.name or "").lower()
     if any(w in name for w in ("race", "wettkampf", "parkrun", "marathon", "10k", "5k", "time trial", "tt ")):
         return "race"
+    is_long = act.duration_s >= LONG_THRESHOLD_S[act.sport]
+    by_name = type_from_name(name)
+    if by_name:
+        return "long" if by_name == "easy" and is_long else by_name
     hard = zones[3] + zones[4]
     if lap_speed_cv is not None and lap_speed_cv > 0.15 and hard > 0.12:
         return "intervals"
-    if hard > 0.35 or zones[2] + hard > 0.55:
+    if act.sport == "running" and lthr and steady_hr:
+        # threshold-based (Friel): below ~90 % of LTHR is aerobic endurance, above it tempo/threshold
+        if steady_hr >= 0.90 * lthr:
+            return "tempo"
+    elif hard > 0.35 or zones[2] + hard > 0.55:
         return "tempo"
-    long_threshold = {"running": 75 * 60, "cycling": 150 * 60, "swimming": 60 * 60}[act.sport]
-    if act.duration_s >= long_threshold:
-        return "long"
-    return "easy"
+    return "long" if is_long else "easy"
 
 
 def _lap_speed_cv(act: ParsedActivity) -> float | None:
@@ -45,6 +77,10 @@ def compute_features(act: ParsedActivity, user: UserConfig) -> dict:
     zones = physio.zone_distribution(recs, user.max_hr, user.rest_hr)
     f: dict = {"zones": [round(z, 3) for z in zones]}
     steady = physio.steady_slice(recs)
+    lap_cv = _lap_speed_cv(act)
+    session_type = classify_session(act, zones, lap_cv, user.lthr, physio.avg_hr(steady))
+    f["lap_speed_cv"] = lap_cv
+    f["workout_key"] = workout_key(act.name)
 
     if act.sport == "running":
         gap_all = physio.grade_adjusted_speeds(recs)
@@ -66,6 +102,8 @@ def compute_features(act: ParsedActivity, user: UserConfig) -> dict:
             "avg_cadence": _avg([r.cadence for r in recs]),
             "heat_adj_pct": heat_pct,
         })
+        if session_type == "intervals":
+            f.update(physio.interval_reps(act.laps) or {})
     elif act.sport == "cycling":
         if act.has_power:
             p1 = physio.power_series_1hz(recs)
@@ -120,7 +158,6 @@ def compute_features(act: ParsedActivity, user: UserConfig) -> dict:
         f["weather"] = act.weather
     if act.heat_acclimation is not None:
         f["heat_acclimation"] = act.heat_acclimation
-    session_type = classify_session(act, zones, _lap_speed_cv(act))
     load = physio.trimp(recs, user.rest_hr, user.max_hr, user.sex, act.avg_hr, act.duration_s)
     return {"features": _round(f), "session_type": session_type, "load": round(load, 1)}
 

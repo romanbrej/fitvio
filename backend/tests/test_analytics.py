@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from healthdash.activity import ParsedActivity, Record, normalize_sport
+from healthdash.activity import Lap, ParsedActivity, Record, normalize_sport
 from healthdash.analytics import load, physio
 from healthdash.analytics.features import compute_features
 from healthdash.config import UserConfig
@@ -102,3 +102,68 @@ def test_session_classification_uses_hr_reserve():
     assert compute_features(run_activity(137, minutes=90), USER)["session_type"] == "long"
     assert compute_features(run_activity(170), USER)["session_type"] == "tempo"
     assert compute_features(run_activity(170, name="Parkrun"), USER)["session_type"] == "race"
+
+
+LTHR_USER = UserConfig(id="u", name="Test User", max_hr=194, rest_hr=50, lthr=176)
+
+
+def test_workout_name_decides_the_type():
+    # a "Basis" run at 155 bpm is tempo by HR reserve, but it was meant (and run) as an easy run
+    assert compute_features(run_activity(155, name="City - Basis"), USER)["session_type"] == "easy"
+    assert compute_features(run_activity(155, minutes=90, name="Basis"), USER)["session_type"] == "long"
+    assert compute_features(run_activity(170, name="City - Schwelle"), USER)["session_type"] == "tempo"
+    assert compute_features(run_activity(137, name="City - Tempo"), USER)["session_type"] == "tempo"
+    assert compute_features(run_activity(170, name="City - VO2max"), USER)["session_type"] == "intervals"
+    assert compute_features(run_activity(170, name="6x800"), USER)["session_type"] == "intervals"
+    assert compute_features(run_activity(140, name="Langer Lauf"), USER)["session_type"] == "long"
+    # place names that merely contain a keyword don't count
+    assert compute_features(run_activity(137, name="Langenhagen Running"), USER)["session_type"] == "easy"
+
+
+def test_hr_fallback_uses_lthr():
+    # 155 bpm = 88 % of LTHR 176 → easy (HR reserve alone would call it tempo)
+    assert compute_features(run_activity(155), LTHR_USER)["session_type"] == "easy"
+    assert compute_features(run_activity(165), LTHR_USER)["session_type"] == "tempo"
+
+
+def interval_activity(name="City - VO2max", work_speed=4.5):
+    """10' warm-up, 5 × (3' fast / 3' jog), 10' cool-down, as a Garmin structured workout lays out laps."""
+    laps, recs, t, dist = [], [], 0, 0.0
+    plan = [(600, 2.8, 140)] + [(180, work_speed, 172), (180, 2.5, 145)] * 5 + [(600, 2.7, 138)]
+    for dur, v, hr in plan:
+        laps.append(Lap(start_s=t, duration_s=dur, distance_m=v * dur, avg_hr=hr, avg_speed=v))
+        for i in range(dur):
+            dist += v
+            recs.append(Record(t=t + i, hr=hr, speed=v, distance=dist, altitude=100.0))
+        t += dur
+    return ParsedActivity(activity_id=name, start_time=datetime(2026, 9, 1, 7), sport="running", name=name,
+                          duration_s=t, distance_m=dist, records=recs, laps=laps)
+
+
+def test_interval_reps_judge_only_the_work():
+    f = compute_features(interval_activity(), USER)
+    assert f["session_type"] == "intervals"
+    feats = f["features"]
+    assert feats["rep_count"] == 5
+    assert feats["work_speed"] == pytest.approx(4.5)
+    assert feats["work_hr"] == pytest.approx(172)
+    assert feats["hr_recovery"] == pytest.approx(27)
+    assert feats["workout_key"] == "vo2max"
+
+
+def test_intervals_use_rep_metrics_and_same_workout():
+    from healthdash.models.sports import model_for
+
+    def session(i, name, speed, day):
+        f = compute_features(interval_activity(name, speed), USER)
+        return {"id": f"s{i}", "user_id": "u", "sport": "running", "session_type": f["session_type"],
+                "start_time": f"2026-09-{day:02d}T07:00:00", "duration_s": 5400, "indoor": 0,
+                "features": f["features"], "load": f["load"]}
+
+    history = [session(i, "City - VO2max", 4.4, 1 + i) for i in range(3)]
+    history += [session(10 + i, "City - 400er", 5.5, 5 + i) for i in range(3)]  # different workout, faster reps
+    today = session(99, "City - VO2max", 4.5, 20)
+    v = model_for("running").evaluate(today, history, None, None)
+    assert {d["key"] for d in v["deltas"]} == {"work_speed", "work_ef", "hr_recovery"}
+    assert set(v["baseline_ids"]) == {"s0", "s1", "s2"}   # VO2max vs VO2max, not vs the 400s
+    assert v["verdict"] == "better"

@@ -43,6 +43,10 @@ class SportModel:
     primary: str | None = None  # metric key used for the 6-week trend
 
     # --- hooks -----------------------------------------------------------
+    def metrics_for(self, session: dict) -> list[MetricSpec]:
+        """The metrics that judge this session (a sport can switch them by session type)."""
+        return self.metrics
+
     def load_only_reason(self, session: dict) -> str | None:
         """Return a reason if this session can only be judged by load (no performance model)."""
         return None
@@ -94,7 +98,7 @@ class SportModel:
         headline = {"better": f"Better than your recent {noun}",
                     "worse": f"Below your recent {noun}",
                     "in_line": f"In line with your recent {noun}"}[verdict]
-        reasons = self.reasons(deltas, len(similar), noun)
+        reasons = self.reasons(session, deltas, len(similar), noun)
         reasons += self.extra_reasons(session, same_sport)
         return self._result(session, verdict, confidence, score, headline, reasons, deltas, context, trend,
                             [s["id"] for s in similar])
@@ -111,7 +115,7 @@ class SportModel:
 
     def compare(self, session: dict, similar: list[dict]) -> list[dict]:
         out = []
-        for m in self.metrics:
+        for m in self.metrics_for(session):
             v = m.value(session)
             base_vals = [x for x in (m.value(s) for s in similar) if x is not None]
             row = {"key": m.key, "label": m.label, "value": v, "baseline": None, "delta": None,
@@ -137,7 +141,7 @@ class SportModel:
             out.append(row)
         return out
 
-    def reasons(self, deltas: list[dict], n: int, noun: str) -> list[str]:
+    def reasons(self, session: dict, deltas: list[dict], n: int, noun: str) -> list[str]:
         ranked = sorted((d for d in deltas if d["z"] is not None), key=lambda d: -abs(d["z"] * d["weight"]))
         out = []
         for d in ranked[:3]:
@@ -145,10 +149,10 @@ class SportModel:
                 out.append(f"{d['label']} in line with your {n} similar {noun} ({d['value_fmt']} vs {d['baseline_fmt']})")
                 continue
             word = "better" if d["z"] > 0 else "worse"
-            if d["delta_pct"] is not None and self._metric(d["key"]).mode == "rel":
+            if d["delta_pct"] is not None and self._metric(d["key"], session).mode == "rel":
                 size = f"{abs(d['delta_pct']):.1f}%"
             else:
-                size = self._metric(d["key"]).fmt(abs(d["delta"]))
+                size = self._metric(d["key"], session).fmt(abs(d["delta"]))
             out.append(f"{d['label']} {size} {word} than your {n} similar {noun} ({d['value_fmt']} vs {d['baseline_fmt']})")
         return out
 
@@ -208,8 +212,8 @@ class SportModel:
             notes.append({"kind": "rpe", "text": f"You rated effort {session['rpe']:.0f}/10"})
         return notes
 
-    def _metric(self, key: str) -> MetricSpec:
-        return next(m for m in self.metrics if m.key == key)
+    def _metric(self, key: str, session: dict | None = None) -> MetricSpec:
+        return next(m for m in (self.metrics_for(session) if session else self.metrics) if m.key == key)
 
     @staticmethod
     def _result(session, verdict, confidence, score, headline, reasons, deltas, context, trend, baseline_ids) -> dict:

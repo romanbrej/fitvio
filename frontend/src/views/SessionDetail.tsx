@@ -63,6 +63,8 @@ function facts(s: SessionDetail): [string, string][] {
       ['Efficiency', num(f.ef_adj, 2)], ['HR drift', f.decoupling != null ? `${num(f.decoupling, 1)} %` : '—'],
       [`Pace @ ${f.ref_hr ?? ''} bpm`, f.speed_at_ref_hr ? `${pace(f.speed_at_ref_hr)} /km` : '—'],
       ['Cadence', f.avg_cadence ? `${num(f.avg_cadence * (f.avg_cadence < 120 ? 2 : 1))} spm` : '—'])
+    if (f.work_speed) out.push(['Reps', num(f.rep_count)], ['Rep pace', `${pace(f.work_speed)} /km`],
+      ['Rep HR', `${num(f.work_hr)} bpm`], ['HR drop between reps', `${num(f.hr_recovery)} bpm`])
   }
   if (s.sport === 'cycling') {
     if (f.avg_power) out.push(['Avg power', `${num(f.avg_power)} W`], ['Norm. power', `${num(f.np)} W`],

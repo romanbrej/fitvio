@@ -30,9 +30,30 @@ class RunningModel(SportModel):
         MetricSpec("decoupling", "HR drift", -1, 0.20, fmt_num(1, " %"), mode="abs", noise=1.5),
     ]
 
+    # intervals: only the work reps count — the recovery jogs would dilute pace and efficiency,
+    # and HR drift across reps is noise
+    interval_metrics = [
+        MetricSpec("work_speed", "Rep pace", +1, 0.4, fmt_pace_km),
+        MetricSpec("work_ef", "Rep efficiency", +1, 0.4, fmt_num(2, " m/beat")),
+        MetricSpec("hr_recovery", "HR recovery between reps", +1, 0.2, fmt_num(0, " bpm"), mode="abs", noise=2.0),
+    ]
+
+    def metrics_for(self, session):
+        return self.interval_metrics if session["session_type"] == "intervals" else self.metrics
+
     def is_similar(self, session, other):
         # treadmill and outdoor pace are not comparable
         return super().is_similar(session, other) and bool(other.get("indoor")) == bool(session.get("indoor"))
+
+    def find_similar(self, session, same_sport):
+        """Intervals: the same workout (VO2max vs VO2max) when there are enough, else any intervals."""
+        if session["session_type"] == "intervals":
+            key = (session.get("features") or {}).get("workout_key")
+            same = [h for h in same_sport if key and (h.get("features") or {}).get("workout_key") == key]
+            found = super().find_similar(session, same)
+            if len(found) >= MIN_SIMILAR:
+                return found
+        return super().find_similar(session, same_sport)
 
 
 class CyclingModel(SportModel):

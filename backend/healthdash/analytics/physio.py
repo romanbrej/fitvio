@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 from statistics import median
 
-from ..activity import Record
+from ..activity import Lap, Record
 
 MAX_GAP_S = 10.0  # longer gaps between records are treated as pauses
 
@@ -222,6 +222,57 @@ def epley_1rm(weight_kg: float | None, reps: int | None) -> float | None:
     if reps == 1:
         return weight_kg
     return weight_kg * (1 + min(reps, 15) / 30)
+
+
+def avg_hr(records: list[Record]) -> float | None:
+    """Time-weighted average HR."""
+    num = den = 0.0
+    for r, dt in zip(records, _dt(records)):
+        if r.hr and r.hr >= 60 and dt:
+            num += r.hr * dt
+            den += dt
+    return num / den if den else None
+
+
+def interval_reps(laps: list[Lap], min_lap_s: float = 20.0) -> dict | None:
+    """Split a structured workout's laps into work reps and recoveries.
+
+    Warm-up and cool-down (first and last lap, when there are 5+) are dropped; the rest is split at the
+    midpoint between the slowest and fastest lap. Judging reps only keeps the recovery jogs out of pace
+    and efficiency, which is what made intervals look "worse" with the steady-run metrics.
+    """
+    laps = [lap for lap in laps if lap.duration_s >= min_lap_s and _lap_speed(lap)]
+    if len(laps) >= 5:
+        laps = laps[1:-1]
+    if len(laps) < 3:
+        return None
+    speeds = [_lap_speed(lap) for lap in laps]
+    cut = (min(speeds) + max(speeds)) / 2
+    work = [lap for lap, v in zip(laps, speeds) if v > cut]
+    rest = [lap for lap, v in zip(laps, speeds) if v <= cut]
+    if len(work) < 2 or not rest or max(speeds) < min(speeds) * 1.1:
+        return None
+
+    def weighted(ls, get):
+        pts = [(get(lap), lap.duration_s) for lap in ls if get(lap)]
+        return sum(v * d for v, d in pts) / sum(d for _, d in pts) if pts else None
+
+    work_speed = weighted(work, _lap_speed)
+    work_hr = weighted(work, lambda lap: lap.avg_hr)
+    rest_hr = weighted(rest, lambda lap: lap.avg_hr)
+    return {
+        "rep_count": len(work),
+        "work_speed": work_speed,
+        "work_hr": work_hr,
+        "work_ef": work_speed * 60 / work_hr if work_speed and work_hr else None,  # m/min per beat
+        "hr_recovery": work_hr - rest_hr if work_hr and rest_hr else None,     # bpm drop in recoveries
+    }
+
+
+def _lap_speed(lap: Lap) -> float | None:
+    if lap.avg_speed:
+        return lap.avg_speed
+    return lap.distance_m / lap.duration_s if lap.distance_m and lap.duration_s else None
 
 
 # --- Stats helpers ------------------------------------------------------------

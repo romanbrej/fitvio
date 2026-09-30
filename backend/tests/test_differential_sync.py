@@ -194,6 +194,7 @@ def test_edited_activity_is_reingested_without_retaking_the_wall(tmp_path, monke
     pipeline.evaluate_session(conn, "u", sid)
     conn.execute("UPDATE verdicts SET first_shown_at = '2026-09-29T07:00:00'")
     conn.commit()
+    db.set_state(conn, "analysis_version:u", pipeline.ANALYSIS_VERSION)
 
     class FakeReader:
         def __init__(self, base):
@@ -222,6 +223,12 @@ def test_edited_activity_is_reingested_without_retaking_the_wall(tmp_path, monke
     assert (row["name"], row["feel"]) == ("Morning Tempo", 75)
     shown = conn.execute("SELECT first_shown_at FROM verdicts WHERE session_id = ?", (sid,)).fetchone()[0]
     assert shown == "2026-09-29T07:00:00"
+
+    # a new analysis version (after a deploy) reprocesses the whole history once, then stays differential
+    db.set_state(conn, "analysis_version:u", "old")
+    assert pipeline.ingest_from_garmindb(conn, user, changed_since=start)["reprocessed"] is True
+    assert db.get_state(conn, "analysis_version:u") == pipeline.ANALYSIS_VERSION
+    assert pipeline.ingest_from_garmindb(conn, user, changed_since=start)["reprocessed"] is False
 
 
 @pytest.mark.parametrize("result, full, text", [
