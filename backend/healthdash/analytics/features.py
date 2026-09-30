@@ -12,12 +12,12 @@ from . import physio
 # Workout-name keywords (German + English), checked in this order: the planned workout says what the
 # session was meant to be, which HR alone can't tell (a "Basis" run in warm weather looks like tempo).
 NAME_TYPES = [
-    ("intervals", re.compile(r"\bvo2|\bintervall?|\bfartlek|\bhügel|\bhill|\bberg(lauf|sprints?)?\b|\bsprint"
+    ("intervals", re.compile(r"\bvo2|\banaerob|\bintervall?|\bfartlek|\bhügel|\bhill|\bberg(lauf|sprints?)?\b|\bsprint"
                              r"|\b\d+\s*[x×]\s*\d+")),
     ("tempo", re.compile(r"\btempo|\bschwelle|\bthreshold|\bsweet ?spot")),
     ("long", re.compile(r"\blong\b|\blongrun|\blang(e|er)?\b|\blanglauf")),
     ("easy", re.compile(r"\bbasis|\bbase\b|\bgrundlage|\bga ?1\b|\beasy|\blocker|\brecovery|\bregeneration"
-                        r"|\breko\b|\bendurance|\bdauerlauf")),
+                        r"|\breko\b|\berholung|\bendurance|\bdauerlauf")),
 ]
 LONG_THRESHOLD_S = {"running": 75 * 60, "cycling": 150 * 60, "swimming": 60 * 60}
 

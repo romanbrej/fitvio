@@ -91,7 +91,8 @@ def store_health(conn: sqlite3.Connection, user_id: str, days: list[dict]) -> No
 # Bump when features, session types or verdict logic change: the next sync then reprocesses every
 # activity, so a deploy alone brings the whole history up to date.
 # 2: run type from the workout name / LTHR, intervals judged on work reps
-ANALYSIS_VERSION = "2"
+# 3: "Erholung" (easy) and "Anaerob" (intervals) workout names
+ANALYSIS_VERSION = "3"
 
 
 def ingest_from_garmindb(conn: sqlite3.Connection, user: UserConfig, full: bool = False,

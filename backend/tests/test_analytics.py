@@ -116,6 +116,9 @@ def test_workout_name_decides_the_type():
     assert compute_features(run_activity(170, name="City - VO2max"), USER)["session_type"] == "intervals"
     assert compute_features(run_activity(170, name="6x800"), USER)["session_type"] == "intervals"
     assert compute_features(run_activity(140, name="Langer Lauf"), USER)["session_type"] == "long"
+    assert compute_features(run_activity(170, name="City - Erholung"), USER)["session_type"] == "easy"
+    assert compute_features(run_activity(137, name="Town - Anaerob"), USER)["session_type"] == "intervals"
+    assert compute_features(run_activity(170, name="Laufen Intervalle W1"), USER)["session_type"] == "intervals"
     # place names that merely contain a keyword don't count
     assert compute_features(run_activity(137, name="Langenhagen Running"), USER)["session_type"] == "easy"
 
