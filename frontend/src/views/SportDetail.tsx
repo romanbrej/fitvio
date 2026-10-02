@@ -8,7 +8,9 @@ import { useFetch } from '../useFetch'
 import './Detail.css'
 
 const PRIMARY: Record<string, { label: string; get: (f: Record<string, any>) => number | null | undefined; fmt: (v: number) => string }> = {
-  running: { label: 'Aerobic efficiency (m/beat, grade & heat adjusted)', get: f => f.ef_adj, fmt: v => v.toFixed(2) },
+  // pace at the reference HR in s/km (heat & grade adjusted) — lower is faster, like on the wall card
+  running: { label: 'Pace at fixed HR (/km, grade & heat adjusted) — lower is faster',
+             get: f => { const v = f.speed_at_ref_hr_adj ?? f.speed_at_ref_hr; return v ? 1000 / v : null }, fmt: v => duration(v) },
   cycling: { label: 'Power per heartbeat (W/beat)', get: f => f.ef, fmt: v => v.toFixed(2) },
   swimming: { label: 'Pace per 100 m (s) — lower is better', get: f => f.pace_100m_s, fmt: v => duration(v) },
   strength: { label: 'Session volume (kg)', get: f => f.total_volume, fmt: v => num(v) },
@@ -61,7 +63,7 @@ export function SportDetail() {
                 <ComposedChart data={withTrend} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                   <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']} scale="time" tickFormatter={v => shortDay(new Date(v).toISOString())} minTickGap={40} />
-                  <YAxis width={52} domain={['auto', 'auto']} reversed={sport === 'swimming'} tickFormatter={p.fmt} />
+                  <YAxis width={52} domain={['auto', 'auto']} reversed={sport === 'swimming' || sport === 'running'} tickFormatter={p.fmt} />
                   <Tooltip labelFormatter={v => shortDay(new Date(Number(v)).toISOString())} formatter={(v, k) => [p.fmt(Number(v)), k === 'trend' ? 'Trend (5-session median)' : 'Session']} />
                   <Line dataKey="trend" stroke="var(--primary)" strokeWidth={2.5} dot={false} isAnimationActive={false} />
                   <Scatter dataKey="v" isAnimationActive={false} onClick={(d: any) => d?.payload?.id && nav(`/session/${encodeURIComponent(d.payload.id)}`)}

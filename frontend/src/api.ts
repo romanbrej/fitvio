@@ -66,6 +66,12 @@ export interface HealthDay {
 export interface SportTrend {
   last_session: string; last_time: string; last_verdict: VerdictKind; metric: string | null
   pct_per_week: number | null; points: { day: string; value: number }[]
+  /** running/cycling headline in real units, computed live */
+  status?: {
+    pace_s_per_km?: number; change_s_per_km?: number | null
+    w_per_beat?: number | null; w_per_beat_change_pct?: number | null; ftp_wkg?: number | null; hr_wkg?: number | null
+    ref_hr?: number | null; points: { day: string; value: number }[]
+  } | null
 }
 
 export interface WeekTotals { [sport: string]: { count: number; duration_s: number; distance_m: number; load: number } }

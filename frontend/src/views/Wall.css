@@ -90,6 +90,8 @@
 .fitness-strip-spark { min-width: 0; }
 .pmc-today { display: flex; flex-wrap: wrap; gap: 4px 18px; }
 .pmc-delta { font-size: 13px; }
+.sport-main { font-size: 17px; }
+.sport-main b { font-size: 28px; }
 .recovery-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .recovery-grid .card { padding: 8px 12px; }
 .recovery-grid .mid { font-size: 26px; }

@@ -1,7 +1,7 @@
 import { BatteryMedium, BedDouble, Brain, CheckCircle2, Gauge, HeartPulse, Waves } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Area, AreaChart, Line, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from 'recharts'
-import type { Ambient, Sport } from '../api'
+import type { Ambient, Sport, SportTrend } from '../api'
 import { SportIcon, VerdictPill } from '../components/icons'
 import { ImprovementList, improvedCount } from '../components/Improvements'
 import { Sparkline } from '../components/Sparkline'
@@ -21,6 +21,63 @@ const SPORTS: Sport[] = ['running', 'cycling', 'swimming', 'strength']
 function shortWhen(iso: string): string {
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
   return days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days}d ago`
+}
+
+function trendTone(v: number | null | undefined, threshold: number): string {
+  return v == null ? 'muted' : v >= threshold ? 'better' : v <= -threshold ? 'worse' : 'inline'
+}
+
+/** Sport card body: running = pace at the fixed HR, cycling = W/beat + W/kg, others = 6-week trend. */
+function SportCardBody({ sport, t }: { sport: Sport; t: SportTrend }) {
+  const st = t.status
+  const footer = (left: React.ReactNode, tone: string) => (
+    <div className="between" style={{ fontSize: 15 }}>
+      <span className={`tone-${tone}`}>{left}</span>
+      <span className="muted" style={{ whiteSpace: 'nowrap' }}>{shortWhen(t.last_time)}</span>
+    </div>
+  )
+  if (sport === 'running' && st?.pace_s_per_km) {
+    const c = st.change_s_per_km
+    const tone = trendTone(c, 2)
+    return (
+      <>
+        <div className="sport-main"><b className="num">{duration(st.pace_s_per_km)}</b> /km <span className="muted">@{num(st.ref_hr)} bpm</span></div>
+        {/* pace: lower is faster, so plot it negated — up means faster */}
+        <Sparkline height={30} values={st.points.map(p => -p.value)} color={`var(--${tone === 'muted' ? 'muted' : tone})`} />
+        {footer(c == null ? 'Not enough runs for a trend' : Math.abs(c) < 2 ? '● steady over 6 weeks'
+          : `${c > 0 ? '▲' : '▼'} ${Math.abs(c).toFixed(0)} s/km ${c > 0 ? 'faster' : 'slower'} in 6 weeks`, tone)}
+      </>
+    )
+  }
+  if (sport === 'cycling' && st) {
+    const c = st.w_per_beat_change_pct
+    const tone = trendTone(c, 1)
+    return (
+      <>
+        <div className="sport-main">
+          {st.w_per_beat != null ? <><b className="num">{st.w_per_beat.toFixed(2)}</b> W/beat</> : <span className="muted">No rides with power in 3 months</span>}
+        </div>
+        <div className="muted" style={{ fontSize: 15 }}>
+          {st.ftp_wkg != null && <>FTP <b className="num">{st.ftp_wkg.toFixed(1)}</b> W/kg</>}
+          {st.hr_wkg != null && <> · <b className="num">{st.hr_wkg.toFixed(1)}</b> W/kg @{num(st.ref_hr)} bpm</>}
+        </div>
+        {footer(c == null ? (st.w_per_beat != null ? 'Too few power rides for a trend' : '') : `${signed(c, 1, '%')} W/beat in 3 months`, tone)}
+      </>
+    )
+  }
+  const pct6 = t.pct_per_week == null ? null : t.pct_per_week * 6
+  const tone = trendTone(pct6, 1.2)
+  return (
+    <>
+      <Sparkline height={36} values={t.points.map(p => p.value)} color={`var(--${tone === 'muted' ? 'muted' : tone})`} />
+      <div className="between" style={{ fontSize: 15 }}>
+        <span className={`tone-${tone}`}>
+          {pct6 == null ? (sport === 'strength' ? 'Tap for lifts' : 'Not enough data') : `${signed(pct6, 1, '%')} in 6 weeks`}
+        </span>
+        <span className="muted" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.metric ?? 'e1RM'} · {shortWhen(t.last_time)}</span>
+      </div>
+    </>
+  )
 }
 
 /** One of fitness / fatigue / form with today's change; a drop in form after training is expected, so it stays neutral. */
@@ -170,18 +227,7 @@ export function WallAmbient({ ambient: a }: { ambient: Ambient }) {
                 <span className="card-title" style={{ margin: 0 }}><SportIcon sport={s} size={18} /> {SPORT_LABEL[s]}</span>
                 {t && <VerdictPill verdict={t.last_verdict} />}
               </div>
-              {t ? (
-                <>
-                  <Sparkline height={36} values={t.points.map(p => p.value)}
-                             color={t.pct_per_week == null ? 'var(--muted)' : t.pct_per_week > 0.2 ? 'var(--better)' : t.pct_per_week < -0.2 ? 'var(--worse)' : 'var(--inline)'} />
-                  <div className="between" style={{ fontSize: 15 }}>
-                    <span className={t.pct_per_week == null ? 'muted' : t.pct_per_week > 0.2 ? 'tone-better' : t.pct_per_week < -0.2 ? 'tone-worse' : 'tone-inline'}>
-                      {t.pct_per_week == null ? (s === 'strength' ? 'Tap for lifts' : 'Not enough data') : `${signed(t.pct_per_week, 1, '%')}/wk`}
-                    </span>
-                    <span className="muted" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.metric ?? 'e1RM'} · {shortWhen(t.last_time)}</span>
-                  </div>
-                </>
-              ) : <div className="muted">No sessions yet</div>}
+              {t ? <SportCardBody sport={s} t={t} /> : <div className="muted">No sessions yet</div>}
             </button>
           )
         })}

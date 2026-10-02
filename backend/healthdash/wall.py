@@ -5,8 +5,9 @@ import sqlite3
 from datetime import date, datetime, timedelta
 from statistics import median
 
-from . import db, improvements
+from . import db, improvements, profile
 from .analytics import load as load_model
+from .analytics import physio
 from .config import AppConfig
 from .pipeline import user_sessions
 
@@ -101,6 +102,55 @@ def _is_today(start_time: str, now: datetime | None = None) -> bool:
     return start_time[:10] == (now or _now()).date().isoformat()
 
 
+def sport_status(sessions: list[dict], sport: str, ftp: float | None, weights: improvements.Weights,
+                 today: date) -> dict | None:
+    """The sport card's headline in real units, computed live from the sessions.
+
+    running: pace at the fixed reference HR (heat & grade adjusted) of the steady outdoor runs in 6 weeks,
+             and how many s/km it changed over that time (+ = faster).
+    cycling: power per heartbeat of the rides with power in 3 months, plus W/kg of FTP and of the
+             power at the reference HR.
+    """
+    def recent(days, keep):
+        lo = (today - timedelta(days=days)).isoformat()
+        return sorted((s for s in sessions if s["sport"] == sport and s["start_time"][:10] >= lo and keep(s)),
+                      key=lambda s: s["start_time"])
+
+    if sport == "running":
+        runs = recent(42, lambda s: s["session_type"] not in {"intervals", "race"} and not s.get("indoor"))
+        pts = []
+        for s in runs:
+            f = s.get("features") or {}
+            v = f.get("speed_at_ref_hr_adj") or f.get("speed_at_ref_hr")
+            if v:
+                pts.append((s["start_time"], 1000 / v, f.get("ref_hr")))
+        if not pts:
+            return None
+        change = None
+        if len(pts) >= 4:
+            x0 = datetime.fromisoformat(pts[0][0])
+            xs = [(datetime.fromisoformat(t) - x0).total_seconds() / 86400 for t, _, _ in pts]
+            slope = physio.linear_slope(xs, [p for _, p, _ in pts])
+            change = round(-slope * 42, 1) if slope is not None else None  # s/km faster over 6 weeks
+        return {"pace_s_per_km": round(median(p for _, p, _ in pts[-3:]), 1), "ref_hr": pts[-1][2],
+                "change_s_per_km": change, "points": [{"day": t[:10], "value": round(p, 1)} for t, p, _ in pts]}
+
+    if sport == "cycling":
+        rides = [s for s in recent(90, lambda s: s.get("has_power")) if (s.get("features") or {}).get("ef")]
+        last = rides[-1] if rides else None
+        lf = (last or {}).get("features") or {}
+        today_kg = weights.at(today.isoformat())
+        ride_kg = weights.at(last["start_time"][:10]) if last else None
+        efs = [s["features"]["ef"] for s in rides]
+        change = round((efs[-1] - efs[0]) / efs[0] * 100, 1) if len(efs) >= 3 and efs[0] else None
+        return {"w_per_beat": round(efs[-1], 2) if efs else None, "w_per_beat_change_pct": change,
+                "ftp_wkg": round(ftp / today_kg, 2) if ftp and today_kg else None,
+                "hr_wkg": round(lf["power_at_ref_hr"] / ride_kg, 2) if lf.get("power_at_ref_hr") and ride_kg else None,
+                "ref_hr": lf.get("ref_hr"),
+                "points": [{"day": s["start_time"][:10], "value": round(s["features"]["ef"], 3)} for s in rides]}
+    return None
+
+
 def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
     sessions = user_sessions(conn, user_id)
     today = date.today()
@@ -149,6 +199,15 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
             trends[sport] = {"last_session": t["id"], "last_time": t["start_time"], "last_verdict": t["verdict"],
                              "metric": t["trend"].get("trend_metric"), "pct_per_week": t["trend"].get("trend_pct_per_week"),
                              "points": t["trend"].get("trend_points", [])}
+    if trends:
+        prof = profile.stored(conn, user_id)
+        weigh_ins = [dict(r) for r in conn.execute(
+            "SELECT day, weight_kg FROM health_days WHERE user_id = ? AND weight_kg IS NOT NULL ORDER BY day", (user_id,))]
+        weights = improvements.Weights(weigh_ins, (prof.get("weight_kg") or {}).get("value"))
+        for sport in ("running", "cycling"):
+            if sport in trends:
+                trends[sport]["status"] = sport_status(sessions, sport, (prof.get("ftp") or {}).get("value"),
+                                                       weights, today)
 
     recent = conn.execute(
         """SELECT s.id, s.name, s.sport, s.session_type, s.start_time, s.duration_s, s.distance_m, s.load,

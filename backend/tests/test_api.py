@@ -80,3 +80,27 @@ def test_session_detail_and_lists(client):
 
 def test_unknown_user_404(client):
     assert client.get("/api/users/nope/ambient").status_code == 404
+
+
+def test_sport_status_running_pace_and_cycling_wkg():
+    from datetime import date as d
+    from healthdash import improvements, wall
+    today = d(2026, 10, 2)
+
+    def run(day, speed, typ="easy"):
+        return {"sport": "running", "session_type": typ, "indoor": 0, "start_time": f"2026-09-{day:02d}T07:00:00",
+                "features": {"speed_at_ref_hr_adj": speed, "ref_hr": 151}}
+
+    # 5 steady runs getting faster at 151 bpm (6:40 → 6:20 /km); the fast intervals must not count
+    runs = [run(1 + 7 * i, 1000 / (400 - 5 * i)) for i in range(5)] + [run(30, 1000 / 240, "intervals")]
+    st = wall.sport_status(runs, "running", None, improvements.Weights([], 85), today)
+    assert st["pace_s_per_km"] == pytest.approx(385, abs=1)   # median of the last 3 steady runs
+    assert st["change_s_per_km"] > 15 and st["ref_hr"] == 151
+
+    ride = {"sport": "cycling", "session_type": "easy", "has_power": 1, "start_time": "2026-09-20T07:00:00",
+            "features": {"ef": 1.14, "power_at_ref_hr": 170.0, "ref_hr": 151}}
+    st = wall.sport_status([ride], "cycling", 230, improvements.Weights([], 85), today)
+    assert (st["w_per_beat"], st["ftp_wkg"], st["hr_wkg"]) == (1.14, 2.71, 2.0)
+    # no rides with power: FTP W/kg still shows
+    st = wall.sport_status([], "cycling", 230, improvements.Weights([], 85), today)
+    assert st["w_per_beat"] is None and st["ftp_wkg"] == 2.71
