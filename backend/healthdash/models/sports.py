@@ -1,6 +1,8 @@
 """Sport-specific improvement models."""
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from ..analytics import load as load_model
 from .base import MIN_SIMILAR, MetricSpec, SportModel
 
@@ -37,23 +39,56 @@ class RunningModel(SportModel):
         MetricSpec("work_ef", "Rep efficiency", +1, 0.4, fmt_num(2, " m/beat")),
         MetricSpec("hr_recovery", "HR recovery between reps", +1, 0.2, fmt_num(0, " bpm"), mode="abs", noise=2.0),
     ]
+    # short reps: HR can't catch up within a rep, so pace per beat and HR drop say nothing —
+    # judge the pace and how well it held from the first to the last reps
+    short_interval_metrics = [
+        MetricSpec("work_speed", "Rep pace", +1, 0.6, fmt_pace_km),
+        MetricSpec("rep_fade", "Pace held across reps", -1, 0.4, fmt_num(1, " %"), mode="abs", noise=2.0),
+    ]
+    SHORT_REP_S = 120
+    REP_TOLERANCE = 0.30      # 1:00 reps compare with 0:46–1:18, 4:00 with 3:05–5:12
+    INTERVAL_WINDOW_DAYS = 182
 
     def metrics_for(self, session):
-        return self.interval_metrics if session["session_type"] == "intervals" else self.metrics
+        if session["session_type"] != "intervals":
+            return self.metrics
+        rep_s = (session.get("features") or {}).get("rep_s")
+        return self.short_interval_metrics if rep_s and rep_s < self.SHORT_REP_S else self.interval_metrics
 
     def is_similar(self, session, other):
         # treadmill and outdoor pace are not comparable
         return super().is_similar(session, other) and bool(other.get("indoor")) == bool(session.get("indoor"))
 
     def find_similar(self, session, same_sport):
-        """Intervals: the same workout (VO2max vs VO2max) when there are enough, else any intervals."""
-        if session["session_type"] == "intervals":
-            key = (session.get("features") or {}).get("workout_key")
-            same = [h for h in same_sport if key and (h.get("features") or {}).get("workout_key") == key]
-            found = super().find_similar(session, same)
-            if len(found) >= MIN_SIMILAR:
-                return found
-        return super().find_similar(session, same_sport)
+        """Intervals: same rep length (±30 %) in the last 6 months, the same workout first.
+        No fallback to other rep lengths or older runs — then it's honestly not comparable."""
+        if session["session_type"] != "intervals":
+            return super().find_similar(session, same_sport)
+        f = session.get("features") or {}
+        rep_s = f.get("rep_s")
+        if not rep_s:
+            return []
+        start = datetime.fromisoformat(session["start_time"])
+        lo = start - timedelta(days=self.INTERVAL_WINDOW_DAYS)
+
+        def fits(h):
+            other = (h.get("features") or {}).get("rep_s")
+            return (self.is_similar(session, h) and other and abs(other / rep_s - 1) <= self.REP_TOLERANCE
+                    and lo <= datetime.fromisoformat(h["start_time"]) < start)
+
+        cands = sorted((h for h in same_sport if fits(h)), key=lambda h: h["start_time"], reverse=True)
+        key = f.get("workout_key")
+        same = [h for h in cands if key and (h.get("features") or {}).get("workout_key") == key]
+        return (same if len(same) >= MIN_SIMILAR else cands)[:12]
+
+    def similar_noun(self, session):
+        rep_s = (session.get("features") or {}).get("rep_s")
+        if session["session_type"] == "intervals" and rep_s:
+            return f"interval runs with ~{int(rep_s // 60)}:{int(round(rep_s % 60)):02d} reps"
+        return super().similar_noun(session)
+
+    def similar_window(self, session):
+        return "the last 6 months" if session["session_type"] == "intervals" else super().similar_window(session)
 
 
 class CyclingModel(SportModel):

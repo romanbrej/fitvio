@@ -63,8 +63,13 @@ function facts(s: SessionDetail): [string, string][] {
       ['Efficiency', num(f.ef_adj, 2)], ['HR drift', f.decoupling != null ? `${num(f.decoupling, 1)} %` : '—'],
       [`Pace @ ${f.ref_hr ?? ''} bpm`, f.speed_at_ref_hr ? `${pace(f.speed_at_ref_hr)} /km` : '—'],
       ['Cadence', f.avg_cadence ? `${num(f.avg_cadence * (f.avg_cadence < 120 ? 2 : 1))} spm` : '—'])
-    if (f.work_speed) out.push(['Reps', num(f.rep_count)], ['Rep pace', `${pace(f.work_speed)} /km`],
-      ['Rep HR', `${num(f.work_hr)} bpm`], ['HR drop between reps', `${num(f.hr_recovery)} bpm`])
+    if (f.work_speed) {
+      out.push(['Reps', f.rep_s ? `${f.rep_count} × ${duration(f.rep_s)}` : num(f.rep_count)],
+        ['Rep pace', `${pace(f.work_speed)} /km`], ['Rep HR', `${num(f.work_hr)} bpm`])
+      // short reps: HR can't keep up, so the HR drop says little — show how well the pace held instead
+      if (f.rep_s && f.rep_s < 120) out.push(['Pace held', f.rep_fade != null ? (f.rep_fade > 0 ? `−${num(f.rep_fade, 1)} %` : 'held') : '—'])
+      else out.push(['HR drop between reps', `${num(f.hr_recovery)} bpm`])
+    }
   }
   if (s.sport === 'cycling') {
     if (f.avg_power) out.push(['Avg power', `${num(f.avg_power)} W`], ['Norm. power', `${num(f.np)} W`],

@@ -88,6 +88,10 @@ def delta_items(session: dict, deltas: list[dict], weight_kg: float | None) -> l
             text = "like usual" if tone == "steady" or diff == 0 else \
                 f"{abs(diff)} bpm {'more' if diff > 0 else 'less'} than usual"
             out.append(_item(key, "HR drop between reps", f"{v:.0f} bpm", text, tone))
+        elif key == "rep_fade":
+            diff = v - base  # + = more pace lost over the reps than usual
+            text = "like usual" if tone == "steady" else f"{abs(diff):.1f} % {'more' if diff > 0 else 'less'} fade than usual"
+            out.append(_item(key, "Pace held across reps", f"−{v:.1f} %" if v > 0 else "held", text, tone))
         elif key == "power_at_ref_hr":
             if weight_kg:
                 diff = (v - base) / weight_kg

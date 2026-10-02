@@ -260,8 +260,15 @@ def interval_reps(laps: list[Lap], min_lap_s: float = 20.0) -> dict | None:
     work_speed = weighted(work, _lap_speed)
     work_hr = weighted(work, lambda lap: lap.avg_hr)
     rest_hr = weighted(rest, lambda lap: lap.avg_hr)
+    rep_fade = None
+    if len(work) >= 4:  # pace lost from the first to the last third of the reps (+ = slowed down)
+        third = max(1, len(work) // 3)
+        first, last = weighted(work[:third], _lap_speed), weighted(work[-third:], _lap_speed)
+        rep_fade = (first - last) / first * 100 if first and last else None
     return {
         "rep_count": len(work),
+        "rep_s": median(lap.duration_s for lap in work),  # rep length: 1:00 and 4:00 reps aren't comparable
+        "rep_fade": rep_fade,
         "work_speed": work_speed,
         "work_hr": work_hr,
         "work_ef": work_speed * 60 / work_hr if work_speed and work_hr else None,  # m/min per beat

@@ -60,6 +60,13 @@ class SportModel:
                 return False
         return True
 
+    def similar_noun(self, session: dict) -> str:
+        """How comparable sessions are named in headlines and reasons ("easy runs")."""
+        return f"{session['session_type']} {SPORT_NOUN[self.sport]}"
+
+    def similar_window(self, session: dict) -> str:
+        return f"the last {WINDOWS_DAYS[-1]} days"
+
     def trend_eligible(self, session: dict) -> bool:
         return session["session_type"] not in {"intervals", "race"}
 
@@ -77,11 +84,11 @@ class SportModel:
                                 [lo], [], context, trend, [])
 
         similar = self.find_similar(session, same_sport)
+        noun = self.similar_noun(session)
         if len(similar) < MIN_SIMILAR:
-            noun = f"{session['session_type']} {SPORT_NOUN[self.sport]}"
             return self._result(session, "not_comparable", "low", None,
                                 f"Not comparable yet — {len(similar)} similar {noun} so far",
-                                [f"Need at least {MIN_SIMILAR} similar {noun} in the last {WINDOWS_DAYS[-1]} days to judge."],
+                                [f"Need at least {MIN_SIMILAR} similar {noun} in {self.similar_window(session)} to judge."],
                                 [], context, trend, [s["id"] for s in similar])
 
         deltas = self.compare(session, similar)
@@ -94,7 +101,6 @@ class SportModel:
         score = sum(d["weight"] * d["z"] for d in used) / wsum
         verdict = "better" if score > SCORE_THRESHOLD else "worse" if score < -SCORE_THRESHOLD else "in_line"
         confidence = "high" if len(similar) >= 6 and wsum >= 0.7 else "medium"
-        noun = f"{session['session_type']} {SPORT_NOUN[self.sport]}"
         headline = {"better": f"Better than your recent {noun}",
                     "worse": f"Below your recent {noun}",
                     "in_line": f"In line with your recent {noun}"}[verdict]

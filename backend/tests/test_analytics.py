@@ -129,10 +129,14 @@ def test_hr_fallback_uses_lthr():
     assert compute_features(run_activity(165), LTHR_USER)["session_type"] == "tempo"
 
 
-def interval_activity(name="City - VO2max", work_speed=4.5):
-    """10' warm-up, 5 × (3' fast / 3' jog), 10' cool-down, as a Garmin structured workout lays out laps."""
+def interval_activity(name="City - VO2max", work_speed=4.5, reps=5, rep_s=180, rest_s=180, fade=0.0):
+    """10' warm-up, reps × (fast / jog), 10' cool-down, as a Garmin structured workout lays out laps.
+    `fade`: total pace loss over the reps (0.1 = last rep 10 % slower than the first)."""
     laps, recs, t, dist = [], [], 0, 0.0
-    plan = [(600, 2.8, 140)] + [(180, work_speed, 172), (180, 2.5, 145)] * 5 + [(600, 2.7, 138)]
+    plan = [(600, 2.8, 140)]
+    for i in range(reps):
+        plan += [(rep_s, work_speed * (1 - fade * i / max(1, reps - 1)), 172), (rest_s, 2.5, 145)]
+    plan += [(600, 2.7, 138)]
     for dur, v, hr in plan:
         laps.append(Lap(start_s=t, duration_s=dur, distance_m=v * dur, avg_hr=hr, avg_speed=v))
         for i in range(dur):
@@ -190,3 +194,37 @@ def test_impact_of_form_before_and_after():
     assert t["form_after"] < t["form_before"]
     assert t["fatigue_after"] > t["fatigue_before"]
     assert "form_tomorrow" not in t
+
+
+def interval_session(i, start, **kw):
+    f = compute_features(interval_activity(**kw), USER)
+    return {"id": f"s{i}", "user_id": "u", "sport": "running", "session_type": f["session_type"],
+            "start_time": start, "duration_s": 3600, "indoor": 0, "features": f["features"], "load": f["load"]}
+
+
+def test_short_reps_are_not_compared_with_long_reps():
+    from healthdash.models.sports import model_for
+    today = interval_session(99, "2026-10-02T11:00:00", name="City Running", reps=8, rep_s=60, rest_s=120, work_speed=4.2)
+    vo2 = [interval_session(i, f"2026-09-{10 + i:02d}T07:00:00", reps=4, rep_s=240, rest_s=120, work_speed=3.4)
+           for i in range(4)]
+    v = model_for("running").evaluate(today, vo2, None, None)
+    assert v["verdict"] == "not_comparable"
+    assert "~1:00 reps" in v["headline"] and "last 6 months" in v["reasons"][0]
+
+
+def test_short_reps_judged_on_pace_and_how_it_held():
+    from healthdash.models.sports import model_for
+    today = interval_session(99, "2026-10-02T11:00:00", name="City Running", reps=8, rep_s=60, rest_s=120, work_speed=4.3)
+    same = [interval_session(i, f"2026-09-{10 + i:02d}T07:00:00", name="City - Anaerob", reps=7, rep_s=55,
+                             rest_s=120, work_speed=4.0, fade=0.08) for i in range(3)]
+    v = model_for("running").evaluate(today, same, None, None)
+    assert {d["key"] for d in v["deltas"]} == {"work_speed", "rep_fade"}   # no pace per beat for 1-min reps
+    assert v["verdict"] == "better"                                        # faster and held the pace
+    assert same[0]["features"]["rep_fade"] > 5 and abs(today["features"]["rep_fade"]) < 0.5
+
+
+def test_intervals_older_than_six_months_dont_count():
+    from healthdash.models.sports import model_for
+    today = interval_session(99, "2026-10-02T11:00:00", reps=8, rep_s=60, rest_s=120)
+    old = [interval_session(i, f"2025-0{2 + i}-10T07:00:00", reps=7, rep_s=60, rest_s=120) for i in range(3)]
+    assert model_for("running").evaluate(today, old, None, None)["verdict"] == "not_comparable"
