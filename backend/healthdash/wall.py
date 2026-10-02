@@ -102,6 +102,9 @@ def _is_today(start_time: str, now: datetime | None = None) -> bool:
     return start_time[:10] == (now or _now()).date().isoformat()
 
 
+REF_HR_BAND = 12.0  # bpm around the reference HR, the same band physio.speed_at_hr reads from
+
+
 def sport_status(sessions: list[dict], sport: str, ftp: float | None, weights: improvements.Weights,
                  today: date) -> dict | None:
     """The sport card's headline in real units, computed live from the sessions.
@@ -117,12 +120,15 @@ def sport_status(sessions: list[dict], sport: str, ftp: float | None, weights: i
                       key=lambda s: s["start_time"])
 
     if sport == "running":
-        runs = recent(42, lambda s: s["session_type"] not in {"intervals", "race"} and not s.get("indoor"))
+        # easy and long runs only, and only when the run's average HR was near the reference HR: tempo
+        # runs barely touch it, so their value would come from warm-up/cool-down and extrapolation
+        runs = recent(42, lambda s: s["session_type"] in {"easy", "long"} and not s.get("indoor"))
         pts = []
         for s in runs:
             f = s.get("features") or {}
             v = f.get("speed_at_ref_hr_adj") or f.get("speed_at_ref_hr")
-            if v:
+            ref, avg = f.get("ref_hr"), s.get("avg_hr")
+            if v and (not ref or not avg or abs(avg - ref) <= REF_HR_BAND):
                 pts.append((s["start_time"], 1000 / v, f.get("ref_hr")))
         if not pts:
             return None
