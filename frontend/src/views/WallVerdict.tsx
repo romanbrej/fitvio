@@ -30,7 +30,6 @@ export function WallVerdict({ session, ambient: _ambient }: { session: Session; 
   const { dismiss, config } = useApp()
   const nav = useNavigate()
   const v = session.verdict!
-  const t = v.trend
   const user = config.users.find(u => u.id === session.user_id)
   const open = () => nav(`/session/${encodeURIComponent(session.id)}`)
 
@@ -69,7 +68,7 @@ export function WallVerdict({ session, ambient: _ambient }: { session: Session; 
       </section>
 
       <section className="verdict-side">
-        <Improvements items={session.improvements ?? []} formTomorrow={t.form_tomorrow}
+        <Improvements items={session.improvements ?? []}
                       onClick={() => nav(`/u/${session.user_id}/load`)} />
 
         <button className="card facts" onClick={open}>

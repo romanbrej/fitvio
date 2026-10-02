@@ -1,6 +1,5 @@
 import { Star } from 'lucide-react'
 import type { Improvement } from '../api'
-import { formState, signed } from '../format'
 import './Improvements.css'
 
 const MARK: Record<string, string> = { improving: '▲', steady: '●', declining: '▼' }
@@ -27,11 +26,8 @@ export function improvedCount(items: Improvement[]): number {
 }
 
 /** "What improved" after an activity: fitness, performance vs your usual, VO₂max, new bests. */
-export function Improvements({ items, formTomorrow, onClick }: {
-  items: Improvement[]; formTomorrow?: number | null; onClick?: () => void
-}) {
+export function Improvements({ items, onClick }: { items: Improvement[]; onClick?: () => void }) {
   const up = improvedCount(items)
-  const fs = formState(formTomorrow)
   return (
     <button className="card improvements" onClick={onClick} disabled={!onClick}>
       <div className="between">
@@ -39,9 +35,6 @@ export function Improvements({ items, formTomorrow, onClick }: {
         {items.length > 0 && <span className={`improve-count tone-${up ? 'better' : 'inline'}`}>{up} of {items.length}</span>}
       </div>
       <ImprovementList items={items} />
-      {formTomorrow != null && (
-        <div className="improve-foot muted">Form tomorrow <b className="num" style={{ color: 'var(--form)' }}>{signed(formTomorrow, 0)}</b> · <span className={`tone-${fs.tone}`}>{fs.label}</span></div>
-      )}
     </button>
   )
 }

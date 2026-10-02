@@ -79,7 +79,7 @@ export function LoadDetail() {
           <p style={{ margin: 0 }}>
             Every activity adds training load (heart-rate based, so all sports count on the same scale).
             <b> Fitness</b> is your 42-day average load: it rises slowly and is what you are building.
-            <b> Fatigue</b> is the 7-day average: it reacts fast. <b>Form</b> = fitness − fatigue.
+            <b> Fatigue</b> is the 7-day average: it reacts fast. <b>Form</b> = fitness − fatigue, including today's training, so it drops right after a workout and recovers on rest days.
             Negative form while fitness rises means you are training productively; very negative form for long is a warning sign.
           </p>
         </div>

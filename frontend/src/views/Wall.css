@@ -83,11 +83,13 @@
 .last-workout-head { font-size: 22px; font-weight: 600; display: flex; gap: 10px; align-items: baseline; }
 .last-workout-head span { font-size: 16px; }
 .fitness-strip {
-  display: grid; grid-template-columns: auto auto minmax(80px, 1fr) auto; gap: 14px; align-items: center;
+  display: grid; grid-template-columns: auto auto minmax(80px, 1fr); gap: 14px; align-items: center;
   background: none; border: 0; border-top: 1px solid var(--border); padding: 8px 0 0; cursor: pointer;
   text-align: left; font-size: 15px;
 }
 .fitness-strip-spark { min-width: 0; }
+.pmc-today { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.pmc-delta { font-size: 13px; }
 .recovery-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .recovery-grid .card { padding: 8px 12px; }
 .recovery-grid .mid { font-size: 26px; }
@@ -135,6 +137,6 @@
   .impact-row { grid-template-columns: repeat(3, auto); }
   .impact-trend { grid-column: span 3; }
   .form-card { grid-template-columns: 1fr; }
-  .fitness-strip { grid-template-columns: 1fr 1fr; }
-  .fitness-strip-spark { grid-column: span 2; }
+  .fitness-strip { grid-template-columns: 1fr; }
+  .fitness-strip-spark { grid-column: auto; }
 }

@@ -116,8 +116,7 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
     if card:
         v = card["verdict"]
         last_workout = {k: card[k] for k in ("id", "name", "sport", "session_type", "start_time", "improvements")}
-        last_workout.update(verdict=v["verdict"], headline=v["headline"],
-                            form_tomorrow=(v.get("trend") or {}).get("form_tomorrow"))
+        last_workout.update(verdict=v["verdict"], headline=v["headline"])
     health = _health_series(conn, user_id, 42)
     latest = health[-1] if health else {}
     base = {}
@@ -160,6 +159,9 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
         "user_id": user_id,
         "pmc": series[-182:],
         "form": pmc_42[-1] if pmc_42 else None,
+        # since this morning (all of today's training): today's row minus yesterday's
+        "today_change": ({k: round(series[-1][k] - series[-2][k], 1) for k in ("fitness", "fatigue", "form")}
+                         if len(series) > 1 else None),
         "fitness_change_6w": fitness_change_6w,
         "last_workout": last_workout,
         "health_latest": latest,

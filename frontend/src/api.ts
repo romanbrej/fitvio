@@ -15,7 +15,7 @@ export interface Delta {
 
 export interface Trend {
   fitness_before: number; fitness_after: number; fatigue_before: number; fatigue_after: number
-  form_today: number; form_tomorrow: number; ramp_7d: number | null; load: number
+  form_before: number; form_after: number; ramp_7d: number | null; load: number
   trend_metric?: string; trend_pct_per_week?: number | null; trend_points?: { day: string; value: number }[]
 }
 
@@ -85,10 +85,12 @@ export interface ActivityCheck {
 
 export interface Ambient {
   user_id: string; pmc: PmcDay[]; form: PmcDay | null
+  /** since this morning: today's pmc row minus yesterday's */
+  today_change: { fitness: number; fatigue: number; form: number } | null
   fitness_change_6w: number | null
   last_workout: {
     id: string; name: string | null; sport: Sport; session_type: string; start_time: string
-    verdict: VerdictKind; headline: string; form_tomorrow: number | null; improvements: Improvement[]
+    verdict: VerdictKind; headline: string; improvements: Improvement[]
   } | null
   health_latest: Partial<HealthDay>; health_baseline: Record<string, number | null>
   health_series: HealthDay[]; week: WeekTotals; last_week: WeekTotals

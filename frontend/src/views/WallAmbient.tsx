@@ -23,6 +23,20 @@ function shortWhen(iso: string): string {
   return days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days}d ago`
 }
 
+/** One of fitness / fatigue / form with today's change; a drop in form after training is expected, so it stays neutral. */
+function PmcValue({ label, color, value, delta, dp = 0, tone = 'inline', note }: {
+  label: string; color: string; value: string; delta?: number | null; dp?: number; tone?: string; note?: string
+}) {
+  const moved = delta != null && Math.abs(delta) >= (dp ? 0.05 : 0.5)
+  return (
+    <span>
+      {label} <b className="num" style={{ color }}>{value}</b>
+      {moved && <span className={`pmc-delta tone-${tone}`}> {delta! > 0 ? '▲' : '▼'}{Math.abs(delta!).toFixed(dp)} today</span>}
+      {note && <span className="muted"> {note}</span>}
+    </span>
+  )
+}
+
 export function WallAmbient({ ambient: a }: { ambient: Ambient }) {
   const nav = useNavigate()
   const u = a.user_id
@@ -39,6 +53,7 @@ export function WallAmbient({ ambient: a }: { ambient: Ambient }) {
   const vo2Change = vo2Last && vo2Then ? vo2Last.value - vo2Then.value : null
 
   const change6w = a.fitness_change_6w
+  const tc = a.today_change
   const lw = a.last_workout
   const up = lw ? improvedCount(lw.improvements) : 0
 
@@ -63,14 +78,19 @@ export function WallAmbient({ ambient: a }: { ambient: Ambient }) {
             <ImprovementList items={lw.improvements} max={5} compact />
           </button>
           <button className="fitness-strip" onClick={() => nav(`/u/${u}/load`)}>
-            <span>Fitness <b className="num" style={{ color: 'var(--fitness)' }}>{num(a.form?.fitness)}</b></span>
+            {/* all of today's training, so it updates as soon as the activity is synced */}
+            <span className="pmc-today">
+              <PmcValue label="Fitness" color="var(--fitness)" value={num(a.form?.fitness)} delta={tc?.fitness} dp={1}
+                        tone={tc && tc.fitness >= 0.05 ? 'better' : 'inline'} />
+              <PmcValue label="Fatigue" color="var(--fatigue)" value={num(a.form?.fatigue)} delta={tc?.fatigue} />
+              <PmcValue label="Form" color="var(--form)" value={signed(a.form?.form, 0)} delta={tc?.form} note={fs.label} />
+            </span>
             {change6w != null && (
               <span className={`tone-${change6w >= 0.5 ? 'better' : change6w <= -0.5 ? 'worse' : 'inline'}`}>
                 {change6w >= 0.5 ? '▲' : change6w <= -0.5 ? '▼' : '●'} {signed(change6w, 1)} in 6 weeks
               </span>
             )}
             <span className="fitness-strip-spark"><Sparkline values={a.pmc.map(p => p.fitness)} height={30} color="var(--fitness)" /></span>
-            <span className="muted">Form <b className="num" style={{ color: 'var(--form)' }}>{signed(a.form?.form, 0)}</b> {fs.label}</span>
           </button>
         </div>
       ) : (

@@ -92,7 +92,8 @@ def store_health(conn: sqlite3.Connection, user_id: str, days: list[dict]) -> No
 # activity, so a deploy alone brings the whole history up to date.
 # 2: run type from the workout name / LTHR, intervals judged on work reps
 # 3: "Erholung" (easy) and "Anaerob" (intervals) workout names
-ANALYSIS_VERSION = "3"
+# 4: form includes the day's own training (stored verdict trends carry form_before/form_after)
+ANALYSIS_VERSION = "4"
 
 
 def ingest_from_garmindb(conn: sqlite3.Connection, user: UserConfig, full: bool = False,

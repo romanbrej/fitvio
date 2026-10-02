@@ -170,3 +170,23 @@ def test_intervals_use_rep_metrics_and_same_workout():
     assert {d["key"] for d in v["deltas"]} == {"work_speed", "work_ef", "hr_recovery"}
     assert set(v["baseline_ids"]) == {"s0", "s1", "s2"}   # VO2max vs VO2max, not vs the 400s
     assert v["verdict"] == "better"
+
+
+def test_form_moves_on_the_day_of_the_workout():
+    d0 = date(2026, 9, 1)
+    loads = {d0 + timedelta(days=i): 50.0 for i in range(60)}
+    loads[d0 + timedelta(days=60)] = 150.0  # hard day
+    series = load.pmc(loads, d0, d0 + timedelta(days=61))
+    hard, before = series[60], series[59]
+    assert hard["form"] == pytest.approx(hard["fitness"] - hard["fatigue"], abs=0.11)
+    assert hard["form"] < before["form"] - 5    # the workout shows today, not tomorrow
+    assert series[61]["form"] > hard["form"]     # rest day recovers
+
+
+def test_impact_of_form_before_and_after():
+    history = [{"start_time": f"2026-09-{d:02d}T07:00:00", "load": 60.0} for d in range(1, 29)]
+    session = {"start_time": "2026-09-29T07:00:00", "load": 140.0}
+    t = load.impact_of(session, history + [session])
+    assert t["form_after"] < t["form_before"]
+    assert t["fatigue_after"] > t["fatigue_before"]
+    assert "form_tomorrow" not in t

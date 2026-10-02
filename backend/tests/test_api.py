@@ -49,6 +49,11 @@ def test_verdict_shows_what_improved_and_wall_shows_fitness_curve(client):
     assert "fitness" in [i["kind"] for i in d["improvements"]]
     a = client.get("/api/users/a/ambient").json()
     assert len(a["pmc"]) > 42 and "fitness_change_6w" in a
+    # today's change = all of today's training: last pmc row minus the one before
+    today, prev = a["pmc"][-1], a["pmc"][-2]
+    for k in ("fitness", "fatigue", "form"):
+        assert a["today_change"][k] == pytest.approx(today[k] - prev[k], abs=0.11)
+    assert a["form"]["form"] == pytest.approx(a["form"]["fitness"] - a["form"]["fatigue"], abs=0.11)
     lw = a["last_workout"]  # the wall's first card on the day of a workout: what it improved
     if sessions[0]["start_time"][:10] == datetime.now().date().isoformat():
         assert lw["id"] == sessions[0]["id"] and lw["improvements"] and lw["verdict"]

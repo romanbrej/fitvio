@@ -165,7 +165,7 @@ export function SessionDetailView() {
         )}
         {t && (
           <div className="span-5">
-            <Improvements items={s.improvements ?? []} formTomorrow={t.form_tomorrow}
+            <Improvements items={s.improvements ?? []}
                           onClick={() => nav(`/u/${s.user_id}/load`)} />
           </div>
         )}

@@ -206,8 +206,9 @@ class SportModel:
             rhr = health.get("rhr")
             if rhr and health_base and health_base.get("rhr") and rhr >= health_base["rhr"] + 5:
                 notes.append({"kind": "rhr", "text": f"Resting HR elevated ({rhr:.0f} vs {health_base['rhr']:.0f} usual)"})
-        if trend.get("form_today") is not None and trend["form_today"] < -20:
-            notes.append({"kind": "fatigue", "text": f"Carrying fatigue: form {trend['form_today']:.0f}"})
+        # judged on the fatigue carried *into* the session, not what the session itself added
+        if trend.get("form_before") is not None and trend["form_before"] < -20:
+            notes.append({"kind": "fatigue", "text": f"Carrying fatigue: form {trend['form_before']:.0f}"})
         if session.get("rpe"):
             notes.append({"kind": "rpe", "text": f"You rated effort {session['rpe']:.0f}/10"})
         return notes
