@@ -52,7 +52,7 @@ def init_user_config(user: UserConfig, email: str, data_root: Path | None = None
     # Credentials, tokens and health data: readable by the dashboard's user only.
     for d in (cfg_dir, cfg_dir.parent):
         os.chmod(d, 0o700)
-    # Paths relative to the person's folder, so the project can be moved or copied to the Pi.
+    # Paths relative to the person's folder, so the project can be moved or copied to another machine.
     data_dir = data_root.expanduser() if data_root else Path("HealthData")
     example = Path(garmindb.__file__).parent / "GarminConnectConfig.json.example"
     cfg = json.loads(example.read_text())
@@ -147,7 +147,7 @@ class LogFollower:
 def normalize_config(config_dir: Path) -> None:
     """Rewrite absolute data/password paths into paths relative to the person's folder.
 
-    Older configs stored absolute paths; after moving the project (or copying it to the Pi) they
+    Older configs stored absolute paths; after moving the project (or copying it to the server) they
     point to a folder that no longer exists. Everything below .../<person>/ is kept.
     """
     # credentials, tokens, health data and logs: readable by the dashboard's user only

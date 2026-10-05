@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Install the Health Wall on a Raspberry Pi (Raspberry Pi OS 64-bit, Python >= 3.11).
-# Run from the project root:  ./deploy/install-pi.sh
-# The frontend is built on the Pi if Node is present, otherwise copy frontend/dist from your Mac first.
+# Install the Health Wall without Docker on a systemd-based Linux (Python >= 3.11).
+# Run from the project root:  ./deploy/install.sh
+# The frontend is built here if Node is present, otherwise build it elsewhere and copy frontend/dist over first.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 USER_NAME="$(id -un)"

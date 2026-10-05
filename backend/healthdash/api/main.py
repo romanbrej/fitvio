@@ -40,7 +40,7 @@ SECURITY_HEADERS = {
 
 def host_allowed(host: str) -> bool:
     """Only answer to IP literals, localhost and local-network names. Blocks DNS-rebinding attacks,
-    where a malicious website points its own domain at the Pi to talk to the API from the tablet."""
+    where a malicious website points its own domain at the server to talk to the API from the wall display."""
     try:
         name = (urlsplit(f"//{host}").hostname or "").lower()  # drops the port, unwraps [IPv6]
     except ValueError:
@@ -53,7 +53,7 @@ def host_allowed(host: str) -> bool:
         ipaddress.ip_address(name)
         return True
     except ValueError:
-        return "." not in name  # bare LAN hostnames like "raspberrypi"
+        return "." not in name  # bare LAN hostnames like "homeserver"
 
 
 @app.middleware("http")

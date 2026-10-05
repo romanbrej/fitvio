@@ -240,7 +240,7 @@ def test_edited_activity_is_reingested_without_retaking_the_wall(tmp_path, monke
 
 
 def test_new_workout_is_on_the_wall_before_the_history_is_reprocessed(tmp_path, monkeypatch):
-    """A new max HR / FTP reprocesses every activity (minutes on the Pi): today's workout and its
+    """A new max HR / FTP reprocesses every activity (minutes on a small server): today's workout and its
     verdict are committed first, so the wall doesn't wait for the history."""
     db_path = tmp_path / "app.db"
     conn = db.connect(db_path)

@@ -124,7 +124,7 @@ def ingest_from_garmindb(conn: sqlite3.Connection, user: UserConfig, full: bool 
     if changed_since and not full:
         edited = (reader.changed_activity_ids(changed_since) & known) - set(new_ids)
     # New and edited activities first, committed on their own: the wall shows today's workout right
-    # away, even when the whole history has to be reprocessed afterwards (minutes on the Pi).
+    # away, even when the whole history has to be reprocessed afterwards (minutes on a small server).
     stored = []
     n_new = n_updated = 0
     for aid in [*new_ids, *sorted(edited)]:

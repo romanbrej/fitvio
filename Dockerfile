@@ -2,7 +2,7 @@
 # Build: docker compose build      Run: docker compose up -d      (see docker-compose.yml)
 
 # --- 1. frontend (React/Vite) -----------------------------------------------------------
-# Debian-based on purpose: npm on Alpine/ARM (e.g. Raspberry Pi) can die with "Exit handler never called"
+# Debian-based on purpose: npm on Alpine/ARM (e.g. single-board computers) can die with "Exit handler never called"
 # $BUILDPLATFORM: dist/ is plain static files, so when cross-building (CI builds arm64 on x86) npm runs
 # natively instead of under emulation.
 FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS frontend

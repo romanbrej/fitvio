@@ -1,7 +1,7 @@
-# Health Wall on Docker (e.g. a Raspberry Pi 4 with 64-bit OS).
+# Health Wall on Docker, on any always-on machine in your home network.
 # The image is built by GitHub Actions on every push to main (.github/workflows/build.yml) and pushed to
-# GHCR; then its deploy job runs on the Pi (self-hosted runner) and pulls + restarts web and sync.
-# See README "Raspberry Pi + tablet".
+# a container registry; its optional deploy job runs on the server (self-hosted runner) and pulls + restarts web and sync.
+# See README "Getting started" and "Hosting".
 #   docker compose pull && docker compose up -d   start / apply compose changes
 #   docker compose up -d --build                  build locally instead (uses the same image name)
 #   docker compose logs -f sync                   watch the Garmin sync
