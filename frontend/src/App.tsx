@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api } from './api'
 import type { AppConfig, Job, WallState } from './api'
+import { DayScreen } from './components/DayScreen'
 import { NightScreen } from './components/NightScreen'
 import { TopBar } from './components/TopBar'
 import type { SyncOutcome } from './components/TopBar'
@@ -25,6 +26,7 @@ const JOB_POLL_MS = 1500
 const OUTCOME_MS = { ok: 6_000, failed: 15_000 }
 const MORNING_FROM_HOUR = 4          // same as the server: a tap before this is still the night
 const MORNING_RETRY_MS = 10 * 60_000 // someone's night is still missing: ask again on a tap after this
+const DAY_SCREEN_IDLE_MS = 60_000    // a minute without a tap on the overview → the calm day screen
 
 function inNight(start: string, end: string, d = new Date()): boolean {
   const m = d.getHours() * 60 + d.getMinutes()
@@ -96,6 +98,27 @@ export default function App() {
       evs.forEach(e => window.removeEventListener(e, reset))
     }
   }, [config, loc.pathname, nav])
+
+  // Day screen: after a minute without input on the overview (not during a post-workout takeover).
+  const [dayScreen, setDayScreen] = useState(false)
+  const wallMode = wall?.mode
+  useEffect(() => {
+    if (loc.pathname !== '/' || wallMode !== 'ambient') {
+      setDayScreen(false)
+      return
+    }
+    let timer = window.setTimeout(() => setDayScreen(true), DAY_SCREEN_IDLE_MS)
+    const reset = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => setDayScreen(true), DAY_SCREEN_IDLE_MS)
+    }
+    const evs = ['pointerdown', 'keydown', 'wheel'] as const
+    evs.forEach(e => window.addEventListener(e, reset, { passive: true }))
+    return () => {
+      window.clearTimeout(timer)
+      evs.forEach(e => window.removeEventListener(e, reset))
+    }
+  }, [loc.pathname, wallMode])
 
   // Night dimming (tap wakes it for 2 minutes).
   useEffect(() => {
@@ -194,6 +217,9 @@ export default function App() {
         <main className="main"><Outlet /></main>
         {error && <div className="offline" role="status">Connection lost — showing last data</div>}
       </div>
+      {dayScreen && !night && wall.mode === 'ambient' && loc.pathname === '/' && (
+        <DayScreen ambient={wall.ambient} onWake={() => setDayScreen(false)} />
+      )}
       {night && loc.pathname !== '/accounts' && wall.mode !== 'setup' && (
         <NightScreen ambient={wall.ambient} onWake={() => setWakeUntil(Date.now() + 120_000)} />
       )}
