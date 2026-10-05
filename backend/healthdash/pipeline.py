@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import time
 from datetime import date, datetime, timedelta
 from statistics import median
 
@@ -118,14 +119,12 @@ def ingest_from_garmindb(conn: sqlite3.Connection, user: UserConfig, full: bool 
     version_key = f"analysis_version:{user.id}"
     outdated = db.get_state(conn, version_key) != ANALYSIS_VERSION
     reprocess = full or ((thresholds_changed or outdated) and bool(known))
-    if reprocess and known and not full:
-        why = "HR or power profile changed" if thresholds_changed else "analysis updated"
-        log.info("%s: %s — reprocessing %d activities", user.id, why, len(known))
-    new_ids = [aid for aid, _ in reader.activity_ids(None if reprocess else default_since())
-               if reprocess or aid not in known]
+    new_ids = [aid for aid, _ in reader.activity_ids(None if full else default_since()) if full or aid not in known]
     edited = set()
-    if changed_since and not reprocess:
+    if changed_since and not full:
         edited = (reader.changed_activity_ids(changed_since) & known) - set(new_ids)
+    # New and edited activities first, committed on their own: the wall shows today's workout right
+    # away, even when the whole history has to be reprocessed afterwards (minutes on the Pi).
     stored = []
     n_new = n_updated = 0
     for aid in [*new_ids, *sorted(edited)]:
@@ -139,14 +138,25 @@ def ingest_from_garmindb(conn: sqlite3.Connection, user: UserConfig, full: bool 
             n_new += 1
     health_since = default_since(400 if full or not known else 14)
     store_health(conn, user.id, reader.health_days(health_since))
-    if reprocess:
-        evaluate_all(conn, user.id)
-    else:
+    if not full:
         # Baselines only use earlier sessions, so only the new ones need a verdict.
         sessions = user_sessions(conn, user.id)
         for sid in stored:
             evaluate_session(conn, user.id, sid, sessions)
-    db.set_state(conn, version_key, ANALYSIS_VERSION)
+        conn.commit()
+    if reprocess:
+        if not full:
+            why = "HR or power profile changed" if thresholds_changed else "analysis updated"
+            log.info("%s: %s — reprocessing %d activities", user.id, why, len(known))
+            started = time.monotonic()
+            done = set(new_ids) | edited
+            for aid, _ in reader.activity_ids(None):
+                if aid in known and aid not in done and (act := reader.load_activity(aid)) is not None:
+                    store_activity(conn, user, act)
+        evaluate_all(conn, user.id)
+        if not full:
+            log.info("%s: reprocessed %d activities in %.0fs", user.id, len(known), time.monotonic() - started)
+    db.set_state(conn, version_key, ANALYSIS_VERSION)  # only once the history is up to date
     conn.commit()
     return {"activities": n_new, "updated": n_updated, "reprocessed": reprocess,
             "profile": {k: v["value"] for k, v in profile.describe(conn, user).items()}}

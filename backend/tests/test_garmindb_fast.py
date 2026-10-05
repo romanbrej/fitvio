@@ -111,3 +111,26 @@ def test_ranges_ending_yesterday_include_today(tmp_path):
     fast.get_stat(d, sleep_fn(d), tmp_path, start, 2, overwrite=False)  # GarminDB: start .. yesterday
     assert d.calls[-1] == today
     assert fast._through_today(datetime.date(2022, 1, 1), 5) == 5       # historic ranges unchanged
+
+
+def test_unzip_writes_only_new_or_changed_files(tmp_path):
+    import os
+    import zipfile
+
+    temp, out = tmp_path / "temp", tmp_path / "out"
+    temp.mkdir()
+    out.mkdir()
+    for name, data in (("same.fit", b"same"), ("changed.fit", b"old")):
+        (out / name).write_bytes(data)
+        os.utime(out / name, (1_000_000, 1_000_000))
+    with zipfile.ZipFile(temp / "day.zip", "w") as z:
+        z.writestr("same.fit", b"same")
+        z.writestr("changed.fit", b"new")
+        z.writestr("new.fit", b"fresh")
+        z.writestr("../escape.fit", b"no")
+    fast.unzip_changed(type("D", (), {"temp_dir": str(temp)})(), str(out))
+
+    assert (out / "same.fit").stat().st_mtime == 1_000_000      # identical → untouched → not re-imported
+    assert (out / "changed.fit").read_bytes() == b"new" and (out / "changed.fit").stat().st_mtime > 1_000_000
+    assert (out / "new.fit").read_bytes() == b"fresh"
+    assert not (tmp_path / "escape.fit").exists() and not list(out.glob("*.part"))

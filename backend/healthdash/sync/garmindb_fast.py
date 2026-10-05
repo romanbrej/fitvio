@@ -16,10 +16,14 @@ This wrapper patches only the download loops (nothing else) and then runs the un
   * activities are compared with what is saved: a summary or details file is only rewritten when
     Garmin's version differs (renamed, RPE/feel added, …), recent activities are always checked
 
+Unzipping (monitoring days, activity files) only writes files that are new or differ from what is on
+disk, so re-downloaded but identical files keep their mtime and are not imported again.
+
 Differential import (HEALTHDASH_SYNC_SINCE = start of the last successful sync, set by run_sync):
   * `--latest` imports only files written since then, instead of GarminDB's "last 24 hours".
     Files are only written when new or changed, so this is a real comparison.
-  * the analyze step only recalculates the affected year(s) instead of all of them
+  * the analyze step only fills in missing sleep rows for the changed days. GarminDB's summary databases
+    (day/week/month/year stats) are not read by Health Wall, so they are only rebuilt by a full sync.
 
 Usage (done by run_sync): python -m healthdash.sync.garmindb_fast <garmindb_cli args…>
 """
@@ -34,6 +38,7 @@ import shutil
 import sys
 import tempfile
 import time
+import zipfile
 from pathlib import Path
 
 from tqdm import tqdm
@@ -165,6 +170,37 @@ def get_hydration(self, directory_func, date, days, overwrite):
 _original_hydration = dl.Download.get_hydration
 
 
+def unzip_changed(self, outdir):
+    """GarminDB's __unzip_files, but a file is only (re)written when it is new or its bytes differ."""
+    out = Path(outdir)
+    written = same = 0
+    for name in os.listdir(self.temp_dir):
+        if not name.endswith(".zip"):
+            continue
+        try:
+            with zipfile.ZipFile(Path(self.temp_dir) / name) as zf:
+                for member in zf.infolist():
+                    rel = Path(member.filename)
+                    if member.is_dir() or rel.is_absolute() or ".." in rel.parts:
+                        continue
+                    data = zf.read(member)
+                    target = out / rel
+                    try:
+                        if target.read_bytes() == data:
+                            same += 1
+                            continue
+                    except OSError:
+                        pass
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    tmp = target.with_name(target.name + ".part")
+                    tmp.write_bytes(data)
+                    os.replace(tmp, target)
+                    written += 1
+        except (zipfile.BadZipFile, OSError) as e:
+            root_logger.error("Failed to unzip %s to %s: %s", name, outdir, e)
+    root_logger.info("unzip_files: %d written, %d unchanged → %s", written, same, outdir)
+
+
 # --- activities: compare with what is saved ------------------------------------
 
 def _write_if_changed(base: str, data) -> bool:
@@ -179,6 +215,11 @@ def _write_if_changed(base: str, data) -> bool:
         pass
     path.write_text(json.dumps(new))
     return True
+
+
+def _has_fit(directory: str, aid: str) -> bool:
+    """GarminDB saves an activity's file as `<id>_ACTIVITY.fit` (multisport legs get their own suffix)."""
+    return any(Path(directory).glob(f"{aid}_*.fit"))
 
 
 def _is_recent(self, activity: dict) -> bool:
@@ -213,10 +254,11 @@ def get_activities(self, directory, count, overwrite=False):
         if not (is_new or overwrite or summary_changed or _is_recent(self, activity)):
             continue  # unchanged and old: no more requests
 
-        def fetch(aid=aid, is_new=is_new):
+        def fetch(aid=aid, is_new=is_new, summary_changed=summary_changed):
             details = self.garmin.connectapi(f"{self.garmin_connect_activity_service_url}/{aid}")
             details_changed = _write_if_changed(f"{directory}/activity_details_{aid}", details)
-            if is_new or overwrite or not os.path.isfile(f"{directory}/{aid}.fit"):
+            # the file only changes with the activity (e.g. trimmed in Connect): unchanged ones are never fetched again
+            if is_new or overwrite or summary_changed or details_changed or not _has_fit(directory, aid):
                 self._Download__save_activity_file(aid)
             return details_changed
 
@@ -258,12 +300,14 @@ def _patch_differential_import(since: datetime.datetime) -> None:
     FileProcessor.dir_to_files = classmethod(dir_to_files)
 
     def summary(self):
-        years = sorted(set(an.Monitoring.get_years(self.garmin_mon_db) + an.Activities.get_years(self.garmin_act_db)
-                           + an.SleepEvents.get_years(self.garmin_db)))
-        affected = [y for y in years if y >= since.year]
-        root_logger.info("Analyze: only %s (of %s), data before %s is unchanged", affected, years, since.date())
-        for year in affected:
-            self._Analyze__calculate_year(year)
+        # Health Wall reads garmin.db and garmin_activities.db only, never the summary databases. The one
+        # thing analyze adds there is a sleep row built from sleep events when the sleep JSON had none.
+        days = [since.date() + datetime.timedelta(days=n) for n in range(max(1, (datetime.date.today() - since.date()).days + 1))]
+        root_logger.info("Analyze: sleep rows for %s..%s only (summary databases are rebuilt by a full sync)",
+                         days[0], days[-1])
+        with self.garmin_db.managed_session() as session:
+            for day in days:
+                self._Analyze__populate_sleep_for_day(day, session)
 
     an.Analyze.summary = summary
 
@@ -288,6 +332,7 @@ def install() -> None:
     dl.Download.get_monitoring = get_monitoring
     dl.Download.get_hydration = get_hydration
     dl.Download.get_activities = get_activities
+    dl.Download._Download__unzip_files = unzip_changed
     if SYNC_SINCE is not None:
         _patch_differential_import(SYNC_SINCE)
 

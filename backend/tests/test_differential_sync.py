@@ -45,17 +45,24 @@ def test_import_only_takes_files_written_since_last_sync(tmp_path):
     assert len(FileProcessor.dir_to_files(str(tmp_path), r"sleep_.*\.json", latest=False)) == 2
 
 
-def test_analyze_only_recalculates_affected_years(monkeypatch):
+def test_analyze_only_fills_sleep_rows_for_the_changed_days(monkeypatch):
+    import contextlib
+
     import garmindb.analyze as an
-    monkeypatch.setattr(an.Monitoring, "get_years", lambda db: [2021, 2022, 2025, 2026])
-    monkeypatch.setattr(an.Activities, "get_years", lambda db: [2023, 2026])
-    monkeypatch.setattr(an.SleepEvents, "get_years", lambda db: [])
+
+    class Today(datetime.date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 10, 1)
+
+    monkeypatch.setattr(fast.datetime, "date", Today)
     fast._patch_differential_import(datetime.datetime(2026, 9, 29, 8, 0))
-    done = []
-    fake = SimpleNamespace(garmin_mon_db=None, garmin_act_db=None, garmin_db=None,
-                           _Analyze__calculate_year=lambda year: done.append(year))
+    days = []
+    fake = SimpleNamespace(garmin_db=SimpleNamespace(managed_session=lambda: contextlib.nullcontext("s")),
+                           _Analyze__populate_sleep_for_day=lambda day, session: days.append((str(day), session)),
+                           _Analyze__calculate_year=lambda year: pytest.fail("summary databases are not rebuilt"))
     an.Analyze.summary(fake)
-    assert done == [2026]
+    assert days == [("2026-09-29", "s"), ("2026-09-30", "s"), ("2026-10-01", "s")]
 
 
 class FakeDownload:
@@ -120,7 +127,7 @@ def test_activities_compared_with_saved_copies(act_dir):
         aid = str(s["activityId"])
         save(tmp_path, f"activity_{aid}", {**s, "activityName": "Run"})
         save(tmp_path, f"activity_details_{aid}", {"summaryDTO": {"directWorkoutFeel": 50}})
-        (tmp_path / f"{aid}.fit").write_bytes(b"")
+        (tmp_path / f"{aid}_ACTIVITY.fit").write_bytes(b"")  # GarminDB's name for the recording
     new = summary("4", 0)
     details = {"1": {"summaryDTO": {"directWorkoutFeel": 50}}, "2": {"summaryDTO": {"directWorkoutFeel": 50}},
                "3": {"summaryDTO": {"directWorkoutFeel": 75}},  # feel added after the run
@@ -132,7 +139,7 @@ def test_activities_compared_with_saved_copies(act_dir):
 
     assert sorted(d.detail_requests) == ["2", "3", "4"]   # old + unchanged: no request at all
     assert sum("/maxmet/daily/" in u for u in d.extra_requests) == 1  # precise VO2max: one request per sync
-    assert d.fit_downloads == ["4"]                       # recordings of known activities never again
+    assert d.fit_downloads == ["2", "3", "4"]             # recordings again only when Garmin changed the activity
     after = {p.name: p.stat().st_mtime for p in tmp_path.glob("*.json")}
     assert after["activity_1.json"] == before["activity_1.json"]            # untouched → not re-imported
     assert after["activity_details_1.json"] == before["activity_details_1.json"]
@@ -149,12 +156,13 @@ def test_recent_but_unchanged_activity_is_not_rewritten(act_dir):
     recent = summary("3", 1)
     save(tmp_path, "activity_3", recent)
     p = save(tmp_path, "activity_details_3", {"summaryDTO": {"directWorkoutFeel": 50}})
-    (tmp_path / "3.fit").write_bytes(b"")
+    (tmp_path / "3_ACTIVITY.fit").write_bytes(b"")
     before = p.stat().st_mtime
     d = FakeDownload([recent], {"3": {"summaryDTO": {"directWorkoutFeel": 50}}})
     fast.get_activities(d, str(tmp_path), 25)
     assert d.detail_requests == ["3"]          # checked …
     assert p.stat().st_mtime == before         # … but identical, so it is not imported again
+    assert d.fit_downloads == []               # and its recording is not downloaded (and imported) again
 
 
 def test_run_sync_passes_last_sync_start_only_for_latest(tmp_path, monkeypatch):
@@ -229,6 +237,59 @@ def test_edited_activity_is_reingested_without_retaking_the_wall(tmp_path, monke
     assert pipeline.ingest_from_garmindb(conn, user, changed_since=start)["reprocessed"] is True
     assert db.get_state(conn, "analysis_version:u") == pipeline.ANALYSIS_VERSION
     assert pipeline.ingest_from_garmindb(conn, user, changed_since=start)["reprocessed"] is False
+
+
+def test_new_workout_is_on_the_wall_before_the_history_is_reprocessed(tmp_path, monkeypatch):
+    """A new max HR / FTP reprocesses every activity (minutes on the Pi): today's workout and its
+    verdict are committed first, so the wall doesn't wait for the history."""
+    db_path = tmp_path / "app.db"
+    conn = db.connect(db_path)
+    user = UserConfig(id="u", garmindb_config_dir=str(tmp_path / "cfg"), max_hr=190, rest_hr=50)
+    now = datetime.datetime.now().replace(microsecond=0)
+
+    def act(aid, start):
+        return ParsedActivity(activity_id=aid, start_time=start, sport="running", name="Run", duration_s=2700,
+                              distance_m=8000, records=steady_records(minutes=45, hr=137))
+
+    old = now - datetime.timedelta(days=3)
+    pipeline.store_activity(conn, user, act("1", old))
+    db.set_state(conn, "analysis_version:u", pipeline.ANALYSIS_VERSION)
+    conn.commit()
+    loads = []
+
+    class FakeReader:
+        def __init__(self, base):
+            self.base, self.db_dir, self.available = base, base, True
+
+        def activity_ids(self, since):
+            return [("1", str(old)), ("2", str(now))]
+
+        def changed_activity_ids(self, since):
+            return set()
+
+        def load_activity(self, aid):
+            if aid == "1":  # reprocessing the history: the new workout is already visible to the wall
+                other = db.connect(db_path)
+                seen = other.execute("SELECT 1 FROM verdicts WHERE session_id = ?",
+                                     (pipeline.session_id("u", "2"),)).fetchone()
+                other.close()
+                loads.append(("1", seen is not None))
+                return act("1", old)
+            loads.append((aid, None))
+            return act(aid, now)
+
+        def health_days(self, since):
+            return []
+
+    import healthdash.ingest.garmindb_reader as reader_mod
+    monkeypatch.setattr(reader_mod, "GarminDbReader", FakeReader)
+    monkeypatch.setattr(reader_mod, "base_dir_from_config", lambda d: tmp_path)
+    monkeypatch.setattr(pipeline.profile, "refresh", lambda conn, user, base: True)  # e.g. a new max HR
+
+    result = pipeline.ingest_from_garmindb(conn, user)
+    assert loads == [("2", None), ("1", True)]
+    assert (result["activities"], result["reprocessed"]) == (1, True)
+    assert conn.execute("SELECT COUNT(*) FROM verdicts").fetchone()[0] == 2
 
 
 @pytest.mark.parametrize("result, full, text", [
