@@ -1,0 +1,26 @@
+.night-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  border: 0;
+  background: #020304;
+  color: #6f7784;
+  padding: 60px 80px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 26px;
+  text-align: left;
+  cursor: pointer;
+}
+.night-clock { font-size: clamp(96px, 13vw, 168px); line-height: 1; font-weight: 500; color: #8a919c; }
+.night-msg {
+  font: italic 900 clamp(40px, 5vw, 64px)/0.95 var(--display);
+  text-transform: uppercase;
+  color: #6a7a2a;  /* volt, dimmed for the dark room */
+}
+.night-facts { display: flex; flex-wrap: wrap; gap: 16px 44px; font-size: 22px; }
+.night-facts span { display: inline-flex; align-items: center; gap: 10px; }
+.night-facts svg { color: #8a3f1f; }
+.night-hint { margin-top: 30px; font-size: 18px; color: #4a515c; }

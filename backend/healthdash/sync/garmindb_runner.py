@@ -295,6 +295,9 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, tim
     conn.commit()
     if error:
         log.error("sync %s failed: %s", user.id, error)
+    else:
+        from . import garmin_coach
+        garmin_coach.update_user(conn, user)  # today's training + readiness; never fails the sync
     return error is None
 
 

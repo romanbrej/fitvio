@@ -1,293 +1,357 @@
-import { BatteryMedium, BedDouble, Brain, CheckCircle2, Gauge, HeartPulse, Waves } from 'lucide-react'
+import { Check, ChevronRight, Flame, Zap } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { Area, AreaChart, Line, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 import type { Ambient, Sport, SportTrend } from '../api'
 import { SportIcon, VerdictPill } from '../components/icons'
-import { ImprovementList, improvedCount } from '../components/Improvements'
 import { Sparkline } from '../components/Sparkline'
-import { distance, duration, formState, hoursMinutes, num, signed, SPORT_LABEL, TYPE_LABEL, when } from '../format'
+import { WorkoutShape } from '../components/WorkoutShape'
+import { formState, hoursMinutes, num, signed, SPORT_LABEL } from '../format'
+import { READINESS_LEVEL, feedbackText, headline, minutes, paceStr, phraseLabel, workoutSummary } from '../mission'
 import './Wall.css'
 
-function vsBaseline(v: number | null | undefined, base: number | null | undefined, lowerIsBetter = false, unit = '') {
-  if (v == null || base == null) return <span className="muted vs">no baseline yet</span>
-  const d = v - base
-  const good = lowerIsBetter ? d < 0 : d > 0
-  const tone = Math.abs(d) < Math.abs(base) * 0.03 ? 'inline' : good ? 'better' : 'worse'
-  return <span className={`vs tone-${tone}`}>{signed(d, 0, unit)} vs usual {num(base)}{unit}</span>
-}
-
 const SPORTS: Sport[] = ['running', 'cycling', 'swimming', 'strength']
+const SPORT_COLOR: Record<Sport, string> = {
+  running: 'var(--run)', cycling: 'var(--ride)', swimming: 'var(--swim)', strength: 'var(--gym)', other: 'var(--muted)',
+}
 
 function shortWhen(iso: string): string {
-  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
-  return days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days}d ago`
+  const days = Math.floor((Date.now() - new Date(iso).setHours(0, 0, 0, 0)) / 86400000)
+  return days <= 0 ? 'Today' : days === 1 ? 'Yesterday' : `${days} d ago`
 }
 
-function trendTone(v: number | null | undefined, threshold: number): string {
-  return v == null ? 'muted' : v >= threshold ? 'better' : v <= -threshold ? 'worse' : 'inline'
-}
+/* ------------------------------------------------------------------------------------------ */
 
-/** Sport card body: running = pace at the fixed HR, cycling = W/beat + W/kg, others = 6-week trend. */
-function SportCardBody({ sport, t }: { sport: Sport; t: SportTrend }) {
-  const st = t.status
-  const footer = (left: React.ReactNode, tone: string) => (
-    <div className="between" style={{ fontSize: 15 }}>
-      <span className={`tone-${tone}`}>{left}</span>
-      <span className="muted" style={{ whiteSpace: 'nowrap' }}>{shortWhen(t.last_time)}</span>
-    </div>
-  )
-  if (sport === 'running' && st?.pace_s_per_km) {
-    const c = st.change_s_per_km
-    const tone = trendTone(c, 2)
-    return (
-      <>
-        <div className="sport-main"><b className="num">{duration(st.pace_s_per_km)}</b> /km <span className="muted">@{num(st.ref_hr)} bpm</span></div>
-        {/* pace: lower is faster, so plot it negated — up means faster */}
-        <Sparkline height={30} values={st.points.map(p => -p.value)} color={`var(--${tone === 'muted' ? 'muted' : tone})`} />
-        {footer(c == null ? 'Not enough runs for a trend' : Math.abs(c) < 2 ? '● steady over 6 weeks'
-          : `${c > 0 ? '▲' : '▼'} ${Math.abs(c).toFixed(0)} s/km ${c > 0 ? 'faster' : 'slower'} in 6 weeks`, tone)}
-      </>
-    )
-  }
-  if (sport === 'cycling' && st) {
-    const c = st.w_per_beat_change_pct
-    const tone = trendTone(c, 1)
-    return (
-      <>
-        <div className="sport-main">
-          {st.w_per_beat != null ? <><b className="num">{st.w_per_beat.toFixed(2)}</b> W/beat</> : <span className="muted">No rides with power in 3 months</span>}
-        </div>
-        <div className="muted" style={{ fontSize: 15 }}>
-          {st.ftp_wkg != null && <>FTP <b className="num">{st.ftp_wkg.toFixed(1)}</b> W/kg</>}
-          {st.hr_wkg != null && <> · <b className="num">{st.hr_wkg.toFixed(1)}</b> W/kg @{num(st.ref_hr)} bpm</>}
-        </div>
-        {footer(c == null ? (st.w_per_beat != null ? 'Too few power rides for a trend' : '') : `${signed(c, 1, '%')} W/beat in 3 months`, tone)}
-      </>
-    )
-  }
-  const pct6 = t.pct_per_week == null ? null : t.pct_per_week * 6
-  const tone = trendTone(pct6, 1.2)
-  return (
-    <>
-      <Sparkline height={36} values={t.points.map(p => p.value)} color={`var(--${tone === 'muted' ? 'muted' : tone})`} />
-      <div className="between" style={{ fontSize: 15 }}>
-        <span className={`tone-${tone}`}>
-          {pct6 == null ? (sport === 'strength' ? 'Tap for lifts' : 'Not enough data') : `${signed(pct6, 1, '%')} in 6 weeks`}
-        </span>
-        <span className="muted" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.metric ?? 'e1RM'} · {shortWhen(t.last_time)}</span>
-      </div>
-    </>
-  )
-}
-
-/** One of fitness / fatigue / form with today's change; a drop in form after training is expected, so it stays neutral. */
-function PmcValue({ label, color, value, delta, dp = 0, tone = 'inline', note }: {
-  label: string; color: string; value: string; delta?: number | null; dp?: number; tone?: string; note?: string
-}) {
-  const moved = delta != null && Math.abs(delta) >= (dp ? 0.05 : 0.5)
-  return (
-    <span>
-      {label} <b className="num" style={{ color }}>{value}</b>
-      {moved && <span className={`pmc-delta tone-${tone}`}> {delta! > 0 ? '▲' : '▼'}{Math.abs(delta!).toFixed(dp)} today</span>}
-      {note && <span className="muted"> {note}</span>}
-    </span>
-  )
-}
-
-export function WallAmbient({ ambient: a }: { ambient: Ambient }) {
+function Mission({ a }: { a: Ambient }) {
   const nav = useNavigate()
-  const u = a.user_id
-  const h = a.health_latest
-  const b = a.health_baseline
-  const fs = formState(a.form?.form)
-  const sleepTotal = h.sleep_total_min ?? 0
-  const hrvBand: [number, number] | null = h.hrv_baseline_low && h.hrv_baseline_high ? [h.hrv_baseline_low, h.hrv_baseline_high] : null
-  const series = a.health_series
-
-  // precise VO2max change over ~6 weeks (latest vs. the last value at least 42 days earlier)
-  const vo2Last = a.vo2max.at(-1)
-  const vo2Then = vo2Last && [...a.vo2max].reverse().find(v => (Date.parse(vo2Last.day) - Date.parse(v.day)) / 86400000 >= 42)
-  const vo2Change = vo2Last && vo2Then ? vo2Last.value - vo2Then.value : null
-
-  const change6w = a.fitness_change_6w
-  const tc = a.today_change
-  const lw = a.last_workout
-  const up = lw ? improvedCount(lw.improvements) : 0
-
-  const weekSports = Array.from(new Set([...Object.keys(a.week), ...Object.keys(a.last_week)])) as Sport[]
-  const maxDur = Math.max(1, ...weekSports.map(s => Math.max(a.week[s]?.duration_s ?? 0, a.last_week[s]?.duration_s ?? 0)))
-
+  const w = a.today_workout
+  const h = headline(a)
+  const r = a.readiness
+  const hrv = a.health_latest.hrv_last_night
+  const low = a.health_latest.hrv_baseline_low
+  const hrvUp = hrv != null && low != null && hrv >= low
+  const open = () => nav(`/u/${a.user_id}/today`)
   return (
-    <div className="ambient">
-      {/* Last workout: what it did for you — the first thing you see when you come home */}
-      {lw ? (
-        <div className="card span-7 last-workout">
-          <button className="last-workout-main" onClick={() => nav(`/session/${encodeURIComponent(lw.id)}`)}>
-            <div className="between">
-              <span className="card-title" style={{ margin: 0 }}>
-                <SportIcon sport={lw.sport} size={18} /> Last workout · {lw.name || TYPE_LABEL[lw.session_type] || SPORT_LABEL[lw.sport]} · {shortWhen(lw.start_time)}
-              </span>
-              <VerdictPill verdict={lw.verdict} />
-            </div>
-            <div className="last-workout-head">
-              What improved <span className={`tone-${up ? 'better' : 'inline'}`}>{up} of {lw.improvements.length}</span>
-            </div>
-            <ImprovementList items={lw.improvements} max={5} compact />
-          </button>
-          <button className="fitness-strip" onClick={() => nav(`/u/${u}/load`)}>
-            {/* all of today's training, so it updates as soon as the activity is synced */}
-            <span className="pmc-today">
-              <PmcValue label="Fitness" color="var(--fitness)" value={num(a.form?.fitness)} delta={tc?.fitness} dp={1}
-                        tone={tc && tc.fitness >= 0.05 ? 'better' : 'inline'} />
-              <PmcValue label="Fatigue" color="var(--fatigue)" value={num(a.form?.fatigue)} delta={tc?.fatigue} />
-              <PmcValue label="Form" color="var(--form)" value={signed(a.form?.form, 0)} delta={tc?.form} note={fs.label} />
+    <section className={`card mission stripes${w ? '' : ' no-workout'}`}>
+      <div className="mission-label">
+        <Zap size={18} color="var(--volt)" strokeWidth={2.4} /> Today’s mission
+        <span className="grow" />
+        {(r || hrv != null) && (
+          <span className="chip">{hrv != null && <>HRV {hrvUp ? '▲' : '▼'}</>}{r && <>{hrv != null && ' · '}Readiness <span style={{ color: 'var(--volt)' }}>{r.score}</span></>}</span>
+        )}
+      </div>
+      <h1 className="display mission-title">{h.title}</h1>
+      {!w && <p className="mission-sub">{h.sub}</p>}
+
+      {w && !w.done && (
+        <button className="workout-preview" onClick={open}>
+          <div className="workout-head">
+            <SportIcon sport={w.sport} size={20} color={SPORT_COLOR[w.sport]} />
+            <span className="workout-title">{w.title}{w.est_duration_s ? ` · ${minutes(w.est_duration_s)}` : ''}</span>
+            <span className="workout-meta num">
+              {[phraseLabel(w.phrase), w.est_load != null ? `load ~${w.est_load}` : null].filter(Boolean).join(' · ')}
             </span>
-            {change6w != null && (
-              <span className={`tone-${change6w >= 0.5 ? 'better' : change6w <= -0.5 ? 'worse' : 'inline'}`}>
-                {change6w >= 0.5 ? '▲' : change6w <= -0.5 ? '▼' : '●'} {signed(change6w, 1)} in 6 weeks
-              </span>
-            )}
-            <span className="fitness-strip-spark"><Sparkline values={a.pmc.map(p => p.fitness)} height={30} color="var(--fitness)" /></span>
-          </button>
-        </div>
-      ) : (
-        /* no workout today (resets at midnight): the original form / fitness / fatigue card */
-        <button className="card span-7" onClick={() => nav(`/u/${u}/load`)}>
-          <div className="card-title"><Gauge size={18} /> Training form</div>
-          <div className="form-card">
-            <div className="stack">
-              <div className="big num" style={{ color: 'var(--form)' }}>{signed(a.form?.form, 0)}</div>
-              <div className={`mid tone-${fs.tone}`} style={{ fontSize: 22 }}>{fs.label}</div>
-              <div className="row muted" style={{ fontSize: 16 }}>
-                <span>Fitness <b className="num" style={{ color: 'var(--fitness)' }}>{num(a.form?.fitness)}</b></span>
-                <span>Fatigue <b className="num" style={{ color: 'var(--fatigue)' }}>{num(a.form?.fatigue)}</b></span>
-              </div>
-            </div>
-            <div style={{ height: 120 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={a.pmc.slice(-42)} margin={{ top: 6, right: 4, bottom: 0, left: 4 }}>
-                  <XAxis dataKey="day" hide />
-                  <YAxis hide domain={['auto', 'auto']} />
-                  <ReferenceLine y={0} stroke="var(--border)" />
-                  <Area type="monotone" dataKey="fitness" stroke="var(--fitness)" fill="var(--fitness)" fillOpacity={0.15} strokeWidth={2.5} isAnimationActive={false} />
-                  <Line type="monotone" dataKey="fatigue" stroke="var(--fatigue)" strokeWidth={2} dot={false} strokeDasharray="5 4" isAnimationActive={false} />
-                  <Line type="monotone" dataKey="form" stroke="var(--form)" strokeWidth={2} dot={false} isAnimationActive={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            <span className="grow" />
+            <span className="tag garmin">From Garmin</span>
+            <span className="link">Plan <ChevronRight size={16} /></span>
+          </div>
+          <WorkoutShape steps={w.steps} />
+          <div className="workout-line">
+            {workoutSummary(w).map((p, i) => <span key={i} className={i === 1 || workoutSummary(w).length === 1 ? 'strong' : ''}>{p}</span>)}
           </div>
         </button>
       )}
 
-      {/* Recovery */}
-      <div className="card span-5">
-        <div className="card-title"><HeartPulse size={18} /> Recovery today</div>
-        <div className="recovery-grid">
-          <button className="card" style={{ padding: 12 }} onClick={() => nav(`/u/${u}/health/hrv`)}>
-            <div className="metric-label">HRV last night</div>
-            <div className="mid num">{num(h.hrv_last_night)} <span className="muted" style={{ fontSize: 16 }}>ms</span></div>
-            {hrvBand
-              ? <span className={`vs tone-${h.hrv_last_night! < hrvBand[0] ? 'worse' : h.hrv_last_night! > hrvBand[1] ? 'inline' : 'better'}`}>
-                  {h.hrv_last_night! < hrvBand[0] ? 'Below' : h.hrv_last_night! > hrvBand[1] ? 'Above' : 'Within'} baseline {hrvBand[0]}–{hrvBand[1]}
-                </span>
-              : vsBaseline(h.hrv_last_night, b.hrv_last_night)}
-          </button>
-          <button className="card" style={{ padding: 12 }} onClick={() => nav(`/u/${u}/health/rhr`)}>
-            <div className="metric-label">Resting HR</div>
-            <div className="mid num">{num(h.rhr)} <span className="muted" style={{ fontSize: 16 }}>bpm</span></div>
-            {vsBaseline(h.rhr, b.rhr, true)}
-          </button>
-          <button className="card" style={{ padding: 12 }} onClick={() => nav(`/u/${u}/health/sleep`)}>
-            <div className="metric-label"><BedDouble size={14} /> Sleep {h.sleep_score != null && <>· score {num(h.sleep_score)}</>}</div>
-            <div className="mid num">{hoursMinutes(h.sleep_total_min)}</div>
-            {sleepTotal > 0 && (
-              <div className="sleep-bar" aria-label="Sleep stages: deep, REM, light, awake">
-                <span style={{ width: `${(h.sleep_deep_min ?? 0) / sleepTotal * 100}%`, background: '#6366f1' }} />
-                <span style={{ width: `${(h.sleep_rem_min ?? 0) / sleepTotal * 100}%`, background: '#38bdf8' }} />
-                <span style={{ width: `${(h.sleep_light_min ?? 0) / sleepTotal * 100}%`, background: '#475569' }} />
-                <span style={{ width: `${(h.sleep_awake_min ?? 0) / sleepTotal * 100}%`, background: '#f472b6' }} />
-              </div>
-            )}
-          </button>
-          <button className="card" style={{ padding: 12 }} onClick={() => nav(`/u/${u}/health/body_battery`)}>
-            <div className="metric-label"><BatteryMedium size={14} /> Body Battery · <Brain size={14} /> Stress</div>
-            <div className="mid num">{num(h.bb_max)} <span className="muted" style={{ fontSize: 16 }}>· {num(h.stress_avg)}</span></div>
-            <Sparkline values={series.map(d => d.bb_max).filter((x): x is number => x != null).slice(-14)} height={28} />
-          </button>
+      {w?.done && (
+        <button className="workout-preview done" onClick={() => nav(`/session/${encodeURIComponent(w.done!.session_id)}`)}>
+          <div className="workout-head">
+            <span className="done-check"><Check size={20} strokeWidth={3} /></span>
+            <span className="workout-title">{w.title} · done</span>
+            {w.done.verdict && <VerdictPill verdict={w.done.verdict} />}
+            <span className="grow" />
+            <span className="link">Session <ChevronRight size={16} /></span>
+          </div>
+          <div className="workout-line">
+            {w.done.targets && <span className="strong">{w.done.targets.hit}/{w.done.targets.of} work blocks in the target pace</span>}
+            {w.done.headline && <span>{w.done.headline}</span>}
+          </div>
+        </button>
+      )}
+    </section>
+  )
+}
+
+function ReadinessCard({ a }: { a: Ambient }) {
+  const nav = useNavigate()
+  const r = a.readiness
+  const h = a.health_latest
+  const b = a.health_baseline
+  const C = 2 * Math.PI * 44
+  const vo2 = a.vo2max.at(-1)?.value
+  const vo2Then = a.vo2max.length > 1 ? [...a.vo2max].reverse().find(v => (Date.parse(a.vo2max.at(-1)!.day) - Date.parse(v.day)) / 86400000 >= 42)?.value : undefined
+  const band = h.hrv_baseline_low && h.hrv_baseline_high ? [h.hrv_baseline_low, h.hrv_baseline_high] : null
+  const vitals = [
+    {
+      label: 'HRV', value: num(h.hrv_last_night), unit: 'ms', metric: 'hrv',
+      delta: h.hrv_last_night == null ? null : band
+        ? (h.hrv_last_night < band[0] ? { t: '▼ below range', c: 'worse' } : h.hrv_last_night > band[1] ? { t: '▲ above range', c: 'better' } : { t: 'in range', c: 'better' })
+        : null,
+    },
+    {
+      label: 'Resting HR', value: num(h.rhr), unit: 'bpm', metric: 'rhr',
+      delta: h.rhr != null && b.rhr != null ? (Math.abs(h.rhr - b.rhr) < 1 ? { t: 'as usual', c: 'inline' }
+        : { t: `${h.rhr < b.rhr ? '▼' : '▲'} ${Math.abs(Math.round(h.rhr - b.rhr))}`, c: h.rhr < b.rhr ? 'better' : 'worse' }) : null,
+    },
+    { label: 'Sleep', value: hoursMinutes(h.sleep_total_min).replace('h ', ':').replace('m', ''), unit: 'h', metric: 'sleep',
+      delta: h.sleep_score != null ? { t: `Score ${num(h.sleep_score)}`, c: 'muted' } : null },
+    { label: 'Body Battery', value: num(h.bb_max), unit: '', metric: 'body_battery',
+      delta: h.bb_max != null ? { t: h.bb_max >= 85 ? 'Full' : h.bb_max >= 60 ? 'Good' : 'Low', c: h.bb_max >= 60 ? 'better' : 'worse' } : null },
+  ]
+  return (
+    <section className="card readiness">
+      <div className="readiness-head">
+        <div className="ring" aria-label={r ? `Garmin training readiness ${r.score}` : 'No readiness from Garmin today'}>
+          <svg width="104" height="104" viewBox="0 0 104 104">
+            <circle cx="52" cy="52" r="44" fill="none" stroke="var(--border)" strokeWidth="10" strokeDasharray={r ? undefined : '6 8'} />
+            {r && <circle cx="52" cy="52" r="44" fill="none" stroke="var(--volt)" strokeWidth="10" strokeLinecap="round"
+                          strokeDasharray={`${C * r.score / 100} ${C}`} transform="rotate(-90 52 52)" />}
+          </svg>
+          <div className="ring-center">
+            <b>{r ? r.score : '–'}</b>
+            <span>{r ? '/ 100' : ''}</span>
+          </div>
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div className="label">Training readiness</div>
+          {r ? (
+            <>
+              <div className="display readiness-level">{READINESS_LEVEL[r.level ?? ''] ?? r.level ?? '—'}</div>
+              <div className="muted small">{feedbackText(r.feedback)}</div>
+            </>
+          ) : (
+            <>
+              <div className="readiness-none">No readiness from Garmin today</div>
+            </>
+          )}
+          {vo2 != null && (
+            <button className="vo2" onClick={() => nav(`/u/${a.user_id}/health/vo2max`)} aria-label={`VO2max ${vo2.toFixed(1)}, open the graph`}>
+              <span className="label">VO₂max</span>
+              <b className="num">{vo2.toFixed(1)}</b>
+              {vo2Then != null && Math.abs(vo2 - vo2Then) >= 0.05 && (
+                <span className={`small strong tone-${vo2 > vo2Then ? 'better' : 'worse'}`}>{vo2 > vo2Then ? '▲' : '▼'}{Math.abs(vo2 - vo2Then).toFixed(1)}</span>
+              )}
+              <span className="vo2-spark"><Sparkline values={a.vo2max.slice(-90).map(v => v.value)} height={22} color="var(--better)" /></span>
+            </button>
+          )}
         </div>
       </div>
+      <div className="vitals">
+        {vitals.map(v => (
+          <button key={v.label} className="tile vital" onClick={() => nav(`/u/${a.user_id}/health/${v.metric}`)}>
+            <div className="label">{v.label}</div>
+            <div className="vital-row">
+              <span className="num vital-v">{v.value}</span>
+              {v.unit && <span className="muted small">{v.unit}</span>}
+              {v.delta && <span className={`small strong tone-${v.delta.c}`}>{v.delta.t}</span>}
+            </div>
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
 
-      {/* Per-sport improvement trends */}
-      <div className="span-12 sport-cards">
-        {SPORTS.map(s => {
-          const t = a.trends[s]
-          return (
-            <button key={s} className="card sport-card" onClick={() => nav(`/u/${u}/sport/${s}`)}>
-              <div className="between">
-                <span className="card-title" style={{ margin: 0 }}><SportIcon sport={s} size={18} /> {SPORT_LABEL[s]}</span>
-                {t && <VerdictPill verdict={t.last_verdict} />}
+/** 6 weeks of fitness (blue), fatigue (pink, dashed) and form (yellow) on one chart and one scale, with a zero line. */
+function MiniPmc({ days }: { days: Ambient['pmc'] }) {
+  if (days.length < 2) return null
+  const W = 500, H = 100
+  const vals = days.flatMap(d => [d.fitness, d.fatigue, d.form, 0])
+  const lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || 1
+  const x = (i: number) => (i / (days.length - 1)) * W
+  const y = (v: number) => 3 + (1 - (v - lo) / span) * (H - 6)
+  const path = (k: 'fitness' | 'fatigue' | 'form') => days.map((d, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(d[k]).toFixed(1)}`).join('')
+  return (
+    <svg className="mini-pmc" viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" preserveAspectRatio="none" aria-hidden>
+      <line x1={0} x2={W} y1={y(0)} y2={y(0)} stroke="var(--border-2)" strokeWidth={1} strokeDasharray="2 4" vectorEffect="non-scaling-stroke" />
+      <path d={`${path('fitness')}L${W} ${y(lo)}L0 ${y(lo)}Z`} fill="var(--fitness)" opacity={0.12} />
+      <path d={path('form')} fill="none" stroke="var(--form)" strokeWidth={2.2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+      <path d={path('fatigue')} fill="none" stroke="var(--fatigue)" strokeWidth={1.8} strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />
+      <path d={path('fitness')} fill="none" stroke="var(--fitness)" strokeWidth={3} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+    </svg>
+  )
+}
+
+function LoadCard({ a }: { a: Ambient }) {
+  const nav = useNavigate()
+  const f = a.form
+  const fs = formState(f?.form)
+  const ss = a.sweet_spot
+  const w = a.today_workout
+  const planned = w && !w.done ? w.est_load ?? 0 : 0
+  const max = ss ? Math.max(ss.high * 1.25, ss.load + planned) : 1
+  const pct = (v: number) => `${Math.min(100, v / max * 100)}%`
+  let hint = ''
+  if (ss) {
+    if (ss.load >= ss.high) hint = 'Above the sweet spot — take it easy.'
+    else if (ss.load >= ss.low) hint = 'In the sweet spot. Nice.'
+    else if (planned && ss.load + planned >= ss.low) hint = `Today’s ${w!.title} gets you there.`
+    else hint = `~${Math.round((ss.low - ss.load) / 10) * 10} more to the sweet spot.`
+  }
+  return (
+    <button className="card loadcard" onClick={() => nav(`/u/${a.user_id}/load`)}>
+      <div className="card-head">
+        <span className="display card-name">Training load</span>
+        <span className="pmc-inline">
+          <span><i style={{ background: 'var(--fitness)' }} />Fitness <b className="num">{num(f?.fitness)}</b>
+            {a.fitness_change_6w != null && <em className={`tone-${a.fitness_change_6w >= 0.5 ? 'better' : a.fitness_change_6w <= -0.5 ? 'worse' : 'inline'}`}>
+              {a.fitness_change_6w >= 0.5 ? '▲' : a.fitness_change_6w <= -0.5 ? '▼' : '●'}{Math.abs(a.fitness_change_6w).toFixed(0)}</em>}</span>
+          <span><i className="dash" style={{ borderColor: 'var(--fatigue)' }} />Fatigue <b className="num">{num(f?.fatigue)}</b></span>
+          <span><i style={{ background: 'var(--form)' }} />Form <b className="num" style={{ color: 'var(--form)' }}>{signed(f?.form, 0)}</b>
+            <em className={`tone-${fs.tone}`}>{fs.label.split(' — ')[0]}</em></span>
+        </span>
+        <span className="grow" />
+        <span className="link">Details <ChevronRight size={16} /></span>
+      </div>
+      <div className="loadcard-body">
+        <div className="pmc-chart">
+          <div className="pmc-plot"><MiniPmc days={a.pmc.slice(-42)} /></div>
+          <div className="pmc-axis"><span>6 weeks ago</span><span>today</span></div>
+        </div>
+        <div className="divider" />
+        <div className="sweet">
+          {ss ? (
+            <>
+              <div className="label">This week</div>
+              <div className="sweet-top">
+                <span className="num sweet-v">{ss.load}</span>
+                <span className="muted">/ <b className="num" style={{ color: 'var(--text)' }}>{ss.low}–{ss.high}</b></span>
+                <span className="trimp">TRIMP</span>
               </div>
-              {t ? <SportCardBody sport={s} t={t} /> : <div className="muted">No sessions yet</div>}
-            </button>
+              <div className="sweet-bar" title="too easy · sweet spot · too much">
+                <i className="zone" style={{ left: pct(ss.low), width: `calc(${pct(ss.high)} - ${pct(ss.low)})` }} />
+                <i className="over" style={{ left: pct(ss.high), right: 0 }} />
+                <i className="fill" style={{ width: pct(ss.load) }} />
+                {planned > 0 && <i className="plan" style={{ left: pct(ss.load), width: `calc(${pct(ss.load + planned)} - ${pct(ss.load)})` }} />}
+              </div>
+              <div className="sweet-hint">{hint}</div>
+            </>
+          ) : <div className="muted">No training load yet</div>}
+        </div>
+      </div>
+    </button>
+  )
+}
+
+function StreakCard({ a }: { a: Ambient }) {
+  const s = a.streak
+  const n = s.history.length
+  return (
+    <section className="card streak">
+      <div className="streak-head">
+        <Flame size={40} color="var(--accent)" strokeWidth={2} />
+        <span className="streak-n">{s.weeks}</span>
+        <div style={{ minWidth: 0 }}>
+          <div className="display streak-name">Week streak</div>
+          <div className="muted small">{s.min_sessions}+ workouts every week</div>
+        </div>
+      </div>
+      <div className="streak-weeks" aria-label={`Workouts per week, last ${n} weeks`}>
+        {s.history.map((w, i) => {
+          const now = i === n - 1
+          return (
+            <div key={w.week} className={`streak-week${now ? ' now' : ''}`}>
+              <div className="pips">
+                {Array.from({ length: s.min_sessions }, (_, k) => <i key={k} className={k < w.count ? 'on' : ''} />)}
+              </div>
+              <span>{now ? 'Now' : `W${weekNo(w.week)}`}</span>
+            </div>
           )
         })}
       </div>
-
-      {/* Weekly volume */}
-      <div className="card span-5">
-        <div className="card-title">This week vs last week</div>
-        <div className="week-rows">
-          {weekSports.length === 0 && <div className="muted">No training yet this week</div>}
-          {weekSports.map(s => {
-            const cur = a.week[s]?.duration_s ?? 0
-            const last = a.last_week[s]?.duration_s ?? 0
-            return (
-              <div key={s} className="week-row">
-                <span className="row" style={{ gap: 6 }}><SportIcon sport={s} size={16} /> {SPORT_LABEL[s]}</span>
-                <div className="week-bar" aria-label={`${duration(cur)} this week, ${duration(last)} last week`}>
-                  <i style={{ width: `${cur / maxDur * 100}%` }} />
-                  <b style={{ left: `${last / maxDur * 100}%` }} />
-                </div>
-                <span className="num" style={{ textAlign: 'right' }}>{duration(cur)}</span>
-              </div>
-            )
-          })}
-        </div>
-        <div className="muted" style={{ fontSize: 14, marginTop: 10 }}>Bar = this week · line = last week</div>
+      <div className="streak-note">
+        {s.needed === 0 ? `This week counts — ${s.this_week} workouts`
+          : s.days_left + 1 < s.needed ? 'Not enough days left this week — next week starts a new one'
+          : `${s.needed} more workout${s.needed > 1 ? 's' : ''} this week ${s.weeks ? 'keeps it alive' : 'starts a streak'}`}
       </div>
+    </section>
+  )
+}
 
-      {/* Recent activities */}
-      <div className="card span-4">
-        <div className="card-title">Recent activities</div>
-        <ul className="recent">
-          {a.recent.slice(0, 4).map(r => (
-            <li key={r.id}>
-              <button onClick={() => nav(`/session/${encodeURIComponent(r.id)}`)}>
-                <SportIcon sport={r.sport} size={22} />
-                <span className="stack" style={{ gap: 0, minWidth: 0 }}>
-                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name || TYPE_LABEL[r.session_type]}</span>
-                  <span className="muted" style={{ fontSize: 14 }}>{when(r.start_time)} · {r.distance_m ? distance(r.distance_m, r.sport) : duration(r.duration_s)}</span>
-                </span>
-                <VerdictPill verdict={r.verdict} />
-              </button>
-            </li>
-          ))}
-        </ul>
+function weekNo(iso: string): number {
+  const d = new Date(iso)
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7))
+  const y = new Date(Date.UTC(t.getUTCFullYear(), 0, 1))
+  return Math.ceil(((t.getTime() - y.getTime()) / 86400000 + 1) / 7)
+}
+
+/* Sport tiles: one big number in real units, its trend, and the last verdict. */
+function tileContent(sport: Sport, t: SportTrend): { big: string; unit?: string; caption: string; extra?: string; spark: number[]; tone: string } {
+  const st = t.status
+  if (sport === 'running' && st?.pace_s_per_km) {
+    const c = st.change_s_per_km
+    const cad = t.cadence
+    return {
+      big: c == null ? paceStr(st.pace_s_per_km) : Math.abs(c) < 2 ? 'Steady' : `${c > 0 ? '−' : '+'}${Math.abs(c).toFixed(0)}`,
+      unit: c == null ? '/km' : Math.abs(c) < 2 ? undefined : 's/km',
+      caption: `${paceStr(st.pace_s_per_km)} /km at ${num(st.ref_hr)} bpm · 6 wks`,
+      extra: cad ? `Cadence ${cad.spm} spm${cad.change ? ` ${cad.change > 0 ? '▲' : '▼'}${Math.abs(cad.change)}` : ''}` : undefined,
+      spark: st.points.map(p => -p.value), tone: c == null ? 'muted' : c >= 2 ? 'better' : c <= -2 ? 'worse' : 'inline',
+    }
+  }
+  if (sport === 'cycling' && st && st.w_per_beat != null) {
+    const c = st.w_per_beat_change_pct
+    return {
+      big: c == null ? `${st.w_per_beat.toFixed(2)}` : signed(c, 1, '%'),
+      caption: `${st.w_per_beat.toFixed(2)} W/beat${st.ftp_wkg ? ` · FTP ${st.ftp_wkg.toFixed(1)} W/kg` : ''}`,
+      spark: st.points.map(p => p.value), tone: c == null ? 'muted' : c >= 1 ? 'better' : c <= -1 ? 'worse' : 'inline',
+    }
+  }
+  // a trend this steep comes from too few sessions: don't show it on the wall
+  const raw6 = t.pct_per_week == null ? null : t.pct_per_week * 6
+  const pct6 = raw6 != null && Math.abs(raw6) <= 30 ? raw6 : null
+  return {
+    big: pct6 == null ? '—' : signed(pct6, 1, '%'),
+    caption: pct6 == null ? 'Not enough sessions for a trend yet' : `${t.metric ?? (sport === 'strength' ? 'e1RM' : 'trend')} · 6 wks`,
+    spark: t.points.map(p => p.value), tone: pct6 == null ? 'muted' : pct6 >= 1.2 ? 'better' : pct6 <= -1.2 ? 'worse' : 'inline',
+  }
+}
+
+function SportTile({ a, sport }: { a: Ambient; sport: Sport }) {
+  const nav = useNavigate()
+  const t = a.trends[sport]
+  const c = t ? tileContent(sport, t) : null
+  return (
+    <button className="card sport-tile" style={{ '--sc': SPORT_COLOR[sport] } as React.CSSProperties}
+            onClick={() => nav(`/u/${a.user_id}/sport/${sport}`)}>
+      <div className="sport-tile-head">
+        <SportIcon sport={sport} size={22} color={SPORT_COLOR[sport]} />
+        <span className="sport-name">{SPORT_LABEL[sport]}</span>
+        <span className="grow" />
+        {t && <span className="muted small nowrap">{shortWhen(t.last_time)}</span>}
       </div>
+      {c ? (
+        <>
+          <div className="display sport-big">{c.big}{c.unit && <span className="unit">{c.unit}</span>}</div>
+          <div className="muted small ellipsis">{c.caption}</div>
+          {c.extra && <div className="small ellipsis cadence">{c.extra}</div>}
+          <div className="sport-spark"><Sparkline values={c.spark} height={24} color={SPORT_COLOR[sport]} /></div>
+          <div className="sport-foot"><VerdictPill verdict={t!.last_verdict} /></div>
+        </>
+      ) : <div className="muted" style={{ marginTop: 8 }}>No sessions yet</div>}
+    </button>
+  )
+}
 
-      {/* VO2max + validation */}
-      <div className="span-3 stack" style={{ gap: 'var(--gap)' }}>
-        <button className="card" onClick={() => nav(`/u/${u}/health/vo2max`)}>
-          <div className="card-title"><Waves size={18} /> VO₂max</div>
-          <div className="row"><span className="mid num">{num(a.vo2max.at(-1)?.value, 1)}</span>
-            {vo2Change != null && <span className={`num tone-${vo2Change > 0.05 ? 'better' : vo2Change < -0.05 ? 'worse' : 'inline'}`} style={{ fontSize: 15 }}>
-              {signed(vo2Change, 1)} in 6 wk</span>}<span style={{ flex: 1, minWidth: 60 }}><Sparkline values={a.vo2max.map(v => v.value)} height={32} /></span></div>
-        </button>
-        <button className="card" onClick={() => nav(`/u/${u}/validation`)}>
-          <div className="card-title"><CheckCircle2 size={18} /> Verdict check</div>
-          <div className="muted" style={{ fontSize: 15 }}>Do verdicts match how you felt?</div>
-        </button>
+export function WallAmbient({ ambient: a }: { ambient: Ambient }) {
+  return (
+    <div className="ambient">
+      <Mission a={a} />
+      <ReadinessCard a={a} />
+      <LoadCard a={a} />
+      <StreakCard a={a} />
+      <div className="sport-tiles">
+        {SPORTS.map(s => <SportTile key={s} a={a} sport={s} />)}
       </div>
     </div>
   )
 }
+

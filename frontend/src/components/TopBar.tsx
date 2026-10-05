@@ -58,7 +58,7 @@ export function TopBar({ users, activeUser, onSelect, sync, syncJob, syncOutcome
       <div className="topbar-left">
         {!onWall && (
           <button className="btn" onClick={() => nav('/')} aria-label="Back to wall">
-            <ChevronLeft size={22} /> Wall
+            <ChevronLeft size={22} /> Overview
           </button>
         )}
         <div className="avatars" role="tablist" aria-label="Who is looking">
@@ -79,7 +79,8 @@ export function TopBar({ users, activeUser, onSelect, sync, syncJob, syncOutcome
         <button className="btn icon-btn" onClick={() => nav('/accounts')} aria-label="Garmin accounts and settings">
           <UserCog size={24} />
         </button>
-        <span className="clock num">{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        <span className="today">{now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+        <span className="clock num">{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
       </div>
     </header>
   )

@@ -1,0 +1,192 @@
+{
+ "workoutId": null,
+ "workoutName": "Schwelle",
+ "description": "17:00@5:25/km",
+ "updatedDate": null,
+ "createdDate": "2026-10-05T11:23:53.0",
+ "sportType": {
+  "sportTypeId": 1,
+  "sportTypeKey": "running",
+  "displayOrder": 1
+ },
+ "subSportType": "GENERIC",
+ "trainingPlanId": null,
+ "estimatedDurationInSecs": 2220,
+ "estimatedDistanceInMeters": null,
+ "workoutSegments": [
+  {
+   "segmentOrder": 1,
+   "sportType": {
+    "sportTypeId": 1,
+    "sportTypeKey": "running",
+    "displayOrder": 1
+   },
+   "poolLengthUnit": null,
+   "poolLength": null,
+   "avgTrainingSpeed": null,
+   "estimatedDurationInSecs": null,
+   "estimatedDistanceInMeters": null,
+   "estimatedDistanceUnit": null,
+   "estimateType": null,
+   "description": null,
+   "workoutSteps": [
+    {
+     "type": "ExecutableStepDTO",
+     "stepId": null,
+     "stepOrder": 1,
+     "stepType": {
+      "stepTypeId": 1,
+      "stepTypeKey": "warmup",
+      "displayOrder": 1
+     },
+     "childStepId": null,
+     "description": null,
+     "endCondition": {
+      "conditionTypeId": 2,
+      "conditionTypeKey": "time",
+      "displayOrder": 2,
+      "displayable": true
+     },
+     "endConditionValue": 600.0,
+     "preferredEndConditionUnit": null,
+     "endConditionCompare": null,
+     "targetType": {
+      "workoutTargetTypeId": 6,
+      "workoutTargetTypeKey": "pace.zone",
+      "displayOrder": 6
+     },
+     "targetValueOne": 2.694,
+     "targetValueTwo": 2.388,
+     "targetValueUnit": null,
+     "zoneNumber": null,
+     "secondaryTargetType": null,
+     "secondaryTargetValueOne": null,
+     "secondaryTargetValueTwo": null,
+     "secondaryTargetValueUnit": null,
+     "secondaryZoneNumber": null,
+     "endConditionZone": null,
+     "strokeType": null,
+     "equipmentType": null,
+     "category": null,
+     "exerciseName": null,
+     "workoutProvider": null,
+     "providerExerciseSourceId": null,
+     "weightValue": null,
+     "weightUnit": null
+    },
+    {
+     "type": "ExecutableStepDTO",
+     "stepId": null,
+     "stepOrder": 2,
+     "stepType": {
+      "stepTypeId": 3,
+      "stepTypeKey": "interval",
+      "displayOrder": 3
+     },
+     "childStepId": null,
+     "description": null,
+     "endCondition": {
+      "conditionTypeId": 2,
+      "conditionTypeKey": "time",
+      "displayOrder": 2,
+      "displayable": true
+     },
+     "endConditionValue": 1020.0,
+     "preferredEndConditionUnit": null,
+     "endConditionCompare": null,
+     "targetType": {
+      "workoutTargetTypeId": 6,
+      "workoutTargetTypeKey": "pace.zone",
+      "displayOrder": 6
+     },
+     "targetValueOne": 3.222,
+     "targetValueTwo": 2.944,
+     "targetValueUnit": null,
+     "zoneNumber": null,
+     "secondaryTargetType": null,
+     "secondaryTargetValueOne": null,
+     "secondaryTargetValueTwo": null,
+     "secondaryTargetValueUnit": null,
+     "secondaryZoneNumber": null,
+     "endConditionZone": null,
+     "strokeType": null,
+     "equipmentType": null,
+     "category": null,
+     "exerciseName": null,
+     "workoutProvider": null,
+     "providerExerciseSourceId": null,
+     "weightValue": null,
+     "weightUnit": null
+    },
+    {
+     "type": "ExecutableStepDTO",
+     "stepId": null,
+     "stepOrder": 3,
+     "stepType": {
+      "stepTypeId": 2,
+      "stepTypeKey": "cooldown",
+      "displayOrder": 2
+     },
+     "childStepId": null,
+     "description": null,
+     "endCondition": {
+      "conditionTypeId": 2,
+      "conditionTypeKey": "time",
+      "displayOrder": 2,
+      "displayable": true
+     },
+     "endConditionValue": 600.0,
+     "preferredEndConditionUnit": null,
+     "endConditionCompare": null,
+     "targetType": {
+      "workoutTargetTypeId": 6,
+      "workoutTargetTypeKey": "pace.zone",
+      "displayOrder": 6
+     },
+     "targetValueOne": 2.694,
+     "targetValueTwo": 2.388,
+     "targetValueUnit": null,
+     "zoneNumber": null,
+     "secondaryTargetType": null,
+     "secondaryTargetValueOne": null,
+     "secondaryTargetValueTwo": null,
+     "secondaryTargetValueUnit": null,
+     "secondaryZoneNumber": null,
+     "endConditionZone": null,
+     "strokeType": null,
+     "equipmentType": null,
+     "category": null,
+     "exerciseName": null,
+     "workoutProvider": null,
+     "providerExerciseSourceId": null,
+     "weightValue": null,
+     "weightUnit": null
+    }
+   ]
+  }
+ ],
+ "poolLength": null,
+ "poolLengthUnit": null,
+ "locale": null,
+ "workoutProvider": null,
+ "workoutSourceId": null,
+ "uploadTimestamp": null,
+ "atpPlanId": null,
+ "consumer": null,
+ "consumerName": null,
+ "consumerWebsiteURL": null,
+ "workoutNameI18nKey": null,
+ "descriptionI18nKey": null,
+ "avgTrainingSpeed": null,
+ "estimateType": null,
+ "estimatedDistanceUnit": null,
+ "workoutUuid": "703cccc9-b830-44ed-b011-169d78c52cd8",
+ "priorityType": "REQUIRED",
+ "workoutPhrase": "LACTATE_THRESHOLD",
+ "trainingEffectLabel": "LACTATE_THRESHOLD",
+ "estimatedAnaerobicTrainingEffect": 0.0,
+ "estimatedTrainingEffect": 3.5,
+ "isSessionTransitionEnabled": null,
+ "workoutIndex": 0,
+ "shared": false
+}

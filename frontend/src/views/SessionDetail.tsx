@@ -3,9 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Bar, BarChart } from 'recharts'
 import { api } from '../api'
 import type { Delta, SessionDetail } from '../api'
-import { SportIcon, VerdictPill } from '../components/icons'
+import { SportIcon, VerdictIcon } from '../components/icons'
 import { Improvements } from '../components/Improvements'
-import { distance, duration, feelLabel, kmh, num, pace, SPORT_LABEL, TYPE_LABEL, when } from '../format'
+import { distance, duration, feelLabel, kmh, num, pace, SPORT_LABEL, TYPE_LABEL, VERDICT_LABEL, when } from '../format'
 import { useFetch } from '../useFetch'
 import { deltaTone } from './WallVerdict'
 import './Detail.css'
@@ -39,50 +39,71 @@ function DeltaTable({ deltas }: { deltas: Delta[] }) {
   )
 }
 
-function facts(s: SessionDetail): [string, string][] {
+type Row = [string, string]
+interface FactGroups { key: Row[]; groups: { title: string; rows: Row[] }[] }
+
+/** The session's numbers: up to 6 key numbers big, the rest in small themed groups. */
+function factGroups(s: SessionDetail): FactGroups {
   const f = s.features || {}
-  const out: [string, string][] = [
-    ['Duration', duration(s.duration_s)], ['Distance', distance(s.distance_m, s.sport)],
-    ['Avg HR', s.avg_hr ? `${num(s.avg_hr)} bpm` : '—'], ['Max HR', s.max_hr ? `${num(s.max_hr)} bpm` : '—'],
-    ['Training load', num(s.load)],
-  ]
-  if (s.ascent_m) out.push(['Ascent', `${num(s.ascent_m)} m`])
-  // Garmin's weather for this activity (station near the start) — not the wrist sensor
-  const w = f.weather
-  if (w) {
-    out.push(['Weather', `${num(w.temp_c)} °C${w.desc ? ` · ${w.desc}` : ''}`])
-    if (w.feels_like_c != null) out.push(['Feels like', `${num(w.feels_like_c)} °C`])
-    if (w.humidity != null) out.push(['Humidity', `${num(w.humidity)} %${w.dew_point_c != null ? ` · dew pt ${num(w.dew_point_c)} °C` : ''}`])
-    if (w.wind_kmh != null) out.push(['Wind', `${num(w.wind_kmh)} km/h${w.wind_dir ? ` ${w.wind_dir}` : ''}`])
-    if (w.station) out.push(['Weather station', w.station])
+  const spm = f.avg_cadence ? `${num(f.avg_cadence * (f.avg_cadence < 120 ? 2 : 1))} spm` : null
+  const key: Row[] = [['Duration', duration(s.duration_s)]]
+  if (s.distance_m) key.push(['Distance', distance(s.distance_m, s.sport)])
+  if (s.sport === 'running' && f.avg_speed) key.push(['Avg pace', `${pace(f.avg_speed)} /km`])
+  if (s.sport === 'cycling') key.push(f.avg_power ? ['Avg power', `${num(f.avg_power)} W`] : ['Avg speed', `${kmh(f.avg_speed)} km/h`])
+  if (s.sport === 'swimming' && f.pace_100m_s) key.push(['Pace', `${duration(f.pace_100m_s)} /100 m`])
+  if (s.sport === 'strength') key.push(['Volume', `${num(f.total_volume)} kg`])
+  if (s.avg_hr) key.push(['Avg HR', `${num(s.avg_hr)} bpm`])
+  if (s.sport === 'running' && spm) key.push(['Cadence', spm])
+  key.push(['Load', num(s.load)])
+
+  const groups: { title: string; rows: Row[] }[] = []
+  const add = (title: string, rows: (Row | null | false | undefined)[]) => {
+    const r = rows.filter((x): x is Row => !!x && x[1] !== '—')
+    if (r.length) groups.push({ title, rows: r })
   }
-  if (f.heat_acclimation != null) out.push(['Heat acclimation', `${num(f.heat_acclimation)} %`])
-  if (f.heat_adj_pct) out.push(['Heat adjustment', `+${num(f.heat_adj_pct, 1)} % efficiency`])
   if (s.sport === 'running') {
-    out.push(['Avg pace', `${pace(f.avg_speed)} /km`], ['Grade-adj. pace', `${pace(f.gap_speed)} /km`],
-      ['Efficiency', num(f.ef_adj, 2)], ['HR drift', f.decoupling != null ? `${num(f.decoupling, 1)} %` : '—'],
+    add('Performance', [
       [`Pace @ ${f.ref_hr ?? ''} bpm`, f.speed_at_ref_hr ? `${pace(f.speed_at_ref_hr)} /km` : '—'],
-      ['Cadence', f.avg_cadence ? `${num(f.avg_cadence * (f.avg_cadence < 120 ? 2 : 1))} spm` : '—'])
+      ['Grade-adj. pace', f.gap_speed ? `${pace(f.gap_speed)} /km` : '—'],
+      ['Efficiency', num(f.ef_adj, 2)],
+      ['HR drift', f.decoupling != null ? `${num(f.decoupling, 1)} %` : '—'],
+    ])
     if (f.work_speed) {
-      out.push(['Reps', f.rep_s ? `${f.rep_count} × ${duration(f.rep_s)}` : num(f.rep_count)],
-        ['Rep pace', `${pace(f.work_speed)} /km`], ['Rep HR', `${num(f.work_hr)} bpm`])
-      // short reps: HR can't keep up, so the HR drop says little — show how well the pace held instead
-      if (f.rep_s && f.rep_s < 120) out.push(['Pace held', f.rep_fade != null ? (f.rep_fade > 0 ? `−${num(f.rep_fade, 1)} %` : 'held') : '—'])
-      else out.push(['HR drop between reps', `${num(f.hr_recovery)} bpm`])
+      add('Intervals', [
+        ['Reps', f.rep_s ? `${f.rep_count} × ${duration(f.rep_s)}` : num(f.rep_count)],
+        ['Rep pace', `${pace(f.work_speed)} /km`],
+        ['Rep HR', `${num(f.work_hr)} bpm`],
+        // short reps: HR can't keep up, so the HR drop says little — show how well the pace held instead
+        f.rep_s && f.rep_s < 120 ? ['Pace held', f.rep_fade != null ? (f.rep_fade > 0 ? `−${num(f.rep_fade, 1)} %` : 'held') : '—']
+          : ['HR drop between reps', `${num(f.hr_recovery)} bpm`],
+      ])
     }
   }
-  if (s.sport === 'cycling') {
-    if (f.avg_power) out.push(['Avg power', `${num(f.avg_power)} W`], ['Norm. power', `${num(f.np)} W`],
-      ['W / beat', num(f.ef, 2)], ['Intensity factor', num(f.intensity_factor, 2)], ['eFTP', f.eftp ? `${num(f.eftp)} W` : '—'])
-    else out.push(['Avg speed', `${kmh(f.avg_speed)} km/h`])
+  if (s.sport === 'cycling' && f.avg_power) {
+    add('Power', [['Norm. power', `${num(f.np)} W`], ['W / beat', num(f.ef, 2)],
+      ['Intensity factor', num(f.intensity_factor, 2)], ['eFTP', f.eftp ? `${num(f.eftp)} W` : '—']])
   }
-  if (s.sport === 'swimming') out.push(['Pace', f.pace_100m_s ? `${duration(f.pace_100m_s)} /100m` : '—'],
-    ['SWOLF', num(f.swolf)], ['Lengths', num(f.lengths)], ['Main stroke', f.main_stroke ?? '—'])
-  if (s.sport === 'strength') out.push(['Sets', num(f.total_sets)], ['Volume', `${num(f.total_volume)} kg`])
-  if (s.rpe != null) out.push(['Your effort', `${num(s.rpe)}/10`])
-  if (s.feel != null) out.push(['How you felt', feelLabel(s.feel)])
-  return out
+  if (s.sport === 'swimming') add('Swim', [['SWOLF', num(f.swolf)], ['Lengths', num(f.lengths)], ['Main stroke', f.main_stroke ?? '—']])
+  if (s.sport === 'strength') add('Lifting', [['Sets', num(f.total_sets)]])
+  add('Heart & effort', [
+    ['Max HR', s.max_hr ? `${num(s.max_hr)} bpm` : '—'],
+    s.ascent_m ? ['Ascent', `${num(s.ascent_m)} m`] : null,
+    s.rpe != null ? ['Your effort', `${num(s.rpe)}/10`] : null,
+    s.feel != null ? ['How you felt', feelLabel(s.feel)] : null,
+  ])
+  // Garmin's weather for this activity (station near the start) — not the wrist sensor
+  const w = f.weather
+  add('Conditions', [
+    w ? ['Weather', `${num(w.temp_c)} °C${w.desc ? ` · ${w.desc}` : ''}`] : null,
+    w && w.feels_like_c != null && Math.round(w.feels_like_c) !== Math.round(w.temp_c) ? ['Feels like', `${num(w.feels_like_c)} °C`] : null,
+    w && w.humidity != null ? ['Humidity', `${num(w.humidity)} %`] : null,
+    w && w.wind_kmh != null ? ['Wind', `${num(w.wind_kmh)} km/h${w.wind_dir ? ` ${w.wind_dir}` : ''}`] : null,
+    f.heat_adj_pct ? ['Heat adjustment', `+${num(f.heat_adj_pct, 1)} %`] : null,
+  ])
+  return { key: key.slice(0, 6), groups }
 }
+
+const ZONE_COLORS = ['#64748b', '#38bdf8', '#3ddc84', '#f5b83d', '#f87171']
 
 function StreamChart({ s }: { s: SessionDetail }) {
   const st = s.streams
@@ -119,12 +140,12 @@ function StreamChart({ s }: { s: SessionDetail }) {
             )}
             <Tooltip formatter={(v, k) => k === 'pace' ? [`${fmtPace(Number(v))} /km`, 'Pace'] : [Math.round(Number(v)), String(k)]}
                      labelFormatter={v => `${v} min`} />
-            <Line yAxisId="hr" dataKey="hr" stroke="var(--worse)" dot={false} strokeWidth={1.8} isAnimationActive={false} name="HR" />
+            <Line yAxisId="hr" dataKey="hr" stroke="#f87171" dot={false} strokeWidth={1.8} isAnimationActive={false} name="HR" />
             {second && <Line yAxisId="b" dataKey={second} stroke="var(--primary)" dot={false} strokeWidth={1.8} isAnimationActive={false} connectNulls />}
           </LineChart>
         </ResponsiveContainer>
       </div>
-      <div className="muted" style={{ fontSize: 14 }}>Red = heart rate (left axis){second ? ` · blue = ${second} (right axis)` : ''}</div>
+      <div className="muted" style={{ fontSize: 14 }}>Red = heart rate (left axis){second ? ` · yellow-green = ${second} (right axis${second === 'pace' ? ', higher = faster' : ''})` : ''}</div>
     </div>
   )
 }
@@ -138,6 +159,7 @@ export function SessionDetailView() {
   const v = s.verdict
   const f = s.features || {}
   const laps = s.streams?.laps ?? []
+  const numbers = factGroups(s)
   const t = v?.trend
 
   const setsByEx: Record<string, typeof s.sets> = {}
@@ -146,19 +168,39 @@ export function SessionDetailView() {
 
   return (
     <div className="detail">
-      <div className="detail-head">
-        <div>
-          <div className="row muted"><SportIcon sport={s.sport} size={20} /> {SPORT_LABEL[s.sport]} · {TYPE_LABEL[s.session_type] ?? s.session_type} · {when(s.start_time)}</div>
-          <h1>{s.name || SPORT_LABEL[s.sport]}</h1>
-          {v && <div className="row"><VerdictPill verdict={v.verdict} /> <span style={{ fontSize: 20 }}>{v.headline}</span> <span className="pill">Confidence: {v.confidence}</span></div>}
-        </div>
-      </div>
-
       <div className="detail-grid">
+        <section className={`card hero stripes ${t ? 'span-7' : 'span-12'}`}>
+          <div className="stack" style={{ gap: 8 }}>
+            <div className="row">
+              <span className="pill"><SportIcon sport={s.sport} size={16} /> {SPORT_LABEL[s.sport]} · {TYPE_LABEL[s.session_type] ?? s.session_type}</span>
+              <span className="muted">{when(s.start_time)}</span>
+            </div>
+            <h1 style={{ margin: 0, fontSize: 32, fontWeight: 600 }}>{s.name || SPORT_LABEL[s.sport]}</h1>
+            {v && (
+              <>
+                <div className={`row display tone-${v.verdict}`} style={{ fontSize: 'clamp(64px, 8vw, 104px)', gap: 12, color: v.verdict === 'better' ? 'var(--volt)' : undefined }}>
+                  <VerdictIcon verdict={v.verdict} size={60} strokeWidth={3} /> {VERDICT_LABEL[v.verdict]}
+                </div>
+                <div className="display" style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.1 }}>{v.headline}</div>
+                <div className="row" style={{ gap: 8 }}>
+                  <span className="pill">Confidence: {v.confidence}</span>
+                  {s.rpe != null && <span className="pill">Effort {num(s.rpe)}/10{s.feel != null ? ` · ${feelLabel(s.feel)}` : ''}</span>}
+                </div>
+              </>
+            )}
+          </div>
+        </section>
+        {t && (
+          <div className="span-5">
+            <Improvements items={s.improvements ?? []}
+                          onClick={() => nav(`/u/${s.user_id}/load`)} />
+          </div>
+        )}
+
         {v && (
-          <div className="card span-7">
+          <div className="card span-12">
             <div className="card-title">Why</div>
-            <ul style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <ul className="reasons-list two">
               {v.reasons.map((r, i) => <li key={i}>{r}</li>)}
             </ul>
             {v.context.some(c => c.kind !== 'rpe') && (
@@ -168,38 +210,38 @@ export function SessionDetailView() {
             )}
           </div>
         )}
-        {t && (
-          <div className="span-5">
-            <Improvements items={s.improvements ?? []}
-                          onClick={() => nav(`/u/${s.user_id}/load`)} />
-          </div>
-        )}
 
         {v && v.deltas.length > 0 && (
           <div className="card span-12">
-            <div className="card-title">Compared with your similar sessions</div>
+            <div className="card-title">Compared with your {v.deltas[0]?.n ?? ''} similar sessions</div>
             <DeltaTable deltas={v.deltas} />
           </div>
         )}
 
         <div className="card span-12">
-          <div className="card-title">Every number</div>
-          <div className="kv">
-            {facts(s).map(([k, val]) => <div key={k}><div className="k">{k}</div><div className="v num">{val}</div></div>)}
+          <div className="card-title">The numbers</div>
+          <div className="key-facts">
+            {numbers.key.map(([k, val]) => <div key={k} className="tile"><div className="label">{k}</div><div className="v">{val}</div></div>)}
           </div>
-          {Array.isArray(f.zones) && (
-            <div style={{ marginTop: 16 }}>
-              <div className="k muted" style={{ fontSize: 13, textTransform: 'uppercase' }}>Time in HR zones</div>
-              <div className="sleep-bar" style={{ height: 18 }}>
-                {f.zones.map((z: number, i: number) => (
-                  <span key={i} title={`Z${i + 1}`} style={{ width: `${z * 100}%`, background: ['#64748b', '#38bdf8', '#22c55e', '#f59e0b', '#ef4444'][i] }} />
-                ))}
+          <div className="fact-groups">
+            {numbers.groups.map(g => (
+              <div key={g.title} className="fact-group">
+                <div className="label">{g.title}</div>
+                <dl>{g.rows.map(([k, val]) => <div key={k}><dt>{k}</dt><dd className="num">{val}</dd></div>)}</dl>
               </div>
-              <div className="row muted" style={{ fontSize: 14, marginTop: 4 }}>
-                {f.zones.map((z: number, i: number) => <span key={i}>Z{i + 1} {Math.round(z * 100)}%</span>)}
+            ))}
+            {Array.isArray(f.zones) && (
+              <div className="fact-group">
+                <div className="label">Time in HR zones</div>
+                <div className="zone-bars">
+                  {f.zones.map((z: number, i: number) => (
+                    <div key={i}><span className="num">Z{i + 1}</span><i><b style={{ width: `${z * 100}%`, background: ZONE_COLORS[i] }} /></i><span className="num">{Math.round(z * 100)}%</span></div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
+          {f.weather?.station && <div className="faint small" style={{ marginTop: 10 }}>Weather from Garmin · station {f.weather.station}</div>}
         </div>
 
         <StreamChart s={s} />

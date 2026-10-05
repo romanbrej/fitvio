@@ -1,67 +1,18 @@
-/* ---------- Verdict mode ---------- */
-.verdict-wall {
-  display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-  gap: 28px;
-  align-items: start;
-}
-.verdict-meta { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 18px; }
-.sport-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  border: 2px solid var(--border);
-  font-weight: 600;
-}
-.activity-name { font-size: 30px; font-weight: 600; margin: 12px 0 4px; line-height: 1.15; }
-.verdict-big {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  font-size: clamp(64px, 8.5vw, 112px);
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.03em;
-  background: none;
-  border: 0;
-  padding: 8px 0;
-  cursor: pointer;
-  text-align: left;
-}
-.headline { font-size: 24px; font-weight: 500; margin: 6px 0 12px; }
-.confidence { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-.reasons { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
-.reasons li {
-  font-size: 19px;
-  padding-left: 18px;
-  border-left: 3px solid var(--border);
-}
-.context { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+/* Design A — "Today's Mission". Built for a wall tablet in landscape (Galaxy Tab A8: 1280×800 CSS px);
+   below 1100 px wide it stacks and scrolls. */
 
-.verdict-side { display: flex; flex-direction: column; gap: var(--gap); }
-.delta-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); }
-.delta-grid.odd > :last-child { grid-column: span 2; }
-.delta-value { font-size: clamp(28px, 3.2vw, 40px); font-weight: 600; line-height: 1.1; }
-.delta-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; font-size: 16px; }
-
-.facts { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.fact-k { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-.fact-v { font-size: 26px; font-weight: 600; }
-
-.impact-row { display: grid; grid-template-columns: repeat(3, auto) minmax(160px, 1fr); gap: 24px; align-items: end; }
-.impact-trend { min-width: 0; }
-.verdict-actions { display: flex; gap: 12px; justify-content: flex-end; }
-
-/* ---------- Ambient mode ---------- */
-.ambient {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 14px;
+.grow { flex: 1 1 auto; }
+.small { font-size: 15px; }
+.strong { font-weight: 600; }
+.nowrap { white-space: nowrap; }
+.ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.link {
+  display: inline-flex; align-items: center; gap: 2px; color: var(--volt);
+  font: 700 15px var(--display); letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap;
 }
-.ambient .card { padding: 14px 18px; }
-.ambient .card-title { margin-bottom: 6px; font-size: 14px; }
+.row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.between { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.stack { display: flex; flex-direction: column; gap: 6px; }
 .span-3 { grid-column: span 3; }
 .span-4 { grid-column: span 4; }
 .span-5 { grid-column: span 5; }
@@ -70,75 +21,183 @@
 .span-8 { grid-column: span 8; }
 .span-12 { grid-column: span 12; }
 
-.big { font-size: clamp(36px, 4vw, 52px); font-weight: 600; line-height: 1.05; }
-.mid { font-size: 28px; font-weight: 600; }
-.row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.between { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.stack { display: flex; flex-direction: column; gap: 6px; }
-
-.form-card { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; }
-
-.last-workout { display: flex; flex-direction: column; gap: 6px; }
-.last-workout-main { background: none; border: 0; padding: 0; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 4px; }
-.last-workout-head { font-size: 22px; font-weight: 600; display: flex; gap: 10px; align-items: baseline; }
-.last-workout-head span { font-size: 16px; }
-.fitness-strip {
-  display: grid; grid-template-columns: auto auto minmax(80px, 1fr); gap: 14px; align-items: center;
-  background: none; border: 0; border-top: 1px solid var(--border); padding: 8px 0 0; cursor: pointer;
-  text-align: left; font-size: 15px;
-}
-.fitness-strip-spark { min-width: 0; }
-.pmc-today { display: flex; flex-wrap: wrap; gap: 4px 18px; }
-.pmc-delta { font-size: 13px; }
-.sport-main { font-size: 17px; }
-.sport-main b { font-size: 28px; }
-.recovery-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.recovery-grid .card { padding: 8px 12px; }
-.recovery-grid .mid { font-size: 26px; }
-.metric-label { font-size: 15px; color: var(--muted); }
-.vs { font-size: 15px; }
-
-.sleep-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; margin-top: 6px; background: var(--surface-2); }
-.sleep-bar span { display: block; height: 100%; }
-
-.sport-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gap); }
-.sport-card { display: flex; flex-direction: column; gap: 4px; }
-
-.week-rows { display: flex; flex-direction: column; gap: 10px; }
-.week-row { display: grid; grid-template-columns: 110px 1fr 90px; gap: 10px; align-items: center; font-size: 16px; }
-.week-bar { height: 12px; background: var(--surface-2); border-radius: 6px; position: relative; overflow: hidden; }
-.week-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; background: var(--primary); }
-.week-bar b { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--muted); }
-
-.recent { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.recent li { border-top: 1px solid var(--border); }
-.recent li:first-child { border-top: 0; }
-.recent button {
-  width: 100%;
-  min-height: 48px;
+/* ---------- Ambient ---------- */
+.ambient {
   display: grid;
-  grid-template-columns: 28px 1fr auto;
-  gap: 12px;
-  align-items: center;
-  background: none;
-  border: 0;
-  padding: 4px 0;
-  cursor: pointer;
-  text-align: left;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 14px 16px;
 }
+@media (min-width: 1100px) and (min-height: 680px) {
+  /* one screen, no scrolling: rows share the height left under the top bar */
+  .ambient {
+    height: calc(100dvh - 64px - 16px);
+    grid-template-rows: minmax(0, 280fr) minmax(0, 178fr) minmax(0, 226fr);
+  }
+  .ambient > * { min-height: 0; overflow: hidden; }
+}
+.ambient > .card { padding: 16px 22px; display: flex; flex-direction: column; }
+.card-head { display: flex; align-items: baseline; gap: 12px; }
+.card-name { font-style: italic; font-weight: 800; font-size: 26px; letter-spacing: 0.02em; }
+
+/* mission */
+.mission { grid-column: span 8; gap: 8px; padding: 20px 28px !important; }
+.mission-label {
+  display: flex; align-items: center; gap: 10px;
+  font: 700 16px var(--display); letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted);
+}
+.mission-title { margin: 0; font-size: 80px; color: var(--volt); white-space: nowrap; }
+.mission.no-workout .mission-title { font-size: 112px; margin-top: 6px; }
+.mission-sub { margin: 4px 0 0; font-size: 22px; color: var(--text-2); max-width: 620px; }
+.workout-preview {
+  margin-top: auto; display: flex; flex-direction: column; gap: 6px; width: 100%;
+  padding: 10px 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border-2);
+  text-align: left; cursor: pointer;
+}
+.workout-preview:active { border-color: var(--volt); }
+.workout-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.workout-title { font: 800 22px var(--display); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.workout-meta { font-size: 15px; color: var(--muted); white-space: nowrap; }
+.workout-line { display: flex; gap: 14px; font-size: 15px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.workout-line .strong { color: var(--text); }
+.workout-preview.done { background: #12251b; border-color: #1f4a32; }
+.done-check { width: 28px; height: 28px; border-radius: 50%; background: var(--better); color: var(--volt-ink); display: inline-grid; place-items: center; }
+.wshape { display: flex; align-items: flex-end; gap: 3px; }
+.wshape-col { flex-basis: 0; flex-shrink: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; min-width: 0; }
+.wshape-col i { display: block; width: 100%; border-radius: 3px; }
+.wshape-label { font-size: 14px; white-space: nowrap; }
+
+/* readiness */
+.readiness { grid-column: span 4; gap: 12px; }
+.readiness-head { display: flex; align-items: center; gap: 16px; }
+.ring { position: relative; width: 104px; height: 104px; flex-shrink: 0; }
+.ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ring-center b { font: 800 42px/1 var(--display); }
+.ring-center span { font: 700 12px var(--display); letter-spacing: 0.16em; color: var(--muted); }
+.readiness-level { font-size: 34px; font-weight: 800; }
+.vo2 { display: flex; align-items: center; gap: 6px; margin-top: 4px; padding: 0; border: 0; background: none; cursor: pointer; text-align: left; width: 100%; min-height: 28px; }
+.vo2 .label { font-size: 12px; }
+.vo2 b { font-size: 17px; font-weight: 600; }
+.vo2-spark { flex: 1; min-width: 50px; }
+.readiness-none { font: 700 20px/1.15 var(--display); color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 2px 0; }
+.vitals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 8px; flex: 1; min-height: 0; }
+.vital { border: 0; text-align: left; cursor: pointer; padding: 8px 12px; display: flex; flex-direction: column; justify-content: center; }
+.vital:active { background: var(--surface-3); }
+.vital-row { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.vital-v { font-size: 24px; font-weight: 600; }
+
+/* training load: the 6-week chart is the focus, this week's sweet spot sits beside it */
+.loadcard { grid-column: span 8; gap: 8px; text-align: left; padding: 12px 22px 10px !important; }
+.loadcard .card-head { align-items: center; gap: 18px; }
+.pmc-inline { display: flex; gap: 16px; align-items: baseline; font-size: 15px; color: var(--muted); white-space: nowrap; }
+.pmc-inline > span { display: inline-flex; align-items: baseline; gap: 6px; }
+.pmc-inline i { display: inline-block; width: 12px; height: 4px; border-radius: 2px; align-self: center; }
+.pmc-inline i.dash { height: 0; border-top: 3px dashed; background: none; }
+.pmc-inline b { font-size: 22px; font-weight: 600; color: var(--text); }
+.pmc-inline em { font-style: normal; font-size: 14px; font-weight: 600; }
+.loadcard-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 2fr) 1px minmax(0, 1fr); gap: 18px; }
+.divider { background: var(--border); }
+.pmc-chart { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.pmc-plot { flex: 1 1 0; min-height: 40px; }
+.mini-pmc { display: block; }
+.pmc-axis { display: flex; justify-content: space-between; font: 600 12px var(--mono); color: var(--faint); margin-top: 3px; }
+.sweet { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.sweet-top { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; font-size: 16px; }
+.sweet-v { font-size: 30px; font-weight: 600; line-height: 1.05; }
+.trimp { font: 700 16px var(--display); letter-spacing: 0.12em; color: var(--muted); }
+.sweet-bar { position: relative; height: 12px; border-radius: 6px; background: var(--surface-3); overflow: hidden; }
+.sweet-bar i { position: absolute; top: 0; bottom: 0; }
+.sweet-bar .zone { background: var(--volt); opacity: 0.28; }
+.sweet-bar .over { background: var(--accent); opacity: 0.28; }
+.sweet-bar .fill { left: 0; background: var(--volt); border-radius: 6px; }
+.sweet-bar .plan { background: repeating-linear-gradient(-45deg, var(--volt) 0 4px, transparent 4px 8px); opacity: 0.7; }
+.sweet-hint { margin-top: auto; font-size: 15px; color: var(--text-2); line-height: 1.3; }
+
+/* streak */
+.streak { grid-column: span 4; gap: 8px; padding: 14px 20px !important; }
+.streak-head { display: flex; align-items: center; gap: 12px; }
+.streak-n { font: 900 56px/0.9 var(--display); color: var(--accent); }
+.streak-name { font-size: 24px; font-weight: 800; }
+.streak-weeks { display: flex; gap: 6px; align-items: flex-end; }
+.streak-week { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; font: 700 11px var(--display); color: var(--faint); letter-spacing: 0.06em; text-transform: uppercase; }
+.streak-week.now { color: var(--accent-2); }
+.pips { width: 100%; display: flex; flex-direction: column-reverse; gap: 2px; padding: 2px; border-radius: 4px; border: 2px solid transparent; }
+.streak-week.now .pips { border: 2px dashed var(--accent); }
+.pips i { display: block; height: 6px; border-radius: 2px; background: var(--border); transform: skewX(-18deg); }
+.pips i.on { background: var(--accent); }
+.streak-note { font-size: 15px; font-weight: 600; color: var(--accent-2); margin-top: auto; }
+
+/* sport tiles */
+.sport-tiles { grid-column: span 12; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; min-height: 0; }
+.sport-tile { position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 16px 20px 14px; }
+.sport-tile::before { content: ''; position: absolute; left: 0; top: 0; width: 100%; height: 5px; background: var(--sc); }
+.sport-tile-head { display: flex; align-items: center; gap: 10px; }
+.sport-name { font: 700 16px var(--display); letter-spacing: 0.16em; text-transform: uppercase; }
+.sport-big { font-size: 46px; margin-top: 4px; white-space: nowrap; }
+.sport-big .unit { font-size: 0.5em; text-transform: none; font-style: normal; font-weight: 700; color: var(--muted); margin-left: 6px; letter-spacing: 0.02em; }
+.cadence { color: var(--text-2); }
+.sport-spark { flex-shrink: 0; }
+.sport-foot { margin-top: auto; display: flex; }
+
+/* ---------- Verdict (after a workout) ---------- */
+.verdict-wall {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 32px;
+  align-items: start;
+  position: relative;
+  padding-top: 8px;
+  min-height: calc(100dvh - 96px);
+  overflow: hidden;
+}
+.verdict-wall::before, .verdict-wall::after {
+  content: ''; position: absolute; top: 0; height: 100%; background: var(--volt); transform: skewX(-18deg); pointer-events: none;
+}
+.verdict-wall::before { left: 30%; width: 160px; opacity: 0.06; }
+.verdict-wall::after { left: 44%; width: 30px; opacity: 0.1; }
+.verdict-wall > * { position: relative; }
+.verdict-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 17px; }
+.sport-chip {
+  display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px;
+  background: var(--surface-2); border: 2px solid var(--border);
+  font: 700 16px var(--display); letter-spacing: 0.14em; text-transform: uppercase;
+}
+.verdict-kicker { font: 700 20px var(--display); letter-spacing: 0.22em; color: var(--muted); text-transform: uppercase; margin-top: 18px; }
+.activity-name { font-size: 30px; font-weight: 600; margin: 2px 0 6px; line-height: 1.15; }
+.verdict-big {
+  display: flex; align-items: center; gap: 14px;
+  font-family: var(--display); font-style: italic; font-weight: 900; text-transform: uppercase;
+  font-size: clamp(72px, 8.4vw, 108px); line-height: 0.85;
+  background: none; border: 0; padding: 4px 0; cursor: pointer; text-align: left;
+}
+.verdict-big.tone-better { color: var(--volt); }
+.headline { font: italic 800 30px/1.1 var(--display); text-transform: uppercase; margin: 8px 0 12px; }
+.confidence { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.reasons { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.reasons li { font-size: 18px; color: var(--text-2); display: flex; gap: 10px; }
+.reasons li::before { content: '›'; color: var(--volt); font-weight: 800; }
+.context { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.verdict-side { display: flex; flex-direction: column; gap: var(--gap); }
+.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; background: none; border: 0; padding: 0; text-align: left; cursor: pointer; }
+.facts > div { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 10px 16px; }
+.fact-k { font: 700 14px var(--display); color: var(--muted); text-transform: uppercase; letter-spacing: 0.16em; }
+.fact-v { font-size: 30px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.verdict-actions { display: flex; gap: 12px; }
+.verdict-actions .btn { flex: 1; justify-content: center; min-height: 56px; }
 
 @media (max-width: 1100px) {
   .verdict-wall { grid-template-columns: 1fr; }
-  .sport-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .span-3, .span-4, .span-5 { grid-column: span 6; }
-  .span-7, .span-8 { grid-column: span 12; }
+  .mission, .loadcard { grid-column: span 12; }
+  .readiness, .streak { grid-column: span 6; }
+  .sport-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mission-title { font-size: 64px; }
 }
 @media (max-width: 640px) {
-  .ambient > * { grid-column: span 12 !important; }
-  .delta-grid, .sport-cards, .recovery-grid { grid-template-columns: 1fr; }
-  .impact-row { grid-template-columns: repeat(3, auto); }
-  .impact-trend { grid-column: span 3; }
-  .form-card { grid-template-columns: 1fr; }
-  .fitness-strip { grid-template-columns: 1fr; }
-  .fitness-strip-spark { grid-column: auto; }
+  .ambient > *, .readiness, .streak { grid-column: span 12 !important; }
+  .sport-tiles, .facts { grid-template-columns: 1fr 1fr; }
+  .loadcard-body { grid-template-columns: 1fr; }
+  .pmc-inline { flex-wrap: wrap; white-space: normal; }
+  .pmc-plot { min-height: 90px; }
+  .loadcard-body .divider { display: none; }
+  .mission-title, .mission.no-workout .mission-title { font-size: 48px; white-space: normal; }
+  .workout-line { flex-wrap: wrap; white-space: normal; }
 }

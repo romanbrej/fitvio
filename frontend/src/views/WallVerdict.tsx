@@ -22,8 +22,9 @@ function facts(s: Session): [string, string][] {
   if (s.sport === 'swimming' && f.swolf) out.push(['SWOLF', num(f.swolf)])
   if (s.sport === 'strength' && f.total_sets) out.push(['Sets', String(f.total_sets)], ['Volume', `${num(f.total_volume)} kg`])
   if (s.avg_hr) out.push(['Avg HR', `${num(s.avg_hr)} bpm`])
-  out.push(['Load', num(s.load)])
-  return out.slice(0, 5)
+  if (s.sport === 'running' && f.avg_cadence) out.push(['Cadence', `${num(f.avg_cadence * (f.avg_cadence < 120 ? 2 : 1))} spm`])
+  out.push(['Load', `${num(s.load)}`])
+  return out.slice(0, 6)
 }
 
 export function WallVerdict({ session, ambient: _ambient }: { session: Session; ambient: Ambient }) {
@@ -43,10 +44,11 @@ export function WallVerdict({ session, ambient: _ambient }: { session: Session; 
           </span>
           <span className="muted">{when(session.start_time)}</span>
         </div>
+        <div className="verdict-kicker">Session complete</div>
         <h1 className="activity-name">{session.name || SPORT_LABEL[session.sport]}</h1>
 
         <button className={`verdict-big tone-${v.verdict}`} onClick={open} aria-label={`Verdict: ${VERDICT_LABEL[v.verdict]}. Open details`}>
-          <VerdictIcon verdict={v.verdict} size={96} />
+          <VerdictIcon verdict={v.verdict} size={72} strokeWidth={3} />
           <span>{VERDICT_LABEL[v.verdict]}</span>
         </button>
         <p className="headline">{v.headline}</p>
@@ -78,7 +80,7 @@ export function WallVerdict({ session, ambient: _ambient }: { session: Session; 
         </button>
 
         <div className="verdict-actions">
-          <button className="btn" onClick={open}>All details <ChevronRight size={20} /></button>
+          <button className="btn primary" onClick={open}>All details <ChevronRight size={20} /></button>
           <button className="btn" onClick={() => dismiss(session.id)}><X size={20} /> Overview</button>
         </div>
       </section>

@@ -72,7 +72,40 @@ export interface SportTrend {
     w_per_beat?: number | null; w_per_beat_change_pct?: number | null; ftp_wkg?: number | null; hr_wkg?: number | null
     ref_hr?: number | null; points: { day: string; value: number }[]
   } | null
+  /** running only: median cadence of easy/long runs in 6 weeks vs the 6 before */
+  cadence?: { spm: number; change: number | null; runs: number } | null
 }
+
+/** Garmin's Training Readiness (the watch's score). */
+export interface Readiness {
+  day: string; score: number; level: string | null; feedback: string | null; time: string | null
+  recovery_min: number | null; factors: Record<string, number | null>
+}
+
+export interface WorkoutStep {
+  kind: string; duration_s: number | null; distance_m: number | null; description?: string | null
+  target: { type: 'pace'; low_s_per_km: number; high_s_per_km: number }
+    | { type: 'hr' | 'power' | 'cadence'; low: number; high: number } | { type: 'hr_zone'; zone: number } | null
+}
+
+/** A planned workout from the Garmin Connect calendar (Garmin Coach or your own). */
+export interface PlannedWorkout {
+  day: string; title: string; sport: Sport; description: string | null; phrase: string | null
+  est_duration_s: number | null; est_distance_m: number | null; est_load: number | null
+  est_training_effect?: number | null; steps: WorkoutStep[]; source: string; fetched_at: string
+  plan?: { name: string; weeks: number | null; week: number | null; end: string | null } | null
+  done?: {
+    session_id: string; name: string | null; linked: boolean; verdict: VerdictKind | null; headline: string | null
+    load: number | null; targets: { hit: number; of: number } | null
+  } | null
+}
+
+export interface Streak {
+  weeks: number; this_week: number; needed: number; min_sessions: number; days_left: number
+  history: { week: string; count: number }[]
+}
+
+export interface SweetSpot { low: number; high: number; load: number; fitness_at_start: number }
 
 export interface WeekTotals { [sport: string]: { count: number; duration_s: number; distance_m: number; load: number } }
 
@@ -104,6 +137,11 @@ export interface Ambient {
   recent: (Pick<Session, 'id' | 'name' | 'sport' | 'session_type' | 'start_time' | 'duration_s' | 'distance_m' | 'load'> & { verdict: VerdictKind | null; headline: string | null })[]
   vo2max: { day: string; value: number }[]
   sync: SyncInfo
+  readiness: Readiness | null
+  streak: Streak
+  sweet_spot: SweetSpot | null
+  today_workout: PlannedWorkout | null
+  upcoming: Pick<PlannedWorkout, 'day' | 'title' | 'sport' | 'phrase' | 'description' | 'est_duration_s' | 'est_load'>[]
 }
 
 export type WallState =
@@ -150,6 +188,7 @@ async function post<T = void>(path: string, body: unknown): Promise<T> {
 export const api = {
   config: () => get<AppConfig>('/api/config'),
   wall: () => get<WallState>('/api/wall'),
+  ambient: (user: string) => get<Ambient>(`/api/users/${user}/ambient`),
   select: (user_id: string) => post('/api/wall/select', { user_id }),
   dismiss: (session_id: string) => post('/api/wall/dismiss', { session_id }),
   session: (id: string) => get<SessionDetail>(`/api/sessions/${encodeURIComponent(id)}`),

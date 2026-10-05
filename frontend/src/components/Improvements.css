@@ -1,19 +1,19 @@
 /* "What improved" checklist after an activity (takeover screen + session detail) */
 .improvements { display: flex; flex-direction: column; gap: 8px; width: 100%; text-align: left; }
 .improvements:disabled { cursor: default; }
-.improve-count { font-size: 15px; font-weight: 600; }
+.improve-head { font-size: 38px; font-weight: 900; margin-bottom: 4px; }
 .improve-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .improve-list li {
   display: grid;
-  grid-template-columns: 22px minmax(110px, auto) auto minmax(0, 1fr);
+  grid-template-columns: 26px minmax(110px, auto) auto minmax(0, 1fr);
   gap: 12px;
   align-items: baseline;
   padding: 7px 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid #1d232e;
   font-size: 18px;
 }
 .improve-list li:first-child { border-top: 0; }
-.improve-mark { font-size: 14px; text-align: center; align-self: center; display: inline-flex; justify-content: center; }
+.improve-mark { font-size: 14px; width: 26px; height: 26px; border-radius: 8px; background: var(--surface-2); text-align: center; align-self: center; display: inline-flex; justify-content: center; }
 .improve-label { color: var(--text); }
 .improve-value { font-weight: 600; color: var(--text); white-space: nowrap; }
 .improve-change { font-size: 16px; font-weight: 500; text-align: right; }
@@ -22,6 +22,6 @@
 .improve-foot { font-size: 15px; border-top: 1px solid var(--border); padding-top: 8px; }
 
 @media (max-width: 640px) {
-  .improve-list li { grid-template-columns: 22px 1fr auto; }
+  .improve-list li { grid-template-columns: 26px 1fr auto; }
   .improve-change { grid-column: 2 / -1; text-align: left; }
 }

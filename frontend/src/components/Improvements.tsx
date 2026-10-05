@@ -30,10 +30,9 @@ export function Improvements({ items, onClick }: { items: Improvement[]; onClick
   const up = improvedCount(items)
   return (
     <button className="card improvements" onClick={onClick} disabled={!onClick}>
-      <div className="between">
-        <div className="card-title" style={{ margin: 0 }}>What improved</div>
-        {items.length > 0 && <span className={`improve-count tone-${up ? 'better' : 'inline'}`}>{up} of {items.length}</span>}
-      </div>
+      {items.length > 0
+        ? <div className="display improve-head">You improved <span style={{ color: up ? 'var(--volt)' : 'var(--inline)' }}>{up}</span> of {items.length}</div>
+        : <div className="card-title" style={{ margin: 0 }}>What improved</div>}
       <ImprovementList items={items} />
     </button>
   )

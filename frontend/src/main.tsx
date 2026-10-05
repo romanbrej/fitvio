@@ -8,6 +8,7 @@ import { HealthDetail } from './views/HealthDetail'
 import { LoadDetail } from './views/LoadDetail'
 import { SessionDetailView } from './views/SessionDetail'
 import { SportDetail } from './views/SportDetail'
+import { TodayDetail } from './views/TodayDetail'
 import { ValidationDetail } from './views/ValidationDetail'
 import { Wall } from './views/Wall'
 
@@ -23,6 +24,7 @@ const router = createBrowserRouter([
       { path: 'u/:user/health/:metric', element: <HealthDetail /> },
       { path: 'u/:user/sport/:sport', element: <SportDetail /> },
       { path: 'u/:user/validation', element: <ValidationDetail /> },
+      { path: 'u/:user/today', element: <TodayDetail /> },
     ],
   },
 ])

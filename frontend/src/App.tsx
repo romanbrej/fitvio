@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api } from './api'
 import type { AppConfig, Job, WallState } from './api'
+import { NightScreen } from './components/NightScreen'
 import { TopBar } from './components/TopBar'
 import type { SyncOutcome } from './components/TopBar'
 import './App.css'
@@ -193,7 +194,9 @@ export default function App() {
         <main className="main"><Outlet /></main>
         {error && <div className="offline" role="status">Connection lost — showing last data</div>}
       </div>
-      {night && loc.pathname !== '/accounts' && wall.mode !== 'setup' && <button className="night" aria-label="Wake display" onClick={() => setWakeUntil(Date.now() + 120_000)} />}
+      {night && loc.pathname !== '/accounts' && wall.mode !== 'setup' && (
+        <NightScreen ambient={wall.ambient} onWake={() => setWakeUntil(Date.now() + 120_000)} />
+      )}
     </AppCtx.Provider>
   )
 }

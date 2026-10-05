@@ -25,6 +25,14 @@ When there are fewer than 3 comparable sessions it says **"Not comparable yet"**
 **Heat and humidity.** Running efficiency is adjusted with **Garmin's own weather for the activity** (the same weather box Garmin Connect shows, taken from a station near the start at start time) and **Garmin's heat acclimation**. It uses the runners' temperature + dew point rule: the sum in °F sets how much harder the same effort was (0 % up to 100 °F, up to 12 % above 180 °F). Heat acclimation reduces that effect by up to half, which is a heuristic. Indoor and treadmill sessions get no heat adjustment. The wrist temperature sensor isn't used for this, because body heat skews it, and FIT files use 127 as a "no value" marker.
 Weather and acclimation are downloaded with each sync. For older history, run `healthdash backfill-extras` once (a first download does this automatically).
 
+**Today's mission.** The wall opens with one headline for the day ("Ready to push.", "Keep building.", "Recover today.") from **Garmin's Training Readiness** (the score your watch shows) or, without it, from your form. Below it:
+- **Today's workout from Garmin**: the planned workout in your Garmin Connect calendar (Garmin Coach's adaptive plan or a workout you scheduled), with its shape, targets and an estimated training load. Tap it for the step-by-step plan and the next days. Once you've done it, the card says *Done* with the verdict — and, when you started the run from the workout, how many work blocks hit the target pace. Nothing planned → no card. If Garmin can't be reached, the last good copy stays.
+- **Training load**: fitness, fatigue and form, and this week's load against a **sweet spot** taken from your fitness (the weekly load that raises fitness by about 1–5 points: 7 × fitness + 46 … + 228). All loads are the app's heart-rate TRIMP, not Garmin's load.
+- **Week streak**: weeks in a row with at least 3 workouts of 10 minutes or more.
+- **Running cadence** on the running card (easy and long runs, steps per minute). It is information only and never counts toward a verdict.
+
+These come from Garmin endpoints GarminDB doesn't download; they are fetched after every successful sync with the same cached login (`sync/garmin_coach.py`).
+
 **Overview.**
 - Form, fitness and fatigue, from heart-rate-based training load so all sports count on one scale
 - Last night's HRV against your baseline, resting HR against your usual, sleep with stages, Body Battery and stress

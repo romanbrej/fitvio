@@ -102,6 +102,29 @@ CREATE TABLE IF NOT EXISTS wall_state (
     key     TEXT PRIMARY KEY,
     value   TEXT
 );
+
+-- planned workouts of the next days from the Garmin Connect calendar (Garmin Coach or your own)
+CREATE TABLE IF NOT EXISTS planned_workouts (
+    user_id     TEXT NOT NULL,
+    day         TEXT NOT NULL,
+    key         TEXT NOT NULL,      -- Garmin's workout uuid / id
+    title       TEXT,
+    sport       TEXT,
+    data        TEXT,               -- JSON: steps, targets, plan, estimates
+    fetched_at  TEXT,
+    PRIMARY KEY (user_id, day, key)
+);
+
+-- Garmin's Training Readiness (the score the watch shows)
+CREATE TABLE IF NOT EXISTS readiness_days (
+    user_id     TEXT NOT NULL,
+    day         TEXT NOT NULL,
+    score       INTEGER,
+    level       TEXT,
+    data        TEXT,               -- JSON: feedback, factors, time
+    fetched_at  TEXT,
+    PRIMARY KEY (user_id, day)
+);
 """
 
 JSON_COLUMNS = {"features", "reasons", "deltas", "context", "trend", "baseline_ids", "data"}

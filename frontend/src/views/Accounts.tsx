@@ -1,5 +1,6 @@
-import { AlertTriangle, Loader2, RefreshCw, UserPlus, Zap } from 'lucide-react'
+import { AlertTriangle, ChevronRight, Loader2, Monitor, RefreshCw, UserPlus, Zap } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useApp } from '../App'
 import { api } from '../api'
 import type { Account, ActivityCheck } from '../api'
@@ -14,6 +15,14 @@ const PHASE_LABEL: Record<string, string> = {
 
 export function Accounts() {
   const { reload } = useApp()
+  const nav = useNavigate()
+  // screen check for the wall tablet: the layout is made for 1280×800 (Galaxy Tab A8 at 1.5×)
+  const [screen, setScreen] = useState({ w: window.innerWidth, h: window.innerHeight })
+  useEffect(() => {
+    const on = () => setScreen({ w: window.innerWidth, h: window.innerHeight })
+    window.addEventListener('resize', on)
+    return () => window.removeEventListener('resize', on)
+  }, [])
   const [accounts, setAccounts] = useState<Account[] | null>(null)
   const [adding, setAdding] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -49,12 +58,7 @@ export function Accounts() {
 
   return (
     <div className="detail">
-      <div className="detail-head">
-        <div>
-          <div className="muted">Settings</div>
-          <h1>Garmin accounts</h1>
-        </div>
-      </div>
+      <h1 className="display hero-title" style={{ fontSize: 'clamp(40px, 5vw, 64px)', marginTop: 4 }}>The team <span className="hl">· Garmin accounts</span></h1>
       {err && <div className="card tone-worse"><AlertTriangle size={18} /> {err}</div>}
 
       <div className="detail-grid">
@@ -83,7 +87,7 @@ export function Accounts() {
         {accounts?.map(a => {
           const job = a.job
           return (
-            <div key={a.id} className="card span-6">
+            <div key={a.id} className="card span-6" style={{ borderTop: `5px solid ${a.color}` }}>
               <div className="between">
                 <div className="row" style={{ alignItems: 'center' }}>
                   <span className="avatar active" style={{ '--c': a.color, cursor: 'default' } as React.CSSProperties}><span>{a.initials}</span></span>
@@ -92,7 +96,7 @@ export function Accounts() {
                     <span className="muted" style={{ fontSize: 15 }}>{a.activities} activities</span>
                   </div>
                 </div>
-                <button className="btn" onClick={() => syncNow(a.id)} disabled={!!job}>
+                <button className="btn primary" onClick={() => syncNow(a.id)} disabled={!!job}>
                   {job ? <Loader2 size={18} className="spin" /> : <RefreshCw size={18} />} {job ? 'Syncing' : 'Sync now'}
                 </button>
               </div>
@@ -121,9 +125,23 @@ export function Accounts() {
                   </div>
                 ))}
               </div>
+              <button className="btn" style={{ marginTop: 12 }} onClick={() => nav(`/u/${a.id}/validation`)}>
+                Verdict check <ChevronRight size={18} />
+              </button>
             </div>
           )
         })}
+
+        <div className="card span-12">
+          <div className="card-title"><Monitor size={18} /> This screen</div>
+          <div className="row" style={{ gap: 18 }}>
+            <span className="num" style={{ fontSize: 26, fontWeight: 600 }}>{screen.w} × {screen.h}</span>
+            <span className="muted">CSS px · pixel ratio {window.devicePixelRatio}</span>
+            <span className={screen.w >= 1100 && screen.h >= 680 ? 'tone-better' : 'tone-warn'}>
+              {screen.w >= 1100 && screen.h >= 680 ? 'The wall fits on one screen.' : 'Smaller than 1100 × 680 — the wall scrolls. In Fully Kiosk: hide the status and navigation bar, zoom 100 %.'}
+            </span>
+          </div>
+        </div>
 
         <div className="card span-12">
           <div className="card-title"><UserPlus size={18} /> {accounts?.length ? 'Connect another Garmin account' : 'Connect your Garmin account'}</div>

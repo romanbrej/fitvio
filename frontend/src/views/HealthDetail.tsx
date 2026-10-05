@@ -19,7 +19,7 @@ interface MetricDef {
 const METRICS: Record<string, MetricDef> = {
   hrv: {
     title: 'Heart-rate variability', unit: 'ms',
-    lines: [{ key: 'hrv_last_night', label: 'Last night', color: 'var(--primary)' },
+    lines: [{ key: 'hrv_last_night', label: 'Last night', color: 'var(--fitness)' },
             { key: 'hrv_weekly', label: '7-day avg', color: 'var(--form)' }],
     band: ['hrv_baseline_low', 'hrv_baseline_high'],
   },
@@ -39,14 +39,15 @@ const METRICS: Record<string, MetricDef> = {
   },
   vo2max: {
     title: 'VO₂max', unit: 'ml/kg/min', fmt: v => v.toFixed(1),  // Garmin's precise value, e.g. 44.1
-    lines: [{ key: 'vo2max', label: 'Running', color: 'var(--primary)' },
+    lines: [{ key: 'vo2max', label: 'Running', color: 'var(--volt)' },
             { key: 'vo2max_cycling', label: 'Cycling', color: 'var(--accent)' }],
   },
-  steps: { title: 'Steps', unit: '', lines: [{ key: 'steps', label: 'Steps', color: 'var(--primary)', kind: 'bar' }] },
-  weight: { title: 'Weight', unit: 'kg', lines: [{ key: 'weight_kg', label: 'Weight', color: 'var(--primary)' }] },
+  steps: { title: 'Steps', unit: '', lines: [{ key: 'steps', label: 'Steps', color: 'var(--fitness)', kind: 'bar' }] },
+  weight: { title: 'Weight', unit: 'kg', lines: [{ key: 'weight_kg', label: 'Weight', color: 'var(--fitness)' }] },
 }
 
 const RANGES = [30, 90, 180, 365]
+const TAB: Record<string, string> = { hrv: 'HRV', rhr: 'Resting HR', body_battery: 'Body Battery & stress' }
 
 export function HealthDetail() {
   const { user, metric } = useParams()
@@ -66,34 +67,43 @@ export function HealthDetail() {
   const fmt = m.fmt ?? ((v: number) => `${num(v, v < 20 ? 1 : 0)}${m.unit ? ' ' + m.unit : ''}`)
   const diff = last7 != null && prev28 != null ? last7 - prev28 : null
   const good = diff == null ? null : m.lowerBetter ? diff < 0 : diff > 0
+  const flat = diff != null && prev28 != null && Math.abs(diff) < Math.abs(prev28 * 0.02)
 
   return (
     <div className="detail">
-      <div className="detail-head">
-        <div>
-          <div className="muted">Health</div>
-          <h1>{m.title}</h1>
-        </div>
+      <div className="between" style={{ flexWrap: 'wrap' }}>
         <div className="tabs">
-          {RANGES.map(r => <button key={r} className="btn" aria-pressed={r === days} onClick={() => setDays(r)}>{r} days</button>)}
+          {Object.entries(METRICS).map(([k, d]) => (
+            <button key={k} className="btn" aria-pressed={k === metric} onClick={() => nav(`/u/${user}/health/${k}`, { replace: true })}>{TAB[k] ?? d.title}</button>
+          ))}
+        </div>
+        <div className="segmented">
+          {RANGES.map(r => <button key={r} className="btn" aria-pressed={r === days} onClick={() => setDays(r)}>{r} d</button>)}
         </div>
       </div>
-      <div className="tabs">
-        {Object.entries(METRICS).map(([k, d]) => (
-          <button key={k} className="btn" aria-pressed={k === metric} onClick={() => nav(`/u/${user}/health/${k}`, { replace: true })}>{d.title}</button>
-        ))}
-      </div>
-      <div className="detail-grid">
-        <div className="card span-12">
-          <div className="kv" style={{ marginBottom: 12 }}>
-            <div><div className="k">Latest</div><div className="v num">{vals.length ? fmt(vals[vals.length - 1]) : '—'}</div></div>
-            <div><div className="k">7-day avg</div><div className="v num">{last7 != null ? fmt(last7) : '—'}</div></div>
-            <div><div className="k">Previous 4 weeks</div><div className="v num">{prev28 != null ? fmt(prev28) : '—'}</div></div>
-            <div><div className="k">Change</div>
-              <div className={`v num ${good == null ? '' : Math.abs(diff!) < Math.abs(prev28! * 0.02) ? 'tone-inline' : good ? 'tone-better' : 'tone-worse'}`}>
+      <section className="card hero stripes">
+        <div className="hero-grid">
+          <div className="stack" style={{ gap: 6 }}>
+            <div className="label">{m.title}</div>
+            <h1 className="display hero-title" style={{ fontSize: 'clamp(44px, 5vw, 64px)' }}>
+              {good == null ? 'Building your baseline.' : flat ? <>Holding <span className="hl">steady.</span></>
+                : good ? <>Trending the <span className="hl">right way.</span></> : <>Worth <span style={{ color: 'var(--warn)' }}>watching.</span></>}
+            </h1>
+            <div className="hero-sub">Last 7 days vs. the 4 weeks before{m.lowerBetter ? ' — lower is better' : ''}.</div>
+          </div>
+          <div className="kpi-grid four">
+            <div className="tile"><div className="label">Latest</div><div className="v">{vals.length ? fmt(vals[vals.length - 1]) : '—'}</div></div>
+            <div className="tile"><div className="label">7-day avg</div><div className="v">{last7 != null ? fmt(last7) : '—'}</div></div>
+            <div className="tile"><div className="label">Prev 4 weeks</div><div className="v muted">{prev28 != null ? fmt(prev28) : '—'}</div></div>
+            <div className="tile"><div className="label">Change</div>
+              <div className={`v ${good == null ? '' : flat ? 'tone-inline' : good ? 'tone-better' : 'tone-worse'}`}>
                 {diff == null ? '—' : `${diff > 0 ? '+' : '−'}${m.fmt ? m.fmt(Math.abs(diff)) : num(Math.abs(diff), 1)}`}
               </div></div>
           </div>
+        </div>
+      </section>
+      <div className="detail-grid">
+        <div className="card span-12">
           <div className="chart-tall">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>

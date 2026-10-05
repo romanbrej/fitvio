@@ -51,10 +51,9 @@ class CheckFailed(Exception):
     """Network or server error — try again next time."""
 
 
-def newest_activity_id(user: UserConfig) -> str | None:
-    """Newest activity id on Garmin Connect, using the cached tokens only (one request)."""
-    from garminconnect import (Garmin, GarminConnectAuthenticationError, GarminConnectConnectionError,
-                               GarminConnectTooManyRequestsError)
+def cached_client(user: UserConfig):
+    """A Garmin Connect client that only uses the cached login tokens — never the password or MFA."""
+    from garminconnect import Garmin
     from garmindb.garmin_connect_config_manager import GarminConnectConfigManager
 
     token_file = user.garmindb_dir / "garmin_tokens.json"
@@ -66,6 +65,15 @@ def newest_activity_id(user: UserConfig) -> str | None:
         garmin.client.load(str(token_file))  # refreshed tokens are written back to the same file (0600)
     except Exception as e:
         raise AuthExpired(f"cached Garmin login unreadable: {type(e).__name__}") from None
+    return garmin
+
+
+def newest_activity_id(user: UserConfig) -> str | None:
+    """Newest activity id on Garmin Connect, using the cached tokens only (one request)."""
+    from garminconnect import (GarminConnectAuthenticationError, GarminConnectConnectionError,
+                               GarminConnectTooManyRequestsError)
+
+    garmin = cached_client(user)
     try:
         rows = garmin.connectapi(ACTIVITY_LIST_URL, params={"start": "0", "limit": "1"})
     except GarminConnectAuthenticationError:

@@ -3,7 +3,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 8px 24px;
+  padding: 8px 28px;
   min-height: 64px;
 }
 .topbar-left, .topbar-right { display: flex; align-items: center; gap: 14px; min-width: 0; }
@@ -12,8 +12,8 @@
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  border: 2px solid transparent;
-  background: color-mix(in srgb, var(--c) 22%, var(--surface));
+  border: 3px solid var(--border-2);
+  background: var(--surface);
   color: var(--text);
   font-weight: 700;
   font-size: 16px;
@@ -22,19 +22,19 @@
   place-items: center;
   transition: border-color 180ms ease, transform 180ms ease;
 }
-.avatar.active { border-color: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 30%, transparent); }
+.avatar.active { border-color: var(--c); background: color-mix(in srgb, var(--c) 18%, var(--surface)); }
 .avatar:active { transform: scale(0.95); }
-.topbar-name { font-size: 22px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar-name { font: 700 22px var(--display); letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Sync status is also the "sync now" button (touch target ≥ 48px). */
 .sync {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   min-height: 48px;
-  padding: 0 16px;
+  padding: 0 14px;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface);
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--muted);
   font: inherit;
   font-size: 16px;
@@ -52,7 +52,8 @@
 .sync.busy { color: var(--primary); border-color: var(--primary); }
 .sync.done { color: var(--better); border-color: color-mix(in srgb, var(--better) 50%, transparent); }
 .sync.failed { color: var(--worse); border-color: color-mix(in srgb, var(--worse) 50%, transparent); }
-.clock { font-size: 30px; font-weight: 600; }
+.clock { font-size: 28px; font-weight: 600; }
+.today { font: 700 18px var(--display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
 
 @media (max-width: 640px) {
   .topbar { padding: 10px 16px; }
@@ -60,6 +61,7 @@
   .sync { padding: 0 14px; }
   .sync:not(.stale):not(.failed) .sync-text { display: none; } /* icon-only button on phones */
   .clock { font-size: 22px; }
+  .today { display: none; }
 }
 
 .btn.icon-btn { width: 48px; padding: 0; justify-content: center; }

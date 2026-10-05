@@ -1,0 +1,115 @@
+{
+ "trainingPlanId": 47662988,
+ "trainingPlanCategory": "FBT_ADAPTIVE",
+ "trainingType": {
+  "typeId": 2,
+  "typeKey": "Running"
+ },
+ "trainingSubType": {
+  "subTypeId": 26,
+  "subTypeKey": "GarminRunningCoachEventBased"
+ },
+ "trainingLevel": {
+  "levelId": 3,
+  "levelKey": "Intermediate"
+ },
+ "trainingVersion": {
+  "versionId": 13,
+  "versionName": "Auto"
+ },
+ "formatLocale": {
+  "id": 1,
+  "key": "en",
+  "isSupported": true
+ },
+ "trainingStatus": {
+  "statusId": 1,
+  "statusKey": "Scheduled"
+ },
+ "privacyRule": {
+  "typeId": 2,
+  "typeKey": "private"
+ },
+ "name": "Half Marathon Plan with Garmin Run Coach",
+ "description": "Garmin Run Coach. Train for Race Event. Generic version.",
+ "durationInWeeks": 12,
+ "avgWeeklyWorkouts": 7,
+ "parentPlanId": 39305042,
+ "createDate": "2026-09-14T00:00:00.0",
+ "publishDate": null,
+ "expireDate": null,
+ "startDate": "2026-09-14T00:00:00.0",
+ "pausedDate": null,
+ "resumedDate": null,
+ "endDate": "2026-12-07T00:00:00.0",
+ "adaptivePlanPhases": [
+  {
+   "startDate": "2026-09-14",
+   "endDate": "2026-10-11",
+   "trainingPhase": "BASE",
+   "currentPhase": true
+  },
+  {
+   "startDate": "2026-10-12",
+   "endDate": "2026-11-08",
+   "trainingPhase": "BUILD",
+   "currentPhase": false
+  },
+  {
+   "startDate": "2026-11-09",
+   "endDate": "2026-11-25",
+   "trainingPhase": "PEAK",
+   "currentPhase": false
+  },
+  {
+   "startDate": "2026-11-26",
+   "endDate": "2026-12-06",
+   "trainingPhase": "TAPER",
+   "currentPhase": false
+  },
+  {
+   "startDate": "2026-12-07",
+   "endDate": "2026-12-07",
+   "trainingPhase": "TARGET_EVENT_DAY",
+   "currentPhase": false
+  }
+ ],
+ "planPhases": [
+  {
+   "startDate": "2026-09-14",
+   "endDate": "2026-10-11",
+   "trainingPhase": "BASE",
+   "currentPhase": true
+  },
+  {
+   "startDate": "2026-10-12",
+   "endDate": "2026-11-08",
+   "trainingPhase": "BUILD",
+   "currentPhase": false
+  },
+  {
+   "startDate": "2026-11-09",
+   "endDate": "2026-11-25",
+   "trainingPhase": "PEAK",
+   "currentPhase": false
+  },
+  {
+   "startDate": "2026-11-26",
+   "endDate": "2026-12-06",
+   "trainingPhase": "TAPER",
+   "currentPhase": false
+  },
+  {
+   "startDate": "2026-12-07",
+   "endDate": "2026-12-07",
+   "trainingPhase": "TARGET_EVENT_DAY",
+   "currentPhase": false
+  }
+ ],
+ "nameI18nKey": "tp_name_75175b7e-687d-4933-9da8-df855a9c80c9",
+ "descriptionI18nKey": "tp_descr_1fb05491-7828-4dfa-8c0d-5a5529c4574d",
+ "planKey": "run_c748ddfe-3060-4a91-ba21-7c4460b50288",
+ "seriesIndex": null,
+ "daysInLastWeek": null,
+ "supplementalSports": []
+}

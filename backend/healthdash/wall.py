@@ -5,7 +5,7 @@ import sqlite3
 from datetime import date, datetime, timedelta
 from statistics import median
 
-from . import db, improvements, profile
+from . import coach, db, improvements, profile
 from .analytics import load as load_model
 from .analytics import physio
 from .config import AppConfig
@@ -214,12 +214,15 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
             if sport in trends:
                 trends[sport]["status"] = sport_status(sessions, sport, (prof.get("ftp") or {}).get("value"),
                                                        weights, today)
+        if "running" in trends:
+            trends["running"]["cadence"] = coach.running_cadence(sessions, today)
 
     recent = conn.execute(
         """SELECT s.id, s.name, s.sport, s.session_type, s.start_time, s.duration_s, s.distance_m, s.load,
                   v.verdict, v.headline FROM sessions s LEFT JOIN verdicts v ON v.session_id = s.id
            WHERE s.user_id = ? ORDER BY s.start_time DESC LIMIT 8""", (user_id,)).fetchall()
     vo2 = [{"day": h["day"], "value": h["vo2max"]} for h in _health_series(conn, user_id, 365) if h.get("vo2max")]
+    today_workout, upcoming = coach.planned(conn, user_id, sessions, today)
     return {
         "user_id": user_id,
         "pmc": series[-182:],
@@ -238,6 +241,11 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
         "recent": [dict(r) for r in recent],
         "vo2max": vo2,
         "sync": sync_info(conn, cfg, user_id),
+        "readiness": coach.readiness(conn, user_id, today),
+        "streak": coach.week_streak(sessions, today),
+        "sweet_spot": coach.sweet_spot(series, sessions, today),
+        "today_workout": today_workout,
+        "upcoming": upcoming,
     }
 
 

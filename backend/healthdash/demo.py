@@ -150,6 +150,49 @@ def _other(rng, uid, start, user) -> ParsedActivity:
     )
 
 
+def _pace(lo: str, hi: str) -> dict:
+    s = lambda p: int(p.split(":")[0]) * 60 + int(p.split(":")[1])
+    return {"type": "pace", "low_s_per_km": s(lo), "high_s_per_km": s(hi)}
+
+
+def _demo_coach(conn: sqlite3.Connection, user_id: str, ui: int, now: datetime) -> None:
+    """Stand-in for garmin_coach.update(): a Garmin Coach plan and Training Readiness."""
+    conn.execute("DELETE FROM planned_workouts WHERE user_id = ?", (user_id,))
+    conn.execute("DELETE FROM readiness_days WHERE user_id = ?", (user_id,))
+    easy = _pace("6:10", "6:50")
+    plan = {"name": "Half Marathon Plan with Garmin Run Coach", "weeks": 12, "week": 4, "end": None}
+    workouts = [
+        ("Threshold", "LACTATE_THRESHOLD", "3x10:00@5:05/km", [
+            {"kind": "warmup", "duration_s": 900, "target": easy},
+            *[x for _ in range(3) for x in ({"kind": "interval", "duration_s": 600, "target": _pace("4:55", "5:15")},
+                                           {"kind": "recovery", "duration_s": 180, "target": None})][:-1],
+            {"kind": "cooldown", "duration_s": 540, "target": easy}]),
+        ("Base", "AEROBIC_BASE", "40:00@6:20/km", [{"kind": "interval", "duration_s": 2400, "target": easy}]),
+        ("VO2max", "VO2MAX", "5x3:00@4:30/km", [
+            {"kind": "warmup", "duration_s": 600, "target": easy},
+            *[x for _ in range(5) for x in ({"kind": "interval", "duration_s": 180, "target": _pace("4:20", "4:40")},
+                                           {"kind": "recovery", "duration_s": 120, "target": None})],
+            {"kind": "cooldown", "duration_s": 600, "target": easy}]),
+        ("Rest", None, None, None),
+        ("Long run", "LONG_RUN", "1:30:00@6:15/km", [{"kind": "interval", "duration_s": 5400, "target": easy}]),
+    ]
+    for d, (title, phrase, desc, steps) in enumerate(workouts):
+        if steps is None:
+            continue
+        day = (now.date() + timedelta(days=d + ui)).isoformat()
+        data = {"title": title, "sport": "running", "phrase": phrase, "description": desc, "steps": steps,
+                "est_duration_s": sum(s["duration_s"] for s in steps), "est_distance_m": None,
+                "source": "garmin_coach", "plan": plan}
+        db.upsert(conn, "planned_workouts", {"user_id": user_id, "day": day, "key": f"demo-{d}", "title": title,
+                                             "sport": "running", "data": data, "fetched_at": now.isoformat()})
+    if ui == 0:  # the second person shows the "no readiness from Garmin today" state
+        r = {"day": now.date().isoformat(), "score": 76, "level": "HIGH", "feedback": "WELL_RESTED",
+             "time": now.replace(hour=7, minute=10).isoformat(), "recovery_min": 0,
+             "factors": {"sleepScore": 91, "recoveryTime": 100, "acwr": 80, "hrv": 100, "stressHistory": 70, "sleepHistory": 75}}
+        db.upsert(conn, "readiness_days", {"user_id": user_id, "day": r["day"], "score": r["score"], "level": r["level"],
+                                           "data": r, "fetched_at": now.isoformat()})
+
+
 def generate(conn: sqlite3.Connection, cfg: AppConfig, days: int = 150, seed: int = 7) -> dict:
     rng = random.Random(seed)
     now = datetime.now().replace(second=0, microsecond=0)
@@ -226,6 +269,7 @@ def generate(conn: sqlite3.Connection, cfg: AppConfig, days: int = 150, seed: in
             })
         pipeline.store_health(conn, user.id, hdays)
         pipeline.evaluate_all(conn, user.id)
+        _demo_coach(conn, user.id, ui, now)
         db.upsert(conn, "sync_status", {"user_id": user.id, "last_attempt": now.isoformat(),
                                         "last_success": now.isoformat(), "last_error": None})
         conn.commit()

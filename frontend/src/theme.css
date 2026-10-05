@@ -1,55 +1,54 @@
-@import '@fontsource/fira-sans/400.css';
-@import '@fontsource/fira-sans/500.css';
-@import '@fontsource/fira-sans/600.css';
-@import '@fontsource/fira-sans/700.css';
+@import '@fontsource/barlow/400.css';
+@import '@fontsource/barlow/500.css';
+@import '@fontsource/barlow/600.css';
+@import '@fontsource/barlow/700.css';
+@import '@fontsource/barlow-condensed/700.css';
+@import '@fontsource/barlow-condensed/800.css';
+@import '@fontsource/barlow-condensed/800-italic.css';
+@import '@fontsource/barlow-condensed/900-italic.css';
 @import '@fontsource/fira-code/500.css';
 @import '@fontsource/fira-code/600.css';
 
-/* Design tokens — dark by default (wall display). See design-system/health-dashboard/pages/wall.md */
+/* Design tokens — "Today's Mission" (design A): near-black, one volt accent, orange for streaks and PRs.
+   Verdicts keep their colours and always come with an icon and a word. */
 :root {
-  --bg: #0b1120;
-  --surface: #111827;
-  --surface-2: #1a2336;
-  --border: #243049;
-  --text: #e5e7eb;
-  --muted: #94a3b8;
-  --faint: #64748b;
-  --primary: #60a5fa;
-  --accent: #f97316;
-  --better: #22c55e;
+  --bg: #07090d;
+  --surface: #10141b;
+  --surface-2: #171c25;
+  --surface-3: #1b2130;
+  --border: #232a36;
+  --border-2: #2a3140;
+  --text: #f2f4f7;
+  --text-2: #d5dae2;
+  --muted: #9aa4b2;
+  --faint: #6b7585;
+  --volt: #d4ff3a;
+  --volt-ink: #0b0d10;           /* text on volt */
+  --primary: var(--volt);
+  --accent: #ff5a1f;             /* streaks, PRs */
+  --accent-2: #ff8a3d;
+  --better: #3ddc84;
   --inline: #38bdf8;
   --worse: #f87171;
   --na: #94a3b8;
   --load: #a78bfa;
-  --warn: #f59e0b;
+  --warn: #f5b83d;
   --fitness: #60a5fa;
   --fatigue: #f472b6;
   --form: #facc15;
+  --run: #ff8a3d;
+  --ride: #38bdf8;
+  --swim: #22d3ee;
+  --gym: #c084fc;
 
-  --radius: 14px;
+  --radius: 18px;
+  --radius-sm: 12px;
   --gap: 16px;
-  --font: 'Fira Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font: 'Barlow', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --display: 'Barlow Condensed', 'Barlow', system-ui, sans-serif;
   --mono: 'Fira Code', ui-monospace, 'SF Mono', Menlo, monospace;
 
   color-scheme: dark;
-}
-
-:root[data-theme='light'] {
-  --bg: #f8fafc;
-  --surface: #ffffff;
-  --surface-2: #f1f5f9;
-  --border: #e2e8f0;
-  --text: #1e293b;
-  --muted: #475569;
-  --faint: #64748b;
-  --primary: #2563eb;
-  --better: #15803d;
-  --inline: #0369a1;
-  --worse: #b91c1c;
-  --na: #475569;
-  --load: #6d28d9;
-  --warn: #b45309;
-  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -58,6 +57,7 @@ html, body, #root { height: 100%; margin: 0; }
 
 body {
   background: var(--bg);
+  min-height: 100dvh;
   color: var(--text);
   font-family: var(--font);
   font-size: 18px;
@@ -105,26 +105,72 @@ button.card:focus-visible, a.card:focus-visible, button:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-family: var(--display);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--muted);
   margin-bottom: 10px;
 }
 
+/* big italic condensed headlines ("READY TO PUSH.") */
+.display {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 900;
+  text-transform: uppercase;
+  line-height: 0.9;
+  letter-spacing: -0.005em;
+}
+.label {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.tile { background: var(--surface-2); border-radius: var(--radius-sm); padding: 10px 14px; min-width: 0; }
+.tile .v { font-family: var(--mono); font-weight: 600; font-size: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 12px; border-radius: 999px;
+  background: var(--surface-3); font: 600 14px var(--mono); white-space: nowrap;
+}
+.tag {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 6px;
+  font: 700 14px var(--display); letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap;
+}
+.tag.pr { background: var(--accent); color: var(--volt-ink); }
+.tag.garmin { background: #12283a; color: #60a5fa; }
+/* the diagonal "speed" stripes in hero cards */
+.stripes { position: relative; overflow: hidden; }
+.stripes::before, .stripes::after {
+  content: ''; position: absolute; top: 0; height: 100%; background: var(--volt); transform: skewX(-18deg); pointer-events: none;
+}
+.stripes::before { right: -60px; width: 110px; opacity: 0.1; }
+.stripes::after { right: 64px; width: 22px; opacity: 0.18; }
+.stripes > * { position: relative; z-index: 1; }
+
 .pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 12px;
-  border-radius: 999px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-family: var(--display);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   background: var(--surface-2);
-  border: 1px solid var(--border);
   white-space: nowrap;
 }
+.pill.tone-better { background: #173326; }
+.pill.tone-in_line { background: #12283a; }
+.pill.tone-worse { background: #3a1717; }
+.pill.tone-warn { background: #2b2410; text-transform: none; letter-spacing: 0; font-family: var(--font); font-weight: 500; }
 
 .btn {
   display: inline-flex;
@@ -132,12 +178,18 @@ button.card:focus-visible, a.card:focus-visible, button:focus-visible {
   gap: 8px;
   min-height: 48px;
   padding: 0 18px;
-  border-radius: 12px;
+  border-radius: 14px;
   border: 1px solid var(--border);
-  background: var(--surface-2);
+  background: var(--surface);
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   cursor: pointer;
   transition: background-color 180ms ease;
 }
+.btn.primary { background: var(--volt); color: var(--volt-ink); border-color: var(--volt); }
 .btn:active { background: var(--border); }
 .btn svg, .pill svg { flex-shrink: 0; }
 

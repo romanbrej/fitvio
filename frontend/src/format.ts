@@ -43,7 +43,7 @@ export function when(iso: string): string {
   const d = new Date(iso)
   const today = new Date()
   const y = new Date(); y.setDate(today.getDate() - 1)
-  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
   if (d.toDateString() === today.toDateString()) return `Today ${time}`
   if (d.toDateString() === y.toDateString()) return `Yesterday ${time}`
   return `${d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })} ${time}`
