@@ -105,6 +105,13 @@ export interface Streak {
   history: { week: string; count: number }[]
 }
 
+/** The training buddy (backend: buddy.py). */
+export interface BuddyInfo {
+  animal: 'mouse' | 'cat' | 'bunny' | 'fox' | 'bear' | 'penguin' | 'frog' | 'hedgehog'
+  food: string; mood: 'happy' | 'content' | 'sleepy' | 'overjoyed' | 'hungry'; line: string
+}
+export interface BuddySettings { animals: BuddyInfo['animal'][]; food: Record<string, string>; users: Record<string, BuddyInfo['animal']> }
+
 export interface SweetSpot { low: number; high: number; load: number; fitness_at_start: number }
 
 export interface WeekTotals { [sport: string]: { count: number; duration_s: number; distance_m: number; load: number } }
@@ -142,6 +149,7 @@ export interface Ambient {
   sweet_spot: SweetSpot | null
   today_workout: PlannedWorkout | null
   upcoming: Pick<PlannedWorkout, 'day' | 'title' | 'sport' | 'phrase' | 'description' | 'est_duration_s' | 'est_load'>[]
+  buddy?: BuddyInfo
 }
 
 export type WallState =
@@ -207,4 +215,6 @@ export const api = {
   morning: () => post<{ started: Job[]; pending: boolean }>('/api/wall/morning', {}),
   activityCheck: () => get<ActivityCheck>('/api/settings/activity-check'),
   setActivityCheck: (enabled: boolean) => post<ActivityCheck>('/api/settings/activity-check', { enabled }),
+  buddySettings: () => get<BuddySettings>('/api/settings/buddy'),
+  setBuddy: (user_id: string, animal: string) => post<BuddySettings>('/api/settings/buddy', { user_id, animal }),
 }

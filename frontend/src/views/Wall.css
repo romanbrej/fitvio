@@ -41,11 +41,23 @@
 
 /* mission */
 .mission { grid-column: span 8; gap: 8px; padding: 20px 28px !important; }
+.mission.has-buddy { display: grid !important; grid-template-columns: minmax(0, 1fr) 190px; gap: 12px; padding-right: 16px !important; }
+.mission-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
+/* the buddy stands on the card itself, in front of the speed stripes, and talks in a small bubble */
+.mission-buddy { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 0; }
+.buddy-says {
+  position: relative; max-width: 100%; background: var(--surface-3); border: 1px solid var(--border-2); color: var(--text-2);
+  border-radius: 14px; padding: 7px 11px; font: 600 14px/1.25 var(--font); text-align: center;
+}
+.buddy-says::after {
+  content: ''; position: absolute; bottom: -7px; left: 50%; width: 12px; height: 12px; background: var(--surface-3);
+  border-right: 1px solid var(--border-2); border-bottom: 1px solid var(--border-2); transform: translateX(-50%) rotate(45deg);
+}
 .mission-label {
   display: flex; align-items: center; gap: 10px;
   font: 700 16px var(--display); letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted);
 }
-.mission-title { margin: 0; font-size: 80px; color: var(--volt); white-space: nowrap; }
+.mission-title { margin: 0; font-size: 80px; color: var(--volt); white-space: nowrap; overflow: hidden; }
 .mission.no-workout .mission-title { font-size: 112px; margin-top: 6px; }
 .mission-sub { margin: 4px 0 0; font-size: 22px; color: var(--text-2); max-width: 620px; }
 .workout-preview {
@@ -167,10 +179,12 @@
 .verdict-big {
   display: flex; align-items: center; gap: 14px;
   font-family: var(--display); font-style: italic; font-weight: 900; text-transform: uppercase;
-  font-size: clamp(72px, 8.4vw, 108px); line-height: 0.85;
+  font-size: clamp(72px, 8.4vw, 108px); line-height: 0.85; white-space: nowrap;
   background: none; border: 0; padding: 4px 0; cursor: pointer; text-align: left;
 }
 .verdict-big.tone-better { color: var(--volt); }
+.verdict-title-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.verdict-buddy { background: var(--surface-2); border: 2px solid var(--volt); border-radius: 18px; padding: 6px; flex-shrink: 0; }
 .headline { font: italic 800 30px/1.1 var(--display); text-transform: uppercase; margin: 8px 0 12px; }
 .confidence { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
 .reasons { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }

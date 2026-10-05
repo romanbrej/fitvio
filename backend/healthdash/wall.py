@@ -5,7 +5,7 @@ import sqlite3
 from datetime import date, datetime, timedelta
 from statistics import median
 
-from . import coach, db, improvements, profile
+from . import buddy, coach, db, improvements, profile
 from .analytics import load as load_model
 from .analytics import physio
 from .config import AppConfig
@@ -223,6 +223,9 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
            WHERE s.user_id = ? ORDER BY s.start_time DESC LIMIT 8""", (user_id,)).fetchall()
     vo2 = [{"day": h["day"], "value": h["vo2max"]} for h in _health_series(conn, user_id, 365) if h.get("vo2max")]
     today_workout, upcoming = coach.planned(conn, user_id, sessions, today)
+    readiness = coach.readiness(conn, user_id, today)
+    streak = coach.week_streak(sessions, today)
+    form_now = pmc_42[-1] if pmc_42 else None
     return {
         "user_id": user_id,
         "pmc": series[-182:],
@@ -241,11 +244,14 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
         "recent": [dict(r) for r in recent],
         "vo2max": vo2,
         "sync": sync_info(conn, cfg, user_id),
-        "readiness": coach.readiness(conn, user_id, today),
-        "streak": coach.week_streak(sessions, today),
+        "readiness": readiness,
+        "streak": streak,
         "sweet_spot": coach.sweet_spot(series, sessions, today),
         "today_workout": today_workout,
         "upcoming": upcoming,
+        "buddy": buddy.block(conn, user_id, readiness=readiness, health_latest=latest,
+                             form=form_now["form"] if form_now else None, today_workout=today_workout,
+                             last_workout=last_workout, streak=streak, sessions=sessions, today=today),
     }
 
 

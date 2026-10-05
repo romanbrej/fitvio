@@ -113,6 +113,16 @@ table.data tr.clickable:active { background: var(--surface-2); }
 .explain { border-top: 4px solid var(--c); }
 .explain .display { font-size: 26px; font-weight: 800; color: var(--c); }
 
+/* training buddy picker (Accounts) */
+.buddy-picker { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.buddy-pick {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 48px; padding: 6px 4px;
+  border-radius: 12px; border: 2px solid transparent; background: var(--surface-2); cursor: pointer;
+  font: 700 13px var(--display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+}
+.buddy-pick.on { border-color: var(--volt); color: var(--text); }
+.buddy-pick:active { background: var(--surface-3); }
+
 /* validation ring */
 .big-ring { position: relative; width: 200px; height: 200px; flex-shrink: 0; }
 .big-ring div { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }

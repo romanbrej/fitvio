@@ -1,6 +1,8 @@
 import { Check, ChevronRight, Flame, Zap } from 'lucide-react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Ambient, Sport, SportTrend } from '../api'
+import { Buddy } from '../components/Buddy'
 import { SportIcon, VerdictPill } from '../components/icons'
 import { Sparkline } from '../components/Sparkline'
 import { WorkoutShape } from '../components/WorkoutShape'
@@ -20,6 +22,35 @@ function shortWhen(iso: string): string {
 
 /* ------------------------------------------------------------------------------------------ */
 
+export const MOOD_LABEL: Record<string, string> = {
+  happy: 'happy', content: 'content', sleepy: 'sleepy', overjoyed: 'overjoyed', hungry: 'hungry', asleep: 'asleep',
+}
+
+/** Largest font size (max → min px) at which `text` stays on one line in its element. */
+function useFitText<T extends HTMLElement>(text: string, max: number, min: number): [React.RefObject<T | null>, number] {
+  const ref = useRef<T>(null)
+  const [size, setSize] = useState(max)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const fit = () => {
+      let s = max
+      el.style.fontSize = `${s}px`
+      while (s > min && el.scrollWidth > el.clientWidth + 1) {
+        s -= 4
+        el.style.fontSize = `${s}px`
+      }
+      setSize(s)
+    }
+    fit()
+    const ro = new ResizeObserver(fit)
+    ro.observe(el)
+    document.fonts?.ready.then(fit).catch(() => {})
+    return () => ro.disconnect()
+  }, [text, max, min])
+  return [ref, size]
+}
+
 function Mission({ a }: { a: Ambient }) {
   const nav = useNavigate()
   const w = a.today_workout
@@ -29,8 +60,11 @@ function Mission({ a }: { a: Ambient }) {
   const low = a.health_latest.hrv_baseline_low
   const hrvUp = hrv != null && low != null && hrv >= low
   const open = () => nav(`/u/${a.user_id}/today`)
+  const b = a.buddy
+  const [titleRef, titleSize] = useFitText<HTMLHeadingElement>(h.title, w ? 80 : 112, 56)
   return (
-    <section className={`card mission stripes${w ? '' : ' no-workout'}`}>
+    <section className={`card mission stripes${w ? '' : ' no-workout'}${b ? ' has-buddy' : ''}`}>
+      <div className="mission-main">
       <div className="mission-label">
         <Zap size={18} color="var(--volt)" strokeWidth={2.4} /> Today’s mission
         <span className="grow" />
@@ -38,7 +72,7 @@ function Mission({ a }: { a: Ambient }) {
           <span className="chip">{hrv != null && <>HRV {hrvUp ? '▲' : '▼'}</>}{r && <>{hrv != null && ' · '}Readiness <span style={{ color: 'var(--volt)' }}>{r.score}</span></>}</span>
         )}
       </div>
-      <h1 className="display mission-title">{h.title}</h1>
+      <h1 ref={titleRef} className="display mission-title" style={{ fontSize: titleSize }}>{h.title}</h1>
       {!w && <p className="mission-sub">{h.sub}</p>}
 
       {w && !w.done && (
@@ -74,6 +108,13 @@ function Mission({ a }: { a: Ambient }) {
             {w.done.headline && <span>{w.done.headline}</span>}
           </div>
         </button>
+      )}
+      </div>
+      {b && (
+        <aside className="mission-buddy" aria-label={`Your ${b.animal} is ${MOOD_LABEL[b.mood]}`}>
+          <div className="buddy-says">{b.line}</div>
+          <Buddy animal={b.animal} mood={b.mood} size={150} pettable />
+        </aside>
       )}
     </section>
   )

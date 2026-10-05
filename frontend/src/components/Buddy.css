@@ -1,0 +1,20 @@
+.buddy-pet { position: relative; display: block; padding: 0; border: 0; background: none; cursor: pointer; line-height: 0; }
+.buddy-pet:focus-visible { outline: 3px solid var(--volt); outline-offset: 4px; border-radius: 16px; }
+.buddy-pet:active svg { transform: scale(0.96); }
+.buddy-pet svg { transition: transform 150ms ease; }
+.buddy-hearts { position: absolute; inset: 0; pointer-events: none; }
+.buddy-hearts i {
+  position: absolute; bottom: 45%; font-style: normal; font-size: 26px; line-height: 1; color: #ff7a9a;
+  animation: buddy-heart 1.2s ease-out forwards;
+}
+.buddy-hearts i:nth-child(1) { left: 22%; }
+.buddy-hearts i:nth-child(2) { left: 46%; animation-delay: 0.12s; font-size: 32px; }
+.buddy-hearts i:nth-child(3) { left: 70%; animation-delay: 0.24s; }
+@keyframes buddy-heart {
+  0% { transform: translateY(0) scale(0.6); opacity: 0; }
+  20% { opacity: 1; }
+  100% { transform: translateY(-70px) scale(1.1); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .buddy-hearts i { animation: none; opacity: 1; transform: translateY(-40px); }
+}

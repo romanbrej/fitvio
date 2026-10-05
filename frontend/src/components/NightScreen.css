@@ -24,3 +24,5 @@
 .night-facts span { display: inline-flex; align-items: center; gap: 10px; }
 .night-facts svg { color: #8a3f1f; }
 .night-hint { margin-top: 30px; font-size: 18px; color: #4a515c; }
+.night-buddy { position: absolute; right: 90px; top: 50%; transform: translateY(-50%); opacity: 0.45; }
+@media (max-width: 900px) { .night-buddy { display: none; } }

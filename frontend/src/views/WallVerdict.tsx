@@ -2,6 +2,7 @@ import { AlertTriangle, ChevronRight, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../App'
 import type { Ambient, Delta, Session } from '../api'
+import { Buddy } from '../components/Buddy'
 import { SportIcon, VerdictIcon } from '../components/icons'
 import { Improvements } from '../components/Improvements'
 import { distance, duration, kmh, num, pace, SPORT_LABEL, TYPE_LABEL, VERDICT_LABEL, when } from '../format'
@@ -27,7 +28,7 @@ function facts(s: Session): [string, string][] {
   return out.slice(0, 6)
 }
 
-export function WallVerdict({ session, ambient: _ambient }: { session: Session; ambient: Ambient }) {
+export function WallVerdict({ session, ambient }: { session: Session; ambient: Ambient }) {
   const { dismiss, config } = useApp()
   const nav = useNavigate()
   const v = session.verdict!
@@ -44,8 +45,17 @@ export function WallVerdict({ session, ambient: _ambient }: { session: Session; 
           </span>
           <span className="muted">{when(session.start_time)}</span>
         </div>
-        <div className="verdict-kicker">Session complete</div>
-        <h1 className="activity-name">{session.name || SPORT_LABEL[session.sport]}</h1>
+        <div className="verdict-title-row">
+          <div style={{ minWidth: 0 }}>
+            <div className="verdict-kicker">Session complete</div>
+            <h1 className="activity-name">{session.name || SPORT_LABEL[session.sport]}</h1>
+          </div>
+          {ambient.buddy && (
+            <div className="verdict-buddy">
+              <Buddy animal={ambient.buddy.animal} mood={v.verdict === 'better' ? 'overjoyed' : 'content'} size={96} pettable />
+            </div>
+          )}
+        </div>
 
         <button className={`verdict-big tone-${v.verdict}`} onClick={open} aria-label={`Verdict: ${VERDICT_LABEL[v.verdict]}. Open details`}>
           <VerdictIcon verdict={v.verdict} size={72} strokeWidth={3} />

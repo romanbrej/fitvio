@@ -2,6 +2,7 @@ import { Flame } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { Ambient } from '../api'
 import { minutes } from '../mission'
+import { Buddy } from './Buddy'
 import './NightScreen.css'
 
 /** 22:00–06:30: a dark, calm screen instead of the dashboard. A tap wakes the wall for 2 minutes. */
@@ -29,6 +30,7 @@ export function NightScreen({ ambient, onWake }: { ambient: Ambient | null; onWa
         {tomorrow?.est_duration_s && <span>{minutes(tomorrow.est_duration_s)} planned</span>}
       </span>
       <span className="night-hint">Tap to wake for 2 minutes</span>
+      {ambient?.buddy && <span className="night-buddy"><Buddy animal={ambient.buddy.animal} mood="asleep" size={190} /></span>}
     </button>
   )
 }

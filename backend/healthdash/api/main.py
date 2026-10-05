@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .. import accounts, db, profile, wall
+from .. import accounts, buddy, db, profile, wall
 from ..analytics import load as load_model
 from ..config import PROJECT_ROOT, AppConfig, load_config
 from ..pipeline import user_sessions
@@ -377,6 +377,30 @@ def set_activity_check(body: ActivityCheck, c: AppConfig = Depends(cfg), cn=Depe
         db.set_state(cn, activity_watch.K_BACKOFF, "")
         db.set_state(cn, activity_watch.K_ERROR, "")
     return activity_watch.status(cn, c)
+
+
+class BuddyChoice(BaseModel):
+    model_config = {"extra": "forbid"}
+    user_id: str = Field(max_length=64)
+    animal: str = Field(max_length=32)
+
+
+@app.get("/api/settings/buddy")
+def get_buddy(c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    """Each person's training-buddy animal, plus the choices."""
+    return {"animals": list(buddy.ANIMALS), "food": buddy.FOOD,
+            "users": {u.id: buddy.get_animal(cn, u.id) for u in c.users}}
+
+
+@app.post("/api/settings/buddy", dependencies=[Depends(local_network_only)])
+def set_buddy(body: BuddyChoice, c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    if body.user_id not in {u.id for u in c.users}:
+        raise HTTPException(400, "unknown person")
+    try:
+        buddy.set_animal(cn, body.user_id, body.animal)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    return get_buddy(c, cn)
 
 
 @app.get("/api/health")

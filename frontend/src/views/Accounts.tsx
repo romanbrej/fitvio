@@ -3,7 +3,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../App'
 import { api } from '../api'
-import type { Account, ActivityCheck } from '../api'
+import type { Account, ActivityCheck, BuddySettings } from '../api'
+import { ANIMALS, Buddy } from '../components/Buddy'
+import type { Animal } from '../components/Buddy'
 import { ConnectForm } from '../components/ConnectForm'
 import { ago } from '../format'
 import './Detail.css'
@@ -42,6 +44,14 @@ export function Accounts() {
   }
 
   const connected = useCallback(() => { load(); reload() }, [load, reload])
+
+  // training buddy: one animal per person
+  const [buddies, setBuddies] = useState<BuddySettings | null>(null)
+  useEffect(() => { api.buddySettings().then(setBuddies).catch(() => setBuddies(null)) }, [])
+  const pickBuddy = async (uid: string, animal: Animal) => {
+    setErr(null)
+    try { setBuddies(await api.setBuddy(uid, animal)); reload() } catch (e) { setErr(String(e).replace(/^Error: /, '')) }
+  }
 
   // auto-sync kill switch
   const [check, setCheck] = useState<ActivityCheck | null>(null)
@@ -125,6 +135,21 @@ export function Accounts() {
                   </div>
                 ))}
               </div>
+              {buddies && (
+                <div style={{ marginTop: 14 }}>
+                  <div className="label" style={{ marginBottom: 6 }}>Training buddy</div>
+                  <div className="buddy-picker" role="radiogroup" aria-label={`Training buddy for ${a.name}`}>
+                    {ANIMALS.map(an => (
+                      <button key={an} role="radio" aria-checked={buddies.users[a.id] === an}
+                              className={`buddy-pick${buddies.users[a.id] === an ? ' on' : ''}`}
+                              onClick={() => pickBuddy(a.id, an)} aria-label={`${an}, eats ${buddies.food[an]}`}>
+                        <Buddy animal={an} mood="happy" size={52} />
+                        <span>{an}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <button className="btn" style={{ marginTop: 12 }} onClick={() => nav(`/u/${a.id}/validation`)}>
                 Verdict check <ChevronRight size={18} />
               </button>
