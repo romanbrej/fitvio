@@ -55,10 +55,6 @@ function Mission({ a }: { a: Ambient }) {
   const nav = useNavigate()
   const w = a.today_workout
   const h = headline(a)
-  const r = a.readiness
-  const hrv = a.health_latest.hrv_last_night
-  const low = a.health_latest.hrv_baseline_low
-  const hrvUp = hrv != null && low != null && hrv >= low
   const open = () => nav(`/u/${a.user_id}/today`)
   const b = a.buddy
   const [titleRef, titleSize] = useFitText<HTMLHeadingElement>(h.title, w ? 80 : 112, 56)
@@ -67,10 +63,6 @@ function Mission({ a }: { a: Ambient }) {
       <div className="mission-main">
       <div className="mission-label">
         <Zap size={18} color="var(--volt)" strokeWidth={2.4} /> Today’s mission
-        <span className="grow" />
-        {(r || hrv != null) && (
-          <span className="chip">{hrv != null && <>HRV {hrvUp ? '▲' : '▼'}</>}{r && <>{hrv != null && ' · '}Readiness <span style={{ color: 'var(--volt)' }}>{r.score}</span></>}</span>
-        )}
       </div>
       <h1 ref={titleRef} className="display mission-title" style={{ fontSize: titleSize }}>{h.title}</h1>
       {!w && <p className="mission-sub">{h.sub}</p>}
@@ -288,13 +280,12 @@ function LoadCard({ a }: { a: Ambient }) {
         <div className="sweet">
           {ss ? (
             <>
-              <div className="label">This week</div>
+              <div className="label sweet-label">This week · TRIMP</div>
               <div className="sweet-top">
                 <span className="num sweet-v">{ss.load}</span>
                 <span className="muted">/ <b className="num" style={{ color: 'var(--text)' }}>{ss.low}–{ss.high}</b></span>
-                <span className="trimp">TRIMP</span>
               </div>
-              <div className="sweet-bar" title="too easy · sweet spot · too much">
+              <div className="sweet-bar" title="too easy · sweet spot · too much" aria-label={`${ss.load} of a ${ss.low} to ${ss.high} sweet spot`}>
                 <i className="zone" style={{ left: pct(ss.low), width: `calc(${pct(ss.high)} - ${pct(ss.low)})` }} />
                 <i className="over" style={{ left: pct(ss.high), right: 0 }} />
                 <i className="fill" style={{ width: pct(ss.load) }} />

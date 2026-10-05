@@ -100,7 +100,15 @@
 /* training load: the 6-week chart is the focus, this week's sweet spot sits beside it */
 .loadcard { grid-column: span 8; gap: 8px; text-align: left; padding: 12px 22px 10px !important; }
 .loadcard .card-head { align-items: center; gap: 18px; }
-.pmc-inline { display: flex; gap: 14px; align-items: baseline; font-size: 15px; color: var(--muted); white-space: nowrap; }
+.pmc-inline { display: flex; gap: 14px; align-items: baseline; font-size: 15px; color: var(--muted); white-space: nowrap; min-width: 0; }
+@media (max-width: 1240px) {
+  /* narrower tablets: the whole card opens the details, so the link can go; tighter header */
+  .loadcard .link { display: none; }
+  .loadcard .card-head { gap: 12px; }
+  .pmc-inline { gap: 10px; font-size: 14px; }
+  .pmc-inline b { font-size: 20px; }
+  .loadcard-body { grid-template-columns: minmax(0, 2fr) 1px minmax(0, 1fr); gap: 14px; }
+}
 .pmc-inline > span { display: inline-flex; align-items: baseline; gap: 6px; }
 .pmc-inline i { display: inline-block; width: 12px; height: 4px; border-radius: 2px; align-self: center; }
 .pmc-inline i.dash { height: 0; border-top: 3px dashed; background: none; }
@@ -113,17 +121,20 @@
 .pmc-zero { position: absolute; right: -14px; transform: translateY(-50%); font: 600 11px var(--mono); color: var(--muted); }
 .mini-pmc { display: block; }
 .pmc-axis { display: flex; justify-content: space-between; font: 600 12px var(--mono); color: var(--faint); margin-top: 3px; }
-.sweet { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
-.sweet-top { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; font-size: 16px; }
-.sweet-v { font-size: 30px; font-weight: 600; line-height: 1.05; }
-.trimp { font: 700 16px var(--display); letter-spacing: 0.12em; color: var(--muted); }
-.sweet-bar { position: relative; height: 12px; border-radius: 6px; background: var(--surface-3); overflow: hidden; }
+/* this week's TRIMP fills its third of the card: label at the top, a big number, the scale, the hint at the bottom */
+.sweet { display: flex; flex-direction: column; justify-content: space-between; gap: 4px; min-width: 0; min-height: 0; }
+.sweet-top { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 8px; font-size: 18px; line-height: 1; min-width: 0; }
+.sweet-label { font-size: 14px; }
+@media (max-height: 790px) { .sweet { gap: 2px; } .sweet-v { font-size: 38px; } }
+@media (max-height: 730px) { .sweet-hint { display: none; } }
+.sweet-v { font-size: clamp(30px, 5.4vh, 44px); font-weight: 600; line-height: 1; }
+.sweet-bar { position: relative; height: clamp(12px, 2.2vh, 18px); border-radius: 9px; background: var(--surface-3); overflow: hidden; flex-shrink: 0; }
 .sweet-bar i { position: absolute; top: 0; bottom: 0; }
 .sweet-bar .zone { background: var(--volt); opacity: 0.28; }
 .sweet-bar .over { background: var(--accent); opacity: 0.28; }
-.sweet-bar .fill { left: 0; background: var(--volt); border-radius: 6px; }
+.sweet-bar .fill { left: 0; background: var(--volt); border-radius: 9px; }
 .sweet-bar .plan { background: repeating-linear-gradient(-45deg, var(--volt) 0 4px, transparent 4px 8px); opacity: 0.7; }
-.sweet-hint { margin-top: auto; font-size: 15px; color: var(--text-2); line-height: 1.3; }
+.sweet-hint { font-size: 15px; flex-shrink: 0; color: var(--text-2); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* streak */
 .streak { grid-column: span 4; gap: 8px; padding: 14px 20px !important; }
@@ -199,7 +210,7 @@
 .verdict-actions { display: flex; gap: 12px; }
 .verdict-actions .btn { flex: 1; justify-content: center; min-height: 56px; }
 
-@media (max-width: 1100px) {
+@media (max-width: 1099px) {
   .verdict-wall { grid-template-columns: 1fr; }
   .mission, .loadcard { grid-column: span 12; }
   .readiness, .streak { grid-column: span 6; }
