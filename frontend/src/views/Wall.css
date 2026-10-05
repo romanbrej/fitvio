@@ -37,7 +37,7 @@
 }
 .ambient > .card { padding: 16px 22px; display: flex; flex-direction: column; }
 .card-head { display: flex; align-items: baseline; gap: 12px; }
-.card-name { font-style: italic; font-weight: 800; font-size: 26px; letter-spacing: 0.02em; }
+.card-name { font-style: italic; font-weight: 800; font-size: 26px; letter-spacing: 0.02em; white-space: nowrap; }
 
 /* mission */
 .mission { grid-column: span 8; gap: 8px; padding: 20px 28px !important; }
@@ -88,7 +88,7 @@
 /* training load: the 6-week chart is the focus, this week's sweet spot sits beside it */
 .loadcard { grid-column: span 8; gap: 8px; text-align: left; padding: 12px 22px 10px !important; }
 .loadcard .card-head { align-items: center; gap: 18px; }
-.pmc-inline { display: flex; gap: 16px; align-items: baseline; font-size: 15px; color: var(--muted); white-space: nowrap; }
+.pmc-inline { display: flex; gap: 14px; align-items: baseline; font-size: 15px; color: var(--muted); white-space: nowrap; }
 .pmc-inline > span { display: inline-flex; align-items: baseline; gap: 6px; }
 .pmc-inline i { display: inline-block; width: 12px; height: 4px; border-radius: 2px; align-self: center; }
 .pmc-inline i.dash { height: 0; border-top: 3px dashed; background: none; }
@@ -97,7 +97,8 @@
 .loadcard-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 2fr) 1px minmax(0, 1fr); gap: 18px; }
 .divider { background: var(--border); }
 .pmc-chart { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
-.pmc-plot { flex: 1 1 0; min-height: 40px; }
+.pmc-plot { flex: 1 1 0; min-height: 40px; position: relative; }
+.pmc-zero { position: absolute; right: -14px; transform: translateY(-50%); font: 600 11px var(--mono); color: var(--muted); }
 .mini-pmc { display: block; }
 .pmc-axis { display: flex; justify-content: space-between; font: 600 12px var(--mono); color: var(--faint); margin-top: 3px; }
 .sweet { display: flex; flex-direction: column; gap: 5px; min-width: 0; }

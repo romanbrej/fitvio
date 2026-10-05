@@ -159,6 +159,32 @@ function ReadinessCard({ a }: { a: Ambient }) {
   )
 }
 
+/** formState() labels, shortened for the card header. */
+const SHORT_FORM: Record<string, string> = {
+  'Very fresh — losing fitness': 'Very fresh', 'Productive training': 'Productive', 'Overreaching risk': 'Overreaching',
+}
+
+/** Change over the last 6 weeks (today vs. 42 days ago) of one PMC line. */
+function change6w(pmc: Ambient['pmc'], k: 'fatigue' | 'form'): number | null {
+  if (pmc.length < 43) return null
+  return pmc[pmc.length - 1][k] - pmc[pmc.length - 43][k]
+}
+
+/** ▲/▼ with the size of a change, like the fitness indicator. Fatigue and form going up or down
+ *  isn't good or bad by itself, so they stay neutral. */
+function Change({ v }: { v: number | null }) {
+  if (v == null) return null
+  if (Math.abs(v) < 0.5) return <em className="tone-inline">●0</em>
+  return <em className="tone-inline">{v > 0 ? '▲' : '▼'}{Math.abs(v).toFixed(0)}</em>
+}
+
+/** Where the zero line sits in MiniPmc, in % from the top (for its "0" label). */
+function zeroPct(days: Ambient['pmc']): number {
+  const vals = days.flatMap(d => [d.fitness, d.fatigue, d.form, 0])
+  const lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || 1
+  return (3 + (1 - (0 - lo) / span) * 94)
+}
+
 /** 6 weeks of fitness (blue), fatigue (pink, dashed) and form (yellow) on one chart and one scale, with a zero line. */
 function MiniPmc({ days }: { days: Ambient['pmc'] }) {
   if (days.length < 2) return null
@@ -170,8 +196,9 @@ function MiniPmc({ days }: { days: Ambient['pmc'] }) {
   const path = (k: 'fitness' | 'fatigue' | 'form') => days.map((d, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(d[k]).toFixed(1)}`).join('')
   return (
     <svg className="mini-pmc" viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" preserveAspectRatio="none" aria-hidden>
-      <line x1={0} x2={W} y1={y(0)} y2={y(0)} stroke="var(--border-2)" strokeWidth={1} strokeDasharray="2 4" vectorEffect="non-scaling-stroke" />
-      <path d={`${path('fitness')}L${W} ${y(lo)}L0 ${y(lo)}Z`} fill="var(--fitness)" opacity={0.12} />
+      {/* zero line: form above it = fresh, below = tired */}
+      <line x1={0} x2={W} y1={y(0)} y2={y(0)} stroke="#6b7585" strokeWidth={1.5} strokeDasharray="6 4" vectorEffect="non-scaling-stroke" />
+      <path d={`${path('fitness')}L${W} ${y(0)}L0 ${y(0)}Z`} fill="var(--fitness)" opacity={0.12} />
       <path d={path('form')} fill="none" stroke="var(--form)" strokeWidth={2.2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       <path d={path('fatigue')} fill="none" stroke="var(--fatigue)" strokeWidth={1.8} strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />
       <path d={path('fitness')} fill="none" stroke="var(--fitness)" strokeWidth={3} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
@@ -203,16 +230,17 @@ function LoadCard({ a }: { a: Ambient }) {
           <span><i style={{ background: 'var(--fitness)' }} />Fitness <b className="num">{num(f?.fitness)}</b>
             {a.fitness_change_6w != null && <em className={`tone-${a.fitness_change_6w >= 0.5 ? 'better' : a.fitness_change_6w <= -0.5 ? 'worse' : 'inline'}`}>
               {a.fitness_change_6w >= 0.5 ? '▲' : a.fitness_change_6w <= -0.5 ? '▼' : '●'}{Math.abs(a.fitness_change_6w).toFixed(0)}</em>}</span>
-          <span><i className="dash" style={{ borderColor: 'var(--fatigue)' }} />Fatigue <b className="num">{num(f?.fatigue)}</b></span>
+          <span><i className="dash" style={{ borderColor: 'var(--fatigue)' }} />Fatigue <b className="num">{num(f?.fatigue)}</b>
+            <Change v={change6w(a.pmc, 'fatigue')} /></span>
           <span><i style={{ background: 'var(--form)' }} />Form <b className="num" style={{ color: 'var(--form)' }}>{signed(f?.form, 0)}</b>
-            <em className={`tone-${fs.tone}`}>{fs.label.split(' — ')[0]}</em></span>
+            <Change v={change6w(a.pmc, 'form')} /><em className={`tone-${fs.tone}`}>{SHORT_FORM[fs.label] ?? fs.label}</em></span>
         </span>
         <span className="grow" />
         <span className="link">Details <ChevronRight size={16} /></span>
       </div>
       <div className="loadcard-body">
         <div className="pmc-chart">
-          <div className="pmc-plot"><MiniPmc days={a.pmc.slice(-42)} /></div>
+          <div className="pmc-plot"><MiniPmc days={a.pmc.slice(-42)} /><span className="pmc-zero" style={{ top: `${zeroPct(a.pmc.slice(-42))}%` }}>0</span></div>
           <div className="pmc-axis"><span>6 weeks ago</span><span>today</span></div>
         </div>
         <div className="divider" />
@@ -289,25 +317,39 @@ function tileContent(sport: Sport, t: SportTrend): { big: string; unit?: string;
   if (sport === 'running' && st?.pace_s_per_km) {
     const c = st.change_s_per_km
     const cad = t.cadence
+    const trend = c == null ? 'not enough runs for a trend' : Math.abs(c) < 2 ? 'steady over 6 wks'
+      : `${c > 0 ? '▲' : '▼'} ${Math.abs(c).toFixed(0)} s/km ${c > 0 ? 'faster' : 'slower'} in 6 wks`
     return {
-      big: c == null ? paceStr(st.pace_s_per_km) : Math.abs(c) < 2 ? 'Steady' : `${c > 0 ? '−' : '+'}${Math.abs(c).toFixed(0)}`,
-      unit: c == null ? '/km' : Math.abs(c) < 2 ? undefined : 's/km',
-      caption: `${paceStr(st.pace_s_per_km)} /km at ${num(st.ref_hr)} bpm · 6 wks`,
+      big: paceStr(st.pace_s_per_km), unit: '/km',
+      caption: `at ${num(st.ref_hr)} bpm · ${trend}`,
       extra: cad ? `Cadence ${cad.spm} spm${cad.change ? ` ${cad.change > 0 ? '▲' : '▼'}${Math.abs(cad.change)}` : ''}` : undefined,
       spark: st.points.map(p => -p.value), tone: c == null ? 'muted' : c >= 2 ? 'better' : c <= -2 ? 'worse' : 'inline',
     }
   }
   if (sport === 'cycling' && st && st.w_per_beat != null) {
     const c = st.w_per_beat_change_pct
+    const trend = c == null ? 'too few power rides for a trend' : Math.abs(c) < 1 ? 'steady over 3 months'
+      : `${c > 0 ? '▲' : '▼'} ${Math.abs(c).toFixed(1)} % in 3 months`
     return {
-      big: c == null ? `${st.w_per_beat.toFixed(2)}` : signed(c, 1, '%'),
-      caption: `${st.w_per_beat.toFixed(2)} W/beat${st.ftp_wkg ? ` · FTP ${st.ftp_wkg.toFixed(1)} W/kg` : ''}`,
+      big: st.w_per_beat.toFixed(2), unit: 'W/beat',
+      caption: trend,
+      extra: st.ftp_wkg ? `FTP ${st.ftp_wkg.toFixed(1)} W/kg` : undefined,
       spark: st.points.map(p => p.value), tone: c == null ? 'muted' : c >= 1 ? 'better' : c <= -1 ? 'worse' : 'inline',
     }
   }
   // a trend this steep comes from too few sessions: don't show it on the wall
   const raw6 = t.pct_per_week == null ? null : t.pct_per_week * 6
   const pct6 = raw6 != null && Math.abs(raw6) <= 30 ? raw6 : null
+  if (sport === 'swimming' && t.points.length) {
+    // pace per 100 m (seconds): the big number is the typical pace of the last swims; + % = faster
+    const last = t.points.slice(-3).map(p => p.value).sort((x, y) => x - y)
+    const trend = pct6 == null ? 'not enough swims for a trend' : Math.abs(pct6) < 1.2 ? 'steady over 6 wks'
+      : `${pct6 > 0 ? '▲' : '▼'} ${Math.abs(pct6).toFixed(1)} % ${pct6 > 0 ? 'faster' : 'slower'} in 6 wks`
+    return {
+      big: paceStr(last[Math.floor(last.length / 2)]), unit: '/100 m', caption: trend,
+      spark: t.points.map(p => -p.value), tone: pct6 == null ? 'muted' : pct6 >= 1.2 ? 'better' : pct6 <= -1.2 ? 'worse' : 'inline',
+    }
+  }
   return {
     big: pct6 == null ? '—' : signed(pct6, 1, '%'),
     caption: pct6 == null ? 'Not enough sessions for a trend yet' : `${t.metric ?? (sport === 'strength' ? 'e1RM' : 'trend')} · 6 wks`,
