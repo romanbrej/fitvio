@@ -12,6 +12,7 @@ This wrapper patches only the download loops (nothing else) and then runs the un
     doubled on errors / rate limiting up to 8 s, and eased back down after successes
   * monitoring remembers finished days in `.downloaded_days.json`, so it resumes too
   * hydration is skipped (Health Wall doesn't use it; HEALTHDASH_HYDRATION=1 keeps it)
+  * garmindb.log lines get a timestamp, so run_sync can log how long each step took
   * activities are compared with what is saved: a summary or details file is only rewritten when
     Garmin's version differs (renamed, RPE/feel added, …), recent activities are always checked
 
@@ -267,7 +268,22 @@ def _patch_differential_import(since: datetime.datetime) -> None:
     an.Analyze.summary = summary
 
 
+LOG_FORMAT = "%(asctime)s %(levelname)s:%(name)s:%(message)s"
+
+
+def _timestamped_log() -> None:
+    """GarminDB's log has no times; add them so run_sync can report how long each step took."""
+    original = logging.basicConfig
+
+    def basic_config(**kw):
+        kw.setdefault("format", LOG_FORMAT)
+        original(**kw)
+
+    logging.basicConfig = basic_config
+
+
 def install() -> None:
+    _timestamped_log()
     dl.Download._Download__get_stat = get_stat
     dl.Download.get_monitoring = get_monitoring
     dl.Download.get_hydration = get_hydration

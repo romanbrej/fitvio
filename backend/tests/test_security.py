@@ -116,3 +116,74 @@ def test_auto_sync_switch(client):
     r = client.post("/api/settings/activity-check", json={"enabled": False})
     assert r.status_code == 200 and r.json()["enabled"] is False
     assert client.get("/api/settings/activity-check").json()["enabled"] is False
+
+
+@pytest.fixture
+def morning(client, tmp_path, monkeypatch):
+    """Two people, 07:00, the quick sync stubbed out (records who it was started for)."""
+    from datetime import datetime
+
+    from healthdash import accounts, db
+    main.app.dependency_overrides[main.local_network_only] = lambda: None
+    (tmp_path / "users.json").write_text(json.dumps({"users": [
+        {"id": "alex", "garmindb_config_dir": "x/config"}, {"id": "sam", "garmindb_config_dir": "y/config"}]}))
+    main.reset_config()
+
+    class At7(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 10, 5, 7, 0)
+
+    monkeypatch.setattr(main, "datetime", At7)
+    started = []
+    monkeypatch.setattr(accounts, "start_sync", lambda user, db_path, full=False, quick=False: (
+        started.append((user.id, quick)) or accounts.Job(kind="sync", user_id=user.id)))
+    conn = db.connect(tmp_path / "app.db")
+    db.set_state(conn, "selected_user", "sam")
+    return started, conn, At7
+
+
+def test_morning_tap_quick_syncs_everyone_whose_night_is_missing_wall_person_first(client, morning):
+    started, conn, _ = morning
+    r = client.post("/api/wall/morning").json()
+    assert started == [("sam", True), ("alex", True)]
+    assert [j["user_id"] for j in r["started"]] == ["sam", "alex"] and r["pending"] is True
+
+
+def test_morning_tap_skips_people_whose_sleep_is_in_and_stops_asking(client, morning):
+    started, conn, _ = morning
+    for uid in ("alex", "sam"):
+        conn.execute("INSERT INTO health_days (user_id, day, sleep_total_min) VALUES (?, '2026-10-05', 420)", (uid,))
+    conn.commit()
+    r = client.post("/api/wall/morning").json()
+    assert started == [] and r == {"started": [], "pending": False}
+
+
+def test_morning_tap_respects_cooldown_and_gives_up_after_a_few_tries(client, morning):
+    started, conn, At7 = morning
+    client.post("/api/wall/morning")
+    conn.execute("INSERT INTO sync_status (user_id, last_attempt) VALUES ('alex', '2026-10-05T06:59:50'),"
+                 " ('sam', '2026-10-05T06:59:50')")
+    conn.commit()
+    r = client.post("/api/wall/morning").json()  # synced 10 s ago: nothing new, but still pending
+    assert len(started) == 2 and r == {"started": [], "pending": True}
+    conn.execute("UPDATE sync_status SET last_attempt = '2026-10-05T06:00:00'")
+    conn.commit()
+    client.post("/api/wall/morning")
+    client.post("/api/wall/morning")             # 3 tries each (e.g. the watch stayed on the charger) …
+    r = client.post("/api/wall/morning").json()  # … then it is left to the hourly sync
+    assert len(started) == 6 and r == {"started": [], "pending": False}
+
+
+def test_morning_tap_at_night_does_nothing_and_needs_the_home_network(client, morning, monkeypatch):
+    started, _, At7 = morning
+
+    class At3(At7):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 10, 5, 3, 0)
+
+    monkeypatch.setattr(main, "datetime", At3)
+    assert client.post("/api/wall/morning").json()["started"] == [] and started == []
+    main.app.dependency_overrides.clear()
+    assert client.post("/api/wall/morning").status_code == 403

@@ -307,17 +307,56 @@ def post_mfa(job_id: str, body: Mfa):
 SYNC_COOLDOWN_S = 60  # protect the Garmin account from rapid repeated syncs (rate limiting / blocking)
 
 
+def _cooldown_left(cn, user_id: str) -> float:
+    row = cn.execute("SELECT last_attempt FROM sync_status WHERE user_id = ?", (user_id,)).fetchone()
+    if not row or not row[0]:
+        return 0.0
+    return SYNC_COOLDOWN_S - (datetime.now() - datetime.fromisoformat(row[0])).total_seconds()
+
+
 @app.post("/api/users/{user_id}/sync", dependencies=[Depends(local_network_only)])
 def sync_now(user_id: str, full: bool = False, c: AppConfig = Depends(cfg), cn=Depends(conn)):
     user = _user_or_404(c, user_id)
     if (running := accounts.active_for(user.id)):
         return running.public()
-    row = cn.execute("SELECT last_attempt FROM sync_status WHERE user_id = ?", (user.id,)).fetchone()
-    if row and row[0]:
-        wait = SYNC_COOLDOWN_S - (datetime.now() - datetime.fromisoformat(row[0])).total_seconds()
-        if wait > 0:
-            raise HTTPException(429, f"just synced — try again in {int(wait) + 1} s")
+    if (wait := _cooldown_left(cn, user.id)) > 0:
+        raise HTTPException(429, f"just synced — try again in {int(wait) + 1} s")
     return accounts.start_sync(user, c.db_path, full=full).public()
+
+
+MORNING_FROM_HOUR = 4    # a tap before this is still "last night"
+MORNING_MAX_TRIES = 3    # per person and day, e.g. when the watch stayed on the charger
+
+
+@app.post("/api/wall/morning", dependencies=[Depends(local_network_only)])
+def morning_sync(c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    """The first tap on the wall in the morning: fetch last night (sleep, HRV, resting HR, Body Battery)
+    right away instead of waiting for the hourly sync. Asks Garmin nothing itself; a quick sync starts
+    only for people whose sleep from last night is still missing — at most a few times a day.
+    `pending` tells the wall whether a later tap could still start one (otherwise it stops asking today)."""
+    now = datetime.now()
+    if now.hour < MORNING_FROM_HOUR:
+        return {"started": [], "pending": True}
+    today = now.date().isoformat()
+    selected = db.get_state(cn, "selected_user", "")
+    started, pending = [], False
+    for user in sorted(c.users, key=lambda u: u.id != selected):  # the person on the wall first
+        if not user.garmindb_config_dir:
+            continue
+        if cn.execute("SELECT 1 FROM health_days WHERE user_id = ? AND day = ? AND sleep_total_min IS NOT NULL",
+                      (user.id, today)).fetchone():
+            continue
+        key = f"morning.{user.id}"
+        day, _, tries = (db.get_state(cn, key) or "").partition(":")
+        tries = int(tries) if day == today and tries.isdigit() else 0
+        if tries >= MORNING_MAX_TRIES:
+            continue
+        pending = True  # this person's night is still missing: worth asking again on a later tap
+        if accounts.active_for(user.id) or _cooldown_left(cn, user.id) > 0:
+            continue
+        db.set_state(cn, key, f"{today}:{tries + 1}")
+        started.append(accounts.start_sync(user, c.db_path, quick=True).public())
+    return {"started": started, "pending": pending}
 
 
 class ActivityCheck(BaseModel):

@@ -91,3 +91,40 @@ def test_new_configs_use_relative_paths(tmp_path, monkeypatch):
     cfg = json.loads((cfg_dir / "GarminConnectConfig.json").read_text())
     assert cfg["directories"]["base_dir"] == "HealthData"
     assert cfg["credentials"]["password_file"] == "config/password.txt"
+
+
+def test_step_times_come_from_the_timestamped_garmindb_log():
+    log = ["2026-10-05 08:41:00,000 INFO:root:login: Roman",
+           "2026-10-05 08:41:05,000 INFO:root:Getting activities: 'x' (25)",
+           "no timestamp: ignored",
+           "2026-10-05 08:41:35,000 INFO:root:Getting daily summaries: 2026-10-04 (1)",
+           "2026-10-05 08:41:37,500 INFO:root:Getting monitoring: 2026-10-04 (1)",
+           "2026-10-05 08:41:40,000 INFO:root:Getting monitoring: still monitoring",
+           "2026-10-05 08:42:10,000 INFO:x:___Importing Latest Data___",
+           "2026-10-05 08:42:50,000 INFO:x:___Analyzing Data___",
+           "2026-10-05 08:43:00,000 INFO:x:done"]
+    times = garmindb_runner.phase_times(log)
+    assert times == {"login": 5, "activities": 30, "summaries": 2.5, "monitoring": 32.5, "import": 40, "analyze": 10}
+    assert garmindb_runner.format_times(times).startswith("login 5s · activities 30s")
+
+
+def test_quick_sync_fetches_health_data_only_and_keeps_the_last_full_sync(tmp_path, monkeypatch):
+    conn = db.connect(tmp_path / "app.db")
+    args = tmp_path / "args.txt"
+    exe = tmp_path / "fake.sh"
+    exe.write_text(f'#!/bin/sh\necho "$@" >> {args}\necho ok\n')
+    exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setattr(garmindb_runner, "garmindb_command", lambda: [str(exe)])
+    user = make_user(tmp_path, with_db=True)
+
+    assert garmindb_runner.run_sync(conn, user)
+    full_success = conn.execute("SELECT last_success FROM sync_status").fetchone()[0]
+    conn.execute("UPDATE sync_status SET last_attempt = '2000-01-01T00:00:00'")
+    assert garmindb_runner.run_sync(conn, user, quick=True)
+    normal, quick = args.read_text().splitlines()
+    assert "--all" in normal.split()
+    assert "--all" not in quick.split() and {"--monitoring", "--sleep", "--rhr", "--hrv"} <= set(quick.split())
+    assert "--activities" not in quick.split() and "--weight" not in quick.split()
+    row = conn.execute("SELECT last_success, last_attempt FROM sync_status").fetchone()
+    assert row["last_success"] == full_success      # the next normal sync still imports everything since then
+    assert row["last_attempt"] != "2000-01-01T00:00:00"  # but the wall / cooldown see that it ran

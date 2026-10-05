@@ -19,7 +19,8 @@ from typing import Callable
 
 from . import db, pipeline
 from .config import UserConfig, add_user, load_config
-from .sync.garmindb_runner import SyncBusy, changed_since, init_user_config, login_interactive, run_sync
+from .sync.garmindb_runner import (SyncBusy, changed_since, init_user_config, login_interactive, run_sync,
+                                   timed_ingest)
 
 log = logging.getLogger(__name__)
 
@@ -155,17 +156,18 @@ def result_message(result: dict, full: bool) -> str:
     return " · ".join(parts) or "Up to date"
 
 
-def _download_and_import(job: Job, user: UserConfig, db_path: Path, full: bool) -> None:
+def _download_and_import(job: Job, user: UserConfig, db_path: Path, full: bool, quick: bool = False) -> None:
     conn = db.connect(db_path)
     try:
         job.phase = "downloading"
         job.message = ("Downloading your complete Garmin history — the first time this can take a long while"
-                       if full else "Fetching new data from Garmin")
-        # read before the sync: a successful run moves this marker forward
-        since = None if full else changed_since(conn, user.id)
+                       if full else "Fetching last night's data from Garmin" if quick else "Fetching new data from Garmin")
+        # read before the sync: a successful run moves this marker forward (a quick one only fetches
+        # health data, so it has no edited activities to look for)
+        since = None if full or quick else changed_since(conn, user.id)
         try:
             ok = run_sync(conn, user, full=full, timeout_s=FULL_SYNC_TIMEOUT_S if full else 1800,
-                          on_line=job.line, on_step=job.on_step)
+                          on_line=job.line, on_step=job.on_step, quick=quick)
         except SyncBusy as e:
             job.phase, job.error = "error", str(e)
             return
@@ -184,7 +186,7 @@ def _download_and_import(job: Job, user: UserConfig, db_path: Path, full: bool) 
                 log.warning("extras backfill failed for %s: %s", user.id, e)
         job.phase = "importing"
         job.message = "Analysing your activities and working out every verdict"
-        job.result = pipeline.ingest_from_garmindb(conn, user, full=full, changed_since=since)
+        job.result = timed_ingest(conn, user, full=full, changed_since=since)
         job.phase = "done"
         job.message = result_message(job.result, full)
     except Exception as e:  # surface anything unexpected in the UI instead of a silent dead thread
@@ -225,7 +227,7 @@ def start_connect(email: str, password: str, db_path: Path, on_registered: Calla
     return job
 
 
-def start_sync(user: UserConfig, db_path: Path, full: bool = False) -> Job:
+def start_sync(user: UserConfig, db_path: Path, full: bool = False, quick: bool = False) -> Job:
     running = active_for(user.id)
     if running:
         return running
@@ -238,6 +240,6 @@ def start_sync(user: UserConfig, db_path: Path, full: bool = False) -> Job:
         finally:
             conn.close()
     job = _add(Job(kind="sync", user_id=user.id, phase="downloading"))
-    threading.Thread(target=_download_and_import, args=(job, user, db_path, full),
+    threading.Thread(target=_download_and_import, args=(job, user, db_path, full, quick and not full),
                      name=f"sync-{job.id}", daemon=True).start()
     return job

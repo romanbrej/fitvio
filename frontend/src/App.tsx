@@ -22,6 +22,8 @@ export const useApp = () => useContext(AppCtx)!
 const POLL_MS = 60_000
 const JOB_POLL_MS = 1500
 const OUTCOME_MS = { ok: 6_000, failed: 15_000 }
+const MORNING_FROM_HOUR = 4          // same as the server: a tap before this is still the night
+const MORNING_RETRY_MS = 10 * 60_000 // someone's night is still missing: ask again on a tap after this
 
 function inNight(start: string, end: string, d = new Date()): boolean {
   const m = d.getHours() * 60 + d.getMinutes()
@@ -109,17 +111,9 @@ export default function App() {
     if (loc.pathname !== '/') nav('/')
   }, [refresh, loc.pathname, nav])
 
-  // Manual "sync now" for the person on screen: fetch the latest from Garmin, then refresh the wall.
-  const syncNow = useCallback(async (user: string) => {
-    if (syncJob) return
+  // Show a running sync job in the top bar until it finishes, then refresh the wall.
+  const follow = useCallback(async (job: Job) => {
     setSyncOutcome(null)
-    let job: Job
-    try {
-      job = await api.syncNow(user)
-    } catch (e) {
-      setSyncOutcome({ ok: false, text: `Sync failed: ${String(e).replace(/^Error: /, '')}` })
-      return
-    }
     setSyncJob(job)
     while (job.phase !== 'done' && job.phase !== 'error') {
       await new Promise(r => setTimeout(r, JOB_POLL_MS))
@@ -134,7 +128,41 @@ export default function App() {
     const ok = job.phase === 'done'
     setSyncOutcome({ ok, text: ok ? job.message || 'Up to date' : (job.error ?? 'Sync failed') })
     await refresh()
-  }, [syncJob, refresh])
+  }, [refresh])
+
+  // Manual "sync now" for the person on screen: fetch the latest from Garmin, then refresh the wall.
+  const syncNow = useCallback(async (user: string) => {
+    if (syncJob) return
+    let job: Job
+    try {
+      job = await api.syncNow(user)
+    } catch (e) {
+      setSyncOutcome({ ok: false, text: `Sync failed: ${String(e).replace(/^Error: /, '')}` })
+      return
+    }
+    await follow(job)
+  }, [syncJob, follow])
+
+  // The first tap of the morning fetches last night (sleep, HRV, Body Battery) right away instead of
+  // waiting for the hourly sync. The server decides who needs it; here we only avoid asking on every tap.
+  const morning = useRef({ day: '', next: 0 })
+  const wallUser = wall?.mode === 'setup' ? null : wall?.user_id
+  useEffect(() => {
+    const onTap = () => {
+      const now = new Date()
+      const day = now.toDateString()
+      const m = morning.current
+      if (now.getHours() < MORNING_FROM_HOUR || (m.day === day && (m.next === 0 || Date.now() < m.next))) return
+      morning.current = { day, next: Date.now() + MORNING_RETRY_MS }
+      api.morning().then(r => {
+        if (!r.pending) morning.current = { day, next: 0 }  // everyone's night is in: done for today
+        const mine = r.started.find(j => j.user_id === wallUser)
+        if (mine && !syncJob) follow(mine)
+      }).catch(() => { morning.current = { day: '', next: 0 } })  // offline: try again on the next tap
+    }
+    window.addEventListener('pointerdown', onTap, { passive: true })
+    return () => window.removeEventListener('pointerdown', onTap)
+  }, [wallUser, syncJob, follow])
 
   useEffect(() => {
     if (!syncOutcome) return

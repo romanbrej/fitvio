@@ -165,6 +165,7 @@ export const api = {
   job: (id: string) => get<Job>(`/api/jobs/${id}`),
   mfa: (id: string, code: string) => post<{ ok: boolean }>(`/api/jobs/${id}/mfa`, { code }),
   syncNow: (user: string) => post<Job>(`/api/users/${user}/sync`, {}),
+  morning: () => post<{ started: Job[]; pending: boolean }>('/api/wall/morning', {}),
   activityCheck: () => get<ActivityCheck>('/api/settings/activity-check'),
   setActivityCheck: (enabled: boolean) => post<ActivityCheck>('/api/settings/activity-check', { enabled }),
 }

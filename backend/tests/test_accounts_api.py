@@ -33,7 +33,7 @@ def client(tmp_path, monkeypatch):
             raise RuntimeError("invalid MFA code")
         return "Alex Runner"
 
-    def fake_sync(conn, user, full=False, timeout_s=0, on_line=None, on_step=None):
+    def fake_sync(conn, user, full=False, timeout_s=0, on_line=None, on_step=None, quick=False):
         on_step(2, 10, "hydration", "Hydration")
         on_line("Downloading activities: 100%")
         return True

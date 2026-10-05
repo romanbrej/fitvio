@@ -8,11 +8,13 @@ import fcntl
 import json
 import logging
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
 import sys
 import threading
+import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -91,6 +93,33 @@ def step_for(log_line: str) -> tuple[int, str, str] | None:
         if any(m in log_line for m in markers):
             return i, key, label
     return None
+
+
+_LOG_TIME = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3}) ")
+
+
+def phase_times(log_lines: list[str]) -> dict[str, float]:
+    """Seconds per step from GarminDB's timestamped log (garmindb_fast adds the times). Everything
+    before the first step (start-up, login) counts as "login"."""
+    out: dict[str, float] = {}
+    current, since, last = "login", None, None
+    for line in log_lines:
+        m = _LOG_TIME.match(line)
+        if not m:
+            continue
+        last = datetime.strptime(m[1], "%Y-%m-%d %H:%M:%S,%f")
+        since = since or last
+        hit = step_for(line)
+        if hit and hit[1] != current:
+            out[current] = out.get(current, 0.0) + (last - since).total_seconds()
+            current, since = hit[1], last
+    if since is not None:
+        out[current] = out.get(current, 0.0) + (last - since).total_seconds()
+    return out
+
+
+def format_times(times: dict[str, float]) -> str:
+    return " · ".join(f"{k} {v:.0f}s" for k, v in times.items())
 
 
 class LogFollower:
@@ -179,15 +208,24 @@ def sync_lock(user: UserConfig):
             fcntl.flock(fh, fcntl.LOCK_UN)
 
 
+# The morning sync: only what the wall shows after a night (sleep, HRV, resting HR, and the daily
+# summary with Body Battery / stress, which GarminDB fetches under monitoring). No activities, no weight.
+QUICK_STATS = ["--monitoring", "--sleep", "--rhr", "--hrv"]
+
+
 def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, timeout_s: int = 1800,
              on_line: Callable[[str], None] | None = None,
-             on_step: Callable[[int, int, str, str], None] | None = None) -> bool:
+             on_step: Callable[[int, int, str, str], None] | None = None, quick: bool = False) -> bool:
     """Run GarminDB for one person. `on_line` receives its output live, `on_step(index, total, key,
-    label)` which data type it is working on (progress in the UI)."""
+    label)` which data type it is working on (progress in the UI). `quick` fetches the health data only
+    (QUICK_STATS) and leaves `last_success` alone: the next normal sync still imports everything since
+    the last complete one."""
     now = datetime.now().isoformat(timespec="seconds")
+    started = time.monotonic()
     row = db.row_to_dict(conn.execute("SELECT * FROM sync_status WHERE user_id = ?", (user.id,)).fetchone()) or {}
     # GarminDB's CLI, run through our wrapper with faster, resumable download loops (garmindb_fast.py)
-    cmd = [*garmindb_command(), "-f", str(user.garmindb_dir), "--all", "--download", "--import", "--analyze"]
+    stats = QUICK_STATS if quick and not full else ["--all"]
+    cmd = [*garmindb_command(), "-f", str(user.garmindb_dir), *stats, "--download", "--import", "--analyze"]
     env = os.environ.copy()
     if not full:
         cmd.append("--latest")
@@ -232,6 +270,9 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, tim
                 follower.close()
                 if log_file.exists():
                     os.chmod(log_file, 0o600)
+                    times = phase_times(log_file.read_text(errors="replace").splitlines())
+                    log.info("sync %s%s: garmindb %.0fs — %s", user.id, " (quick)" if quick else "",
+                             time.monotonic() - started, format_times(times) or "no step times in log")
             # GarminDB exits 0 even when the login fails, so also look at what it printed.
             hit = next((ln for ln in lines if any(m in ln.lower() for m in FAILURE_MARKERS)), None)
             if timed_out:
@@ -248,7 +289,7 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, tim
         error = str(e)
     db.upsert(conn, "sync_status", {
         "user_id": user.id, "last_attempt": now,
-        "last_success": now if error is None else row.get("last_success"),
+        "last_success": now if error is None and not quick else row.get("last_success"),
         "last_error": error,
     })
     conn.commit()
@@ -260,15 +301,23 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, tim
 def sync_user(conn: sqlite3.Connection, user: UserConfig, full: bool = False) -> tuple[bool, dict | None]:
     """Download (GarminDB) + ingest + verdicts for one person — what `healthdash sync` does per person.
     Returns (download ok, ingest result or None). Raises SyncBusy when another sync holds the lock."""
-    from .. import pipeline
-
     since = None if full else changed_since(conn, user.id)  # before the sync moves it
     ok = run_sync(conn, user, full=full)
     try:
-        return ok, pipeline.ingest_from_garmindb(conn, user, full=full, changed_since=since)
+        return ok, timed_ingest(conn, user, full=full, changed_since=since)
     except RuntimeError as e:  # e.g. nothing downloaded yet
         log.warning("%s: ingest skipped — %s", user.id, e)
         return ok, None
+
+
+def timed_ingest(conn: sqlite3.Connection, user: UserConfig, **kw) -> dict:
+    """pipeline.ingest_from_garmindb, with its duration in the log (next to the GarminDB step times)."""
+    from .. import pipeline
+
+    started = time.monotonic()
+    result = pipeline.ingest_from_garmindb(conn, user, **kw)
+    log.info("sync %s: ingest %.0fs", user.id, time.monotonic() - started)
+    return result
 
 
 def garmin_client(user: UserConfig, mfa_prompt: Callable[[], str] | None = None):
