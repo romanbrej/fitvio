@@ -213,7 +213,8 @@ def update(conn: sqlite3.Connection, user_id: str, connectapi: Callable, today: 
 
     readiness = parse_readiness(connectapi(READINESS_URL.format(day=today)), today)
 
-    now = datetime.now().isoformat(timespec="seconds")
+    # stamped on `today` (the real date in production), so "fetched today" above means the same day
+    now = datetime.combine(today, datetime.now().time()).isoformat(timespec="seconds")
     with conn:
         conn.execute("DELETE FROM planned_workouts WHERE user_id = ? AND (day >= ? OR day < ?)",
                      (user_id, today.isoformat(), (today - timedelta(days=KEEP_DAYS)).isoformat()))
