@@ -7,7 +7,7 @@ export function Wall() {
   const { wall, reload } = useApp()
   if (!wall || wall.mode === 'setup') {
     return (
-      <div className="card" style={{ maxWidth: 640, margin: '6vh auto' }}>
+      <div className="card" style={{ maxWidth: 640, margin: 'calc(var(--vh) * 6) auto' }}>
         <h1 style={{ marginTop: 0, fontSize: 30 }}>Welcome to your Health Wall</h1>
         <p className="muted" style={{ marginTop: 0 }}>
           Connect your Garmin account. Your whole history is downloaded and every activity gets a verdict —

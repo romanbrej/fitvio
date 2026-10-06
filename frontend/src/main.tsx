@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
 import App from './App'
 import './theme.css'
+import { applyUiScale } from './uiScale'
 import { Accounts } from './views/Accounts'
 import { HealthDetail } from './views/HealthDetail'
 import { LoadDetail } from './views/LoadDetail'
@@ -29,6 +30,8 @@ const router = createBrowserRouter([
     ],
   },
 ])
+
+applyUiScale()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

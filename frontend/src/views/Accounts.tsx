@@ -8,6 +8,7 @@ import { ANIMALS, Buddy } from '../components/Buddy'
 import type { Animal } from '../components/Buddy'
 import { ConnectForm } from '../components/ConnectForm'
 import { ago } from '../format'
+import { uiScale } from '../uiScale'
 import './Detail.css'
 
 const PHASE_LABEL: Record<string, string> = {
@@ -18,13 +19,17 @@ const PHASE_LABEL: Record<string, string> = {
 export function Accounts() {
   const { reload } = useApp()
   const nav = useNavigate()
-  // screen check for the wall tablet: the layout is made for 1280×800 (Galaxy Tab A8 at 1.5×)
+  // screen check for the wall tablet: the layout is made for about 1280×800
   const [screen, setScreen] = useState({ w: window.innerWidth, h: window.innerHeight })
   useEffect(() => {
     const on = () => setScreen({ w: window.innerWidth, h: window.innerHeight })
     window.addEventListener('resize', on)
     return () => window.removeEventListener('resize', on)
   }, [])
+  // a big screen at pixel ratio 1 is zoomed up (uiScale.ts): what counts is the size the wall lays out at
+  const scale = uiScale(screen.w, screen.h)
+  const lw = Math.round(screen.w / scale), lh = Math.round(screen.h / scale)
+  const fits = lw >= 1100 && lh >= 680
   const [accounts, setAccounts] = useState<Account[] | null>(null)
   const [adding, setAdding] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -68,7 +73,7 @@ export function Accounts() {
 
   return (
     <div className="detail">
-      <h1 className="display hero-title" style={{ fontSize: 'clamp(40px, 5vw, 64px)', marginTop: 4 }}>The team <span className="hl">· Garmin accounts</span></h1>
+      <h1 className="display hero-title" style={{ fontSize: 'clamp(40px, calc(var(--vw) * 5), 64px)', marginTop: 4 }}>The team <span className="hl">· Garmin accounts</span></h1>
       {err && <div className="card tone-worse"><AlertTriangle size={18} /> {err}</div>}
 
       <div className="detail-grid">
@@ -159,11 +164,12 @@ export function Accounts() {
 
         <div className="card span-12">
           <div className="card-title"><Monitor size={18} /> This screen</div>
-          <div className="row" style={{ gap: 18 }}>
+          <div className="row" style={{ gap: 18, flexWrap: 'wrap' }}>
             <span className="num" style={{ fontSize: 26, fontWeight: 600 }}>{screen.w} × {screen.h}</span>
             <span className="muted">CSS px · pixel ratio {window.devicePixelRatio}</span>
-            <span className={screen.w >= 1100 && screen.h >= 680 ? 'tone-better' : 'tone-warn'}>
-              {screen.w >= 1100 && screen.h >= 680 ? 'The wall fits on one screen.' : 'Smaller than 1100 × 680 — the wall scrolls. In Fully Kiosk: hide the status and navigation bar, zoom 100 %.'}
+            {scale !== 1 && <span className="muted">scaled ×{scale} → <b className="num" style={{ color: 'var(--text)' }}>{lw} × {lh}</b></span>}
+            <span className={fits ? 'tone-better' : 'tone-warn'}>
+              {fits ? 'The wall fits on one screen.' : 'Smaller than 1100 × 680 — the wall scrolls. In Fully Kiosk: hide the status and navigation bar, zoom 100 %.'}
             </span>
           </div>
         </div>

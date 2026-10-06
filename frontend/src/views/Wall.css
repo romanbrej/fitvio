@@ -30,7 +30,7 @@
 @media (min-width: 1100px) and (min-height: 680px) {
   /* one screen, no scrolling: rows share the height left under the top bar */
   .ambient {
-    height: calc(100dvh - 64px - 16px);
+    height: calc(calc(var(--vh) * 100) - 64px - 16px);
     grid-template-rows: minmax(0, 280fr) minmax(0, 178fr) minmax(0, 226fr);
   }
   .ambient > * { min-height: 0; overflow: hidden; }
@@ -57,8 +57,8 @@
   display: flex; align-items: center; gap: 10px;
   font: 700 16px var(--display); letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted);
 }
-.mission-title { margin: 0; font-size: min(var(--fit, 80px), 10.5vh); color: var(--volt); white-space: nowrap; overflow: hidden; }
-.mission.no-workout .mission-title { font-size: min(var(--fit, 112px), 14vh); margin-top: 6px; }
+.mission-title { margin: 0; font-size: min(var(--fit, 80px), calc(var(--vh) * 10.5)); color: var(--volt); white-space: nowrap; overflow: hidden; }
+.mission.no-workout .mission-title { font-size: min(var(--fit, 112px), calc(var(--vh) * 14)); margin-top: 6px; }
 .mission-sub { margin: 4px 0 0; font-size: 22px; color: var(--text-2); max-width: 620px; }
 .mission-plan {
   margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -67,11 +67,11 @@
 
 /* The plan's week inside Today's Mission (WeekStrip) */
 .week-strip {
-  margin-top: auto; display: grid; gap: 6px; width: 100%; height: clamp(84px, 13.5vh, 108px); flex-shrink: 0;
-  padding: 0; border: 0; background: none; text-align: left; cursor: pointer; color: inherit;
+  margin-top: auto; display: grid; gap: 6px; width: 100%; height: clamp(84px, calc(var(--vh) * 13.5), 108px); flex-shrink: 0;
 }
 .ws-cell {
   min-width: 0; border-radius: 12px; border: 2px solid transparent; background: var(--surface-2);
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
   padding: 7px 4px 6px; display: flex; flex-direction: column; align-items: center; justify-content: space-between;
 }
 .ws-cell.st-rest { background: transparent; border-color: var(--border); }
@@ -91,8 +91,8 @@
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ws-line { font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.week-strip:active .ws-cell { border-color: var(--border-2); }
-.week-strip:active .ws-cell.st-today { border-color: var(--volt); }
+.ws-cell:active { border-color: var(--border-2); background: var(--surface-3); }
+.ws-cell.st-today:active { border-color: var(--volt); }
 
 /* status marks (strip + plan page) */
 .plan-mark {
@@ -159,8 +159,8 @@
 .sweet-label { font-size: 14px; }
 @media (max-height: 790px) { .sweet { gap: 2px; } .sweet-v { font-size: 38px; } }
 @media (max-height: 730px) { .sweet-hint { display: none; } }
-.sweet-v { font-size: clamp(30px, 5.4vh, 44px); font-weight: 600; line-height: 1; }
-.sweet-bar { position: relative; height: clamp(12px, 2.2vh, 18px); border-radius: 9px; background: var(--surface-3); overflow: hidden; flex-shrink: 0; }
+.sweet-v { font-size: clamp(30px, calc(var(--vh) * 5.4), 44px); font-weight: 600; line-height: 1; }
+.sweet-bar { position: relative; height: clamp(14px, calc(var(--vh) * 2.6), 22px); border-radius: 9px; background: var(--surface-3); overflow: hidden; flex-shrink: 0; }
 .sweet-bar i { position: absolute; top: 0; bottom: 0; }
 .sweet-bar .zone { background: var(--volt); opacity: 0.28; }
 .sweet-bar .over { background: var(--accent); opacity: 0.28; }
@@ -202,7 +202,7 @@
   align-items: start;
   position: relative;
   padding-top: 8px;
-  min-height: calc(100dvh - 96px);
+  min-height: calc(calc(var(--vh) * 100) - 96px);
   overflow: hidden;
 }
 .verdict-wall::before, .verdict-wall::after {
@@ -222,7 +222,7 @@
 .verdict-big {
   display: flex; align-items: center; gap: 14px;
   font-family: var(--display); font-style: italic; font-weight: 900; text-transform: uppercase;
-  font-size: clamp(72px, 8.4vw, 108px); line-height: 0.85; white-space: nowrap;
+  font-size: clamp(72px, calc(var(--vw) * 8.4), 108px); line-height: 0.85; white-space: nowrap;
   background: none; border: 0; padding: 4px 0; cursor: pointer; text-align: left;
 }
 .verdict-big.tone-better { color: var(--volt); }

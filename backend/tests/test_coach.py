@@ -190,6 +190,7 @@ def test_today_workout_done_detection_prefers_garmins_name_link(tmp_path):
     w, upcoming = coach.planned(conn, "u", sessions, date(2026, 10, 5))
     assert w["title"] == "Schwelle" and w["done"]["session_id"] == "u:2" and w["done"]["linked"]
     assert upcoming[0]["day"] == "2026-10-06" and len(upcoming) == 6 and upcoming[0]["est_load"]
+    assert upcoming[0]["steps"]  # the plan page shows any day's profile and steps
     w, _ = coach.planned(conn, "u", [sess("2026-10-05", sport="cycling", sid="u:3")], date(2026, 10, 5))
     assert w["done"] is None  # a ride doesn't complete a run
     w, _ = coach.planned(conn, "u", [sess("2026-10-05", name="Lunch run", sid="u:4")], date(2026, 10, 5))
@@ -248,6 +249,7 @@ def test_plan_week_marks_done_missed_today_planned_and_rest():
     assert (pw["done"], pw["due"], pw["planned"]) == (1, 3, 5)
     assert pw["plan"]["week"] == 4  # the newest fetch's week number, not Monday's stale one
     assert pw["days"][0]["session_id"] == "u:2026-10-05:running:Run"
+    assert pw["days"][0]["done"]["session_id"] == pw["days"][0]["session_id"] and "headline" in pw["days"][0]["done"]
 
     sessions.append(sess("2026-10-08", name="City - Schwelle", sid="u:linked"))
     pw = coach.plan_week(conn, "u", sessions, date(2026, 10, 8))

@@ -14,9 +14,9 @@
   text-align: left;
   cursor: pointer;
 }
-.night-clock { font-size: clamp(96px, 13vw, 168px); line-height: 1; font-weight: 500; color: #8a919c; }
+.night-clock { font-size: clamp(96px, calc(var(--vw) * 13), 168px); line-height: 1; font-weight: 500; color: #8a919c; }
 .night-msg {
-  font: italic 900 clamp(40px, 5vw, 64px)/0.95 var(--display);
+  font: italic 900 clamp(40px, calc(var(--vw) * 5), 64px)/0.95 var(--display);
   text-transform: uppercase;
   color: #6a7a2a;  /* volt, dimmed for the dark room */
 }

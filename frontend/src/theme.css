@@ -12,6 +12,8 @@
 /* Design tokens — "Today's Mission" (design A): near-black, one volt accent, orange for streaks and PRs.
    Verdicts keep their colours and always come with an icon and a word. */
 :root {
+  --vh: 1vh;  /* uiScale.ts sets these to 1 % of the zoomed viewport */
+  --vw: 1vw;
   --bg: #07090d;
   --surface: #10141b;
   --surface-2: #171c25;
@@ -57,7 +59,7 @@ html, body, #root { height: 100%; margin: 0; }
 
 body {
   background: var(--bg);
-  min-height: 100dvh;
+  min-height: calc(var(--vh) * 100);
   color: var(--text);
   font-family: var(--font);
   font-size: 18px;

@@ -37,7 +37,7 @@ export function LoadDetail() {
       </div>
       <section className="card hero stripes">
         <div className="hero-grid">
-          <h1 className="display hero-title" style={{ fontSize: 'clamp(44px, 5.2vw, 66px)' }}>
+          <h1 className="display hero-title" style={{ fontSize: 'clamp(44px, calc(var(--vw) * 5.2), 66px)' }}>
             {gain == null ? 'Your training load.' : Math.abs(gain) < 1 ? <>Fitness holding.<br /><span className="hl">Keep it steady.</span></>
               : gain > 0 ? <>Fitness +{gain.toFixed(0)} since {since}.<br /><span className="hl">You’re building.</span></>
               : <>Fitness {gain.toFixed(0)} since {since}.<br /><span style={{ color: 'var(--warn)' }}>Time to rebuild.</span></>}

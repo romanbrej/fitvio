@@ -61,7 +61,7 @@ function Mission({ a }: { a: Ambient }) {
   const nav = useNavigate()
   const pw = a.plan_week
   const h = headline(a)
-  const open = () => nav(`/u/${a.user_id}/plan`)
+  const open = (day: string) => nav(`/u/${a.user_id}/plan?day=${day}`)
   const b = a.buddy
   const todayOpen = !!pw?.days.some(d => d.status === 'today')
   const [titleRef, titleSize] = useFitText<HTMLHeadingElement>(h.title, pw ? 80 : 112, 56)

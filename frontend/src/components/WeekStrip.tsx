@@ -30,21 +30,22 @@ export function StatusMark({ status, size = 22 }: { status: PlanStatus; size?: n
   )
 }
 
-function Cell({ d }: { d: PlanDay }) {
+function Cell({ d, onOpen }: { d: PlanDay; onOpen: () => void }) {
   return (
-    <div className={`ws-cell st-${d.status}`}>
+    <button className={`ws-cell st-${d.status}`} onClick={onOpen}
+      aria-label={`${weekday(d.day)} ${d.title ?? ''} ${STATUS_LABEL[d.status]}`}>
       <span className="ws-day">{weekday(d.day)}</span>
       <StatusMark status={d.status} />
       <span className="ws-shape">{d.steps?.length ? <WorkoutShape steps={d.steps} height={20} easy={isEasy(d.phrase)} /> : null}</span>
       <span className="ws-dur num">{d.status === 'rest' ? '' : shortDuration(d.est_duration_s)}</span>
-    </div>
+    </button>
   )
 }
 
-function TodayCell({ d }: { d: PlanDay }) {
+function TodayCell({ d, onOpen }: { d: PlanDay; onOpen: () => void }) {
   const summary = workoutSummary({ steps: d.steps ?? [] } as PlannedWorkout)
   return (
-    <div className="ws-cell st-today wide">
+    <button className="ws-cell st-today wide" onClick={onOpen} aria-label={`Today ${d.title ?? ''}: open the plan`}>
       <div className="ws-today-head">
         <span className="ws-day">Today</span>
         <span className="link">Plan <ChevronRight size={15} /></span>
@@ -52,21 +53,23 @@ function TodayCell({ d }: { d: PlanDay }) {
       <span className="ws-title">{d.title}{d.est_duration_s ? ` · ${minutes(d.est_duration_s)}` : ''}</span>
       {d.steps?.length ? <WorkoutShape steps={d.steps} height={24} easy={isEasy(d.phrase)} /> : null}
       {summary.length > 0 && <span className="ws-line">{summary.join(' · ')}</span>}
-    </div>
+    </button>
   )
 }
 
-/** The plan's week inside Today's Mission: today wide while it's still to do, the other days small. */
-export function WeekStrip({ week, onOpen }: { week: PlanWeek; onOpen: () => void }) {
-  const label = week.days.map(d => `${weekday(d.day)} ${d.title ?? ''} ${STATUS_LABEL[d.status]}`).join(', ')
+/** The plan's week inside Today's Mission: today wide while it's still to do, the other days small.
+ *  Every day opens the plan page on that day. */
+export function WeekStrip({ week, onOpen }: { week: PlanWeek; onOpen: (day: string) => void }) {
   return (
-    <button
+    <div
       className="week-strip"
+      role="group"
+      aria-label="Training plan this week"
       style={{ gridTemplateColumns: week.days.map(d => (d.status === 'today' ? 'minmax(0, 2.6fr)' : 'minmax(0, 1fr)')).join(' ') }}
-      onClick={onOpen}
-      aria-label={`Training plan this week: ${label}. Open the plan.`}
     >
-      {week.days.map(d => (d.status === 'today' ? <TodayCell key={d.day} d={d} /> : <Cell key={d.day} d={d} />))}
-    </button>
+      {week.days.map(d => (d.status === 'today'
+        ? <TodayCell key={d.day} d={d} onOpen={() => onOpen(d.day)} />
+        : <Cell key={d.day} d={d} onOpen={() => onOpen(d.day)} />))}
+    </div>
   )
 }

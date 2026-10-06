@@ -98,6 +98,7 @@ export interface PlanDay {
   title?: string; sport?: Sport; phrase?: string | null; description?: string | null
   est_duration_s?: number | null; est_load?: number | null; steps?: WorkoutStep[]
   session_id?: string; verdict?: VerdictKind | null; targets?: { hit: number; of: number } | null
+  done?: PlannedWorkout['done']
 }
 
 /** Seven days of the Garmin plan (Mon–Sun; on a Sunday from today on). */
@@ -165,7 +166,7 @@ export interface Ambient {
   streak: Streak
   sweet_spot: SweetSpot | null
   today_workout: PlannedWorkout | null
-  upcoming: Pick<PlannedWorkout, 'day' | 'title' | 'sport' | 'phrase' | 'description' | 'est_duration_s' | 'est_load'>[]
+  upcoming: Pick<PlannedWorkout, 'day' | 'title' | 'sport' | 'phrase' | 'description' | 'est_duration_s' | 'est_load' | 'steps'>[]
   plan_week?: PlanWeek | null
   buddy?: BuddyInfo
 }

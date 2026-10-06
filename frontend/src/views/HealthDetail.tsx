@@ -85,7 +85,7 @@ export function HealthDetail() {
         <div className="hero-grid">
           <div className="stack" style={{ gap: 6 }}>
             <div className="label">{m.title}</div>
-            <h1 className="display hero-title" style={{ fontSize: 'clamp(44px, 5vw, 64px)' }}>
+            <h1 className="display hero-title" style={{ fontSize: 'clamp(44px, calc(var(--vw) * 5), 64px)' }}>
               {good == null ? 'Building your baseline.' : flat ? <>Holding <span className="hl">steady.</span></>
                 : good ? <>Trending the <span className="hl">right way.</span></> : <>Worth <span style={{ color: 'var(--warn)' }}>watching.</span></>}
             </h1>

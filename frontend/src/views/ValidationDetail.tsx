@@ -28,7 +28,7 @@ export function ValidationDetail() {
             <div><b>{pct == null ? '—' : `${pct}%`}</b><span className="label">Agreement</span></div>
           </div>
           <div className="stack" style={{ gap: 14 }}>
-            <h1 className="display hero-title" style={{ fontSize: 'clamp(40px, 4.6vw, 58px)' }}>
+            <h1 className="display hero-title" style={{ fontSize: 'clamp(40px, calc(var(--vw) * 4.6), 58px)' }}>
               Do the verdicts match<br /><span className="hl">how you felt?</span>{' '}
               {pct == null ? '' : pct >= 70 ? 'Mostly, yes.' : pct >= 50 ? 'Partly.' : 'Not yet.'}
             </h1>

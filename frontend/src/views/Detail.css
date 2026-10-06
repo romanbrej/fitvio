@@ -25,7 +25,7 @@
 /* the motivational hero at the top of every detail page */
 .hero { padding: 22px 28px; }
 .hero-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: center; }
-.hero-title { margin: 0; font-size: clamp(48px, 6.2vw, 80px); }
+.hero-title { margin: 0; font-size: clamp(48px, calc(var(--vw) * 6.2), 80px); }
 .hero-title .hl { color: var(--volt); }
 .hero-sub { font-size: 20px; color: var(--text-2); }
 .kpi-grid { display: grid; grid-template-columns: repeat(2, 160px); gap: 10px; }
@@ -100,7 +100,7 @@ table.data tr.clickable:active { background: var(--surface-2); }
 .impact .from { font-size: 20px; color: var(--muted); }
 .impact .to { font-size: 28px; font-weight: 600; }
 .upcoming { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
-.up-card { border-top: 4px solid var(--run); }
+.up-card { border-top: 4px solid var(--run); text-align: left; font: inherit; color: inherit; cursor: pointer; border-left: 2px solid transparent; border-right: 2px solid transparent; border-bottom: 2px solid transparent; }
 .done-card { display: flex; align-items: center; gap: 14px; text-align: left; background: #12251b; border-color: #1f4a32; }
 .done-check { width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%; background: var(--better); color: var(--volt-ink); display: grid; place-items: center; }
 
@@ -172,8 +172,10 @@ table.data tr.clickable:active { background: var(--surface-2); }
   padding: 14px !important; display: flex; flex-direction: column; gap: 6px; min-width: 0; text-align: left;
   border: 2px solid transparent; color: inherit; font: inherit;
 }
-button.plan-day { cursor: pointer; }
-.plan-day.st-today { border-color: var(--volt); }
+.plan-day { cursor: pointer; }
+.plan-day.st-today { border-color: var(--border-2); }
+.plan-day.selected, .up-card.selected { border-color: var(--volt); box-shadow: 0 0 0 1px var(--volt); }
+.plan-day:active, .up-card:active { background: var(--surface-2); }
 .plan-day.st-rest { background: transparent; border-color: var(--border); }
 .pd-day { font-size: 14px; }
 .plan-day.st-today .pd-day { color: var(--volt); }

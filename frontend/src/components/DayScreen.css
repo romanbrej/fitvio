@@ -25,8 +25,8 @@
 }
 .day-left { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .day-date { font: 700 20px var(--display); letter-spacing: 0.22em; text-transform: uppercase; color: #8a93a1; }
-.day-clock { font-size: clamp(120px, 22vh, 176px); line-height: 0.9; font-weight: 500; letter-spacing: -0.03em; }
-.day-headline { font: italic 900 clamp(44px, 7.5vh, 60px)/0.95 var(--display); text-transform: uppercase; color: var(--volt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.day-clock { font-size: clamp(120px, calc(var(--vh) * 22), 176px); line-height: 0.9; font-weight: 500; letter-spacing: -0.03em; }
+.day-headline { font: italic 900 clamp(44px, calc(var(--vh) * 7.5), 60px)/0.95 var(--display); text-transform: uppercase; color: var(--volt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .day-facts { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .day-facts li { display: flex; align-items: baseline; gap: 14px; font-size: 22px; white-space: nowrap; min-width: 0; }
 .day-facts i { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; align-self: center; }

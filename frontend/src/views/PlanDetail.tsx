@@ -1,8 +1,9 @@
 import { Check, ChevronRight } from 'lucide-react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useApp } from '../App'
 import { api } from '../api'
-import type { Ambient, PlanDay, PlanWeek, PlannedWorkout } from '../api'
+import type { Ambient, PlanDay, PlanStatus, PlanWeek, PlannedWorkout } from '../api'
 import { SportIcon, VerdictPill } from '../components/icons'
 import { StatusMark, shortDuration } from '../components/WeekStrip'
 import { WorkoutShape } from '../components/WorkoutShape'
@@ -10,6 +11,11 @@ import { SPORT_LABEL } from '../format'
 import { READINESS_LEVEL, isEasy, feedbackText, minutes, phraseLabel, stepKindLabel, stepLength, stepLook, targetText } from '../mission'
 import { useFetch } from '../useFetch'
 import './Detail.css'
+
+/** The local date as YYYY-MM-DD (not UTC: the plan's days are local days). */
+function localIso(d = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 function dayLabel(iso: string): string {
   return new Date(`${iso}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
@@ -80,29 +86,24 @@ function PlanHero({ a, pw }: { a: Ambient; pw: PlanWeek | null }) {
   )
 }
 
-function WeekCards({ pw }: { pw: PlanWeek }) {
-  const nav = useNavigate()
+function WeekCards({ pw, selected, onSelect }: { pw: PlanWeek; selected: string; onSelect: (day: string) => void }) {
   return (
     <section className="stack" style={{ gap: 10 }}>
       <div className="card-title" style={{ margin: 0 }}>{new Date(`${pw.start}T12:00:00`).getDay() === 0 ? 'The next 7 days' : 'This week'}</div>
       <div className="plan-days">
-        {pw.days.map(d => {
-          const body = (
-            <>
-              <div className="row" style={{ justifyContent: 'space-between' }}>
-                <span className="label pd-day">{dayLabel(d.day)}</span>
-                <StatusMark status={d.status} size={24} />
-              </div>
-              <div className="pd-title">{d.title ?? 'Rest'}</div>
-              <div className="pd-sub">{d.status === 'rest' ? 'Recover' : [shortDuration(d.est_duration_s), phraseLabel(d.phrase)].filter(Boolean).join(' · ')}</div>
-              <div className="pd-shape">{d.steps?.length ? <WorkoutShape steps={d.steps} height={40} easy={isEasy(d.phrase)} /> : null}</div>
-              <div className={`pd-status st-${d.status}`}>{statusLine(d)}</div>
-            </>
-          )
-          return d.status === 'done' && d.session_id
-            ? <button key={d.day} className={`card plan-day st-${d.status}`} onClick={() => nav(`/session/${encodeURIComponent(d.session_id!)}`)}>{body}</button>
-            : <div key={d.day} className={`card plan-day st-${d.status}`}>{body}</div>
-        })}
+        {pw.days.map(d => (
+          <button key={d.day} className={`card plan-day st-${d.status}${d.day === selected ? ' selected' : ''}`}
+            onClick={() => onSelect(d.day)} aria-pressed={d.day === selected}>
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <span className="label pd-day">{dayLabel(d.day)}</span>
+              <StatusMark status={d.status} size={24} />
+            </div>
+            <div className="pd-title">{d.title ?? 'Rest'}</div>
+            <div className="pd-sub">{d.status === 'rest' ? 'Recover' : [shortDuration(d.est_duration_s), phraseLabel(d.phrase)].filter(Boolean).join(' · ')}</div>
+            <div className="pd-shape">{d.steps?.length ? <WorkoutShape steps={d.steps} height={40} easy={isEasy(d.phrase)} /> : null}</div>
+            <div className={`pd-status st-${d.status}`}>{statusLine(d)}</div>
+          </button>
+        ))}
       </div>
     </section>
   )
@@ -110,28 +111,66 @@ function WeekCards({ pw }: { pw: PlanWeek }) {
 
 function Content({ a }: { a: Ambient }) {
   const pw = a.plan_week ?? null
-  const end = pw ? new Date(new Date(`${pw.start}T12:00:00`).getTime() + 7 * 86400000).toISOString().slice(0, 10) : ''
+  const today = localIso()
+  const [params, setParams] = useSearchParams()
+  const asked = params.get('day')
+  const selected = asked && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : today
+  const end = pw ? localIso(new Date(new Date(`${pw.start}T12:00:00`).getTime() + 7 * 86400000)) : ''
   const later = a.upcoming.filter(u => u.day >= end)
+  const workoutRef = useRef<HTMLDivElement>(null)
+  const tapped = useRef(false)
+  useEffect(() => {
+    // after a tap on this page, bring the chosen day's workout into view (not when arriving from the wall)
+    if (tapped.current) workoutRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    tapped.current = false
+  }, [selected])
+  const select = (day: string) => {
+    tapped.current = true
+    setParams(day === today ? {} : { day })
+  }
   return (
     <div className="detail">
       <PlanHero a={a} pw={pw} />
-      {pw && <WeekCards pw={pw} />}
-      <Today a={a} />
-      <Upcoming items={later} />
+      {pw && <WeekCards pw={pw} selected={selected} onSelect={select} />}
+      <div ref={workoutRef} className="stack" style={{ gap: 'var(--gap)', scrollMarginTop: 12 }}>
+        <DayWorkout a={a} day={selected} today={today} />
+      </div>
+      <Upcoming items={later} selected={selected} onSelect={select} />
     </div>
   )
 }
 
-function Today({ a }: { a: Ambient }) {
+type Shown = Pick<PlannedWorkout, 'day' | 'title' | 'sport' | 'phrase' | 'description' | 'est_duration_s' | 'est_load' | 'steps' | 'done'>
+
+/** The workout of a day: today's full one, a day of the plan week, or a later planned day. */
+function workoutFor(a: Ambient, day: string, today: string): { w: Shown | null; status: PlanStatus } {
+  if (day === today && a.today_workout) return { w: a.today_workout, status: a.today_workout.done ? 'done' : 'today' }
+  const pd = a.plan_week?.days.find(d => d.day === day)
+  if (pd?.title && pd.sport) {
+    return { w: { day, title: pd.title, sport: pd.sport, phrase: pd.phrase ?? null, description: pd.description ?? null,
+                  est_duration_s: pd.est_duration_s ?? null, est_load: pd.est_load ?? null, steps: pd.steps ?? [],
+                  done: pd.done ?? null }, status: pd.status }
+  }
+  const up = a.upcoming.find(u => u.day === day)
+  if (up) return { w: { ...up, steps: up.steps ?? [], done: null }, status: 'planned' }
+  return { w: null, status: 'rest' }
+}
+
+const HERO_WHEN: Record<PlanStatus, string> = {
+  today: 'today in your Garmin plan', planned: 'planned in your Garmin plan', done: 'done', missed: 'missed', rest: 'rest day',
+}
+
+function DayWorkout({ a, day, today }: { a: Ambient; day: string; today: string }) {
   const nav = useNavigate()
-  const w: PlannedWorkout | null = a.today_workout
+  const { w, status } = workoutFor(a, day, today)
+  const isToday = day === today
   const ss = a.sweet_spot
   const s = a.streak
   if (!w) {
     return (
       <section className="card">
-        <div className="card-title">Today</div>
-        <div className="display" style={{ fontSize: 34 }}>Nothing planned — a rest day.</div>
+        <div className="card-title">{isToday ? 'Today' : dayLabel(day)}</div>
+        <div className="display" style={{ fontSize: 34 }}>{isToday ? 'Nothing planned — a rest day.' : 'Rest day — recover.'}</div>
       </section>
     )
   }
@@ -145,14 +184,16 @@ function Today({ a }: { a: Ambient }) {
         <div className="hero-grid">
           <div className="stack" style={{ gap: 8 }}>
             <div className="label row" style={{ gap: 8 }}>
-              <SportIcon sport={w.sport} size={18} /> {dayLabel(w.day)} · today in your Garmin plan
+              <SportIcon sport={w.sport} size={18} /> {dayLabel(w.day)} · {HERO_WHEN[status]}
             </div>
             <h2 className="display hero-title" style={{ color: 'var(--volt)', fontSize: 56 }}>{w.title}{w.est_duration_s ? ` · ${minutes(w.est_duration_s)}` : ''}</h2>
             {w.description && <div className="hero-sub">“{w.description}”</div>}
             <div className="row" style={{ gap: 8 }}>
               {w.done
                 ? <span className="pill tone-better"><Check size={15} /> Done{w.done.linked ? ' · started from the workout' : ''}</span>
-                : <span className="tag garmin"><Check size={14} /> On your watch · synced from Garmin Connect</span>}
+                : status === 'missed'
+                  ? <span className="pill tone-worse">Missed — no {SPORT_LABEL[w.sport].toLowerCase()} that day</span>
+                  : <span className="tag garmin"><Check size={14} /> On your watch · synced from Garmin Connect</span>}
             </div>
           </div>
           <div className="kpi-grid">
@@ -208,7 +249,7 @@ function Today({ a }: { a: Ambient }) {
         </section>
       )}
 
-      {!w.done && <div className="detail-grid">
+      {isToday && !w.done && <div className="detail-grid">
         {(
           <section className="card span-5">
             <div className="card-title">Are you ready for it?</div>
@@ -262,21 +303,22 @@ function formAfter(a: Ambient, load: number): number {
   return ctl - atl
 }
 
-function Upcoming({ items }: { items: Ambient['upcoming'] }) {
+function Upcoming({ items, selected, onSelect }: { items: Ambient['upcoming']; selected: string; onSelect: (day: string) => void }) {
   if (!items.length) return null
   return (
     <section className="stack" style={{ gap: 10 }}>
       <div className="card-title" style={{ margin: 0 }}>After that <span className="muted" style={{ textTransform: 'none', letterSpacing: 0 }}>· Garmin Coach adapts the coming days to your readiness</span></div>
       <div className="upcoming">
         {items.slice(0, 4).map(u => (
-          <div key={u.day} className="card up-card">
+          <button key={u.day} className={`card up-card${u.day === selected ? ' selected' : ''}`} onClick={() => onSelect(u.day)}
+            aria-pressed={u.day === selected}>
             <div className="label" style={{ color: 'var(--run)' }}>{dayLabel(u.day)}</div>
             <div className="display" style={{ fontSize: 28, fontWeight: 800 }}>{u.title}</div>
             <div className="muted small">{[phraseLabel(u.phrase), u.description].filter(Boolean).join(' · ')}</div>
             <div className="num small" style={{ color: 'var(--text-2)', marginTop: 4 }}>
               {[u.est_duration_s ? minutes(u.est_duration_s) : null, u.est_load != null ? `load ~${u.est_load}` : null].filter(Boolean).join(' · ')}
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </section>

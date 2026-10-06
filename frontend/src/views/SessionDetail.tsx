@@ -178,7 +178,7 @@ export function SessionDetailView() {
             <h1 style={{ margin: 0, fontSize: 32, fontWeight: 600 }}>{s.name || SPORT_LABEL[s.sport]}</h1>
             {v && (
               <>
-                <div className={`row display tone-${v.verdict}`} style={{ fontSize: 'clamp(64px, 8vw, 104px)', gap: 12, color: v.verdict === 'better' ? 'var(--volt)' : undefined }}>
+                <div className={`row display tone-${v.verdict}`} style={{ fontSize: 'clamp(64px, calc(var(--vw) * 8), 104px)', gap: 12, color: v.verdict === 'better' ? 'var(--volt)' : undefined }}>
                   <VerdictIcon verdict={v.verdict} size={60} strokeWidth={3} /> {VERDICT_LABEL[v.verdict]}
                 </div>
                 <div className="display" style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.1 }}>{v.headline}</div>

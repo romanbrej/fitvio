@@ -170,7 +170,8 @@ def planned(conn: sqlite3.Connection, user_id: str, sessions: list[dict], today:
     today_w = todays[0] if todays else None
     if today_w:
         today_w["done"] = _done(conn, today_w, sessions, today)
-    upcoming = [{k: w.get(k) for k in ("day", "title", "sport", "phrase", "description", "est_duration_s", "est_load")}
+    upcoming = [{k: w.get(k) for k in ("day", "title", "sport", "phrase", "description", "est_duration_s", "est_load",
+                                       "steps")}
                 for w in out if w["day"] > today.isoformat()]
     return today_w, upcoming
 
@@ -207,7 +208,7 @@ def plan_week(conn: sqlite3.Connection, user_id: str, sessions: list[dict], toda
             if hit:
                 done += 1
                 item.update(status="done", session_id=hit["session_id"], verdict=hit["verdict"],
-                            targets=hit["targets"])
+                            targets=hit["targets"], done=hit)
             else:
                 item["status"] = "today" if d == today else "missed"
         else:
