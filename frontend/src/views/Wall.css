@@ -57,21 +57,53 @@
   display: flex; align-items: center; gap: 10px;
   font: 700 16px var(--display); letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted);
 }
-.mission-title { margin: 0; font-size: 80px; color: var(--volt); white-space: nowrap; overflow: hidden; }
-.mission.no-workout .mission-title { font-size: 112px; margin-top: 6px; }
+.mission-title { margin: 0; font-size: min(var(--fit, 80px), 10.5vh); color: var(--volt); white-space: nowrap; overflow: hidden; }
+.mission.no-workout .mission-title { font-size: min(var(--fit, 112px), 14vh); margin-top: 6px; }
 .mission-sub { margin: 4px 0 0; font-size: 22px; color: var(--text-2); max-width: 620px; }
-.workout-preview {
-  margin-top: auto; display: flex; flex-direction: column; gap: 6px; width: 100%;
-  padding: 10px 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border-2);
-  text-align: left; cursor: pointer;
+.mission-plan {
+  margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  letter-spacing: 0.12em; font-size: 15px; color: var(--text-2);
 }
-.workout-preview:active { border-color: var(--volt); }
-.workout-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.workout-title { font: 800 22px var(--display); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.workout-meta { font-size: 15px; color: var(--muted); white-space: nowrap; }
-.workout-line { display: flex; gap: 14px; font-size: 15px; color: var(--muted); white-space: nowrap; overflow: hidden; }
-.workout-line .strong { color: var(--text); }
-.workout-preview.done { background: #12251b; border-color: #1f4a32; }
+
+/* The plan's week inside Today's Mission (WeekStrip) */
+.week-strip {
+  margin-top: auto; display: grid; gap: 6px; width: 100%; height: clamp(84px, 13.5vh, 108px); flex-shrink: 0;
+  padding: 0; border: 0; background: none; text-align: left; cursor: pointer; color: inherit;
+}
+.ws-cell {
+  min-width: 0; border-radius: 12px; border: 2px solid transparent; background: var(--surface-2);
+  padding: 7px 4px 6px; display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+}
+.ws-cell.st-rest { background: transparent; border-color: var(--border); }
+.ws-cell.st-today { border-color: var(--volt); background: #171e19; }
+.ws-day { font: 700 13px var(--display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.ws-cell.st-today .ws-day { color: var(--volt); }
+.ws-cell.st-rest .ws-day, .ws-cell.st-rest .ws-dur { color: var(--faint); }
+.ws-shape { width: 100%; height: 20px; padding: 0 5px; box-sizing: border-box; }
+.ws-shape .wshape { gap: 1px; }
+.ws-dur { font-size: 12px; color: var(--text-2); }
+.ws-cell.st-done .ws-dur, .ws-cell.st-missed .ws-dur { color: var(--muted); }
+.ws-cell.st-missed .ws-shape { opacity: 0.45; }
+.ws-cell.wide { align-items: stretch; padding: 8px 12px; gap: 3px; }
+.ws-today-head { display: flex; justify-content: space-between; align-items: center; }
+.ws-title {
+  font: 800 21px var(--display); letter-spacing: 0.05em; text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ws-line { font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.week-strip:active .ws-cell { border-color: var(--border-2); }
+.week-strip:active .ws-cell.st-today { border-color: var(--volt); }
+
+/* status marks (strip + plan page) */
+.plan-mark {
+  flex-shrink: 0; border-radius: 50%; box-sizing: border-box; display: inline-grid; place-items: center;
+  border: 2px solid var(--border-2); background: var(--surface-3); color: var(--muted);
+  font: 700 14px var(--font);
+}
+.plan-mark.st-done { background: var(--volt); border-color: var(--volt); color: var(--volt-ink); }
+.plan-mark.st-missed { background: transparent; border-color: #a8474b; color: #ff7b7f; }
+.plan-mark.st-today { background: transparent; border-color: var(--volt); }
+.plan-mark.st-rest { background: transparent; border-color: transparent; color: #4f5866; }
 .done-check { width: 28px; height: 28px; border-radius: 50%; background: var(--better); color: var(--volt-ink); display: inline-grid; place-items: center; }
 .wshape { display: flex; align-items: flex-end; gap: 3px; }
 .wshape-col { flex-basis: 0; flex-shrink: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; min-width: 0; }
@@ -225,5 +257,5 @@
   .pmc-plot { min-height: 90px; }
   .loadcard-body .divider { display: none; }
   .mission-title, .mission.no-workout .mission-title { font-size: 48px; white-space: normal; }
-  .workout-line { flex-wrap: wrap; white-space: normal; }
+  .ws-cell.wide .ws-line { display: none; }
 }

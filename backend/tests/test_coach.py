@@ -222,3 +222,49 @@ def test_running_cadence_trend_from_easy_runs_in_steps_per_minute():
     runs += [sess((today - timedelta(days=i)).isoformat(), cad=172) for i in (50, 57, 64)]
     runs.append(sess((today - timedelta(days=4)).isoformat(), cad=95, stype="intervals"))  # ignored
     assert coach.running_cadence(runs, today) == {"spm": 178, "change": 6, "runs": 3}
+
+
+# --- the plan week strip -------------------------------------------------------------------
+
+def put_plan(conn, day, title="Basis", sport="running", week=4):
+    data = {"title": title, "sport": sport, "phrase": "AEROBIC_BASE", "steps": [], "est_duration_s": 2700,
+            "plan": {"name": "Half Marathon Plan", "weeks": 12, "week": week, "end": "2026-12-07"}}
+    db.upsert(conn, "planned_workouts", {"user_id": "u", "day": day, "key": f"k-{day}", "title": title,
+                                         "sport": sport, "data": data, "fetched_at": f"{day}T06:00:00"})
+
+
+def test_plan_week_marks_done_missed_today_planned_and_rest():
+    conn = db.connect(":memory:")
+    for d, t in [("2026-10-05", "Basis"), ("2026-10-06", "Basis"), ("2026-10-07", "VO2max"),
+                 ("2026-10-08", "Schwelle"), ("2026-10-10", "Langer Lauf")]:
+        put_plan(conn, d, t, week=3 if d == "2026-10-05" else 4)
+    sessions = [sess("2026-10-05", name="Run"),                       # done
+                sess("2026-10-06", dur=300),                          # too short → missed
+                sess("2026-10-07", sport="cycling"),                  # wrong sport → missed
+                sess("2026-10-03")]                                   # last week: not in the window
+    pw = coach.plan_week(conn, "u", sessions, date(2026, 10, 8))     # Thursday
+    assert pw["start"] == "2026-10-05"
+    assert [d["status"] for d in pw["days"]] == ["done", "missed", "missed", "today", "rest", "planned", "rest"]
+    assert (pw["done"], pw["due"], pw["planned"]) == (1, 3, 5)
+    assert pw["plan"]["week"] == 4  # the newest fetch's week number, not Monday's stale one
+    assert pw["days"][0]["session_id"] == "u:2026-10-05:running:Run"
+
+    sessions.append(sess("2026-10-08", name="City - Schwelle", sid="u:linked"))
+    pw = coach.plan_week(conn, "u", sessions, date(2026, 10, 8))
+    assert pw["days"][3]["status"] == "done" and pw["days"][3]["session_id"] == "u:linked"
+    assert (pw["done"], pw["due"]) == (2, 4)
+
+
+def test_plan_week_on_sunday_shows_the_coming_days():
+    conn = db.connect(":memory:")
+    put_plan(conn, "2026-10-13")
+    pw = coach.plan_week(conn, "u", [], date(2026, 10, 11))  # Sunday
+    assert pw["start"] == "2026-10-11" and pw["days"][2]["status"] == "planned"
+    assert coach.plan_window(date(2026, 10, 10)) == date(2026, 10, 5)  # Saturday: still Mon–Sun
+
+
+def test_plan_week_is_none_without_a_plan():
+    conn = db.connect(":memory:")
+    assert coach.plan_week(conn, "u", [sess("2026-10-08")], date(2026, 10, 8)) is None
+    put_plan(conn, "2026-09-28")  # only last week
+    assert coach.plan_week(conn, "u", [], date(2026, 10, 8)) is None

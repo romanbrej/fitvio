@@ -176,10 +176,12 @@ def _demo_coach(conn: sqlite3.Connection, user_id: str, ui: int, now: datetime) 
         ("Rest", None, None, None),
         ("Long run", "LONG_RUN", "1:30:00@6:15/km", [{"kind": "interval", "duration_s": 5400, "target": easy}]),
     ]
-    for d, (title, phrase, desc, steps) in enumerate(workouts):
+    # from Monday on (the plan strip shows the past days of the week too) to 6 days ahead
+    for d in range(-now.date().weekday(), 6):
+        title, phrase, desc, steps = workouts[(d + ui) % len(workouts)]
         if steps is None:
             continue
-        day = (now.date() + timedelta(days=d + ui)).isoformat()
+        day = (now.date() + timedelta(days=d)).isoformat()
         data = {"title": title, "sport": "running", "phrase": phrase, "description": desc, "steps": steps,
                 "est_duration_s": sum(s["duration_s"] for s in steps), "est_distance_m": None,
                 "source": "garmin_coach", "plan": plan}

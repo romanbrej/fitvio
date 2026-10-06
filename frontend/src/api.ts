@@ -88,12 +88,29 @@ export interface WorkoutStep {
     | { type: 'hr' | 'power' | 'cadence'; low: number; high: number } | { type: 'hr_zone'; zone: number } | null
 }
 
+export interface PlanInfo { name: string; weeks: number | null; week: number | null; end: string | null }
+
+export type PlanStatus = 'done' | 'missed' | 'today' | 'planned' | 'rest'
+
+/** One day of the plan strip: the planned workout (none on a rest day) and what became of it. */
+export interface PlanDay {
+  day: string; status: PlanStatus
+  title?: string; sport?: Sport; phrase?: string | null; description?: string | null
+  est_duration_s?: number | null; est_load?: number | null; steps?: WorkoutStep[]
+  session_id?: string; verdict?: VerdictKind | null; targets?: { hit: number; of: number } | null
+}
+
+/** Seven days of the Garmin plan (Mon–Sun; on a Sunday from today on). */
+export interface PlanWeek {
+  start: string; days: PlanDay[]; done: number; due: number; planned: number; plan: PlanInfo | null
+}
+
 /** A planned workout from the Garmin Connect calendar (Garmin Coach or your own). */
 export interface PlannedWorkout {
   day: string; title: string; sport: Sport; description: string | null; phrase: string | null
   est_duration_s: number | null; est_distance_m: number | null; est_load: number | null
   est_training_effect?: number | null; steps: WorkoutStep[]; source: string; fetched_at: string
-  plan?: { name: string; weeks: number | null; week: number | null; end: string | null } | null
+  plan?: PlanInfo | null
   done?: {
     session_id: string; name: string | null; linked: boolean; verdict: VerdictKind | null; headline: string | null
     load: number | null; targets: { hit: number; of: number } | null
@@ -149,6 +166,7 @@ export interface Ambient {
   sweet_spot: SweetSpot | null
   today_workout: PlannedWorkout | null
   upcoming: Pick<PlannedWorkout, 'day' | 'title' | 'sport' | 'phrase' | 'description' | 'est_duration_s' | 'est_load'>[]
+  plan_week?: PlanWeek | null
   buddy?: BuddyInfo
 }
 

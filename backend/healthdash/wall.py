@@ -249,6 +249,7 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
         "sweet_spot": coach.sweet_spot(series, sessions, today),
         "today_workout": today_workout,
         "upcoming": upcoming,
+        "plan_week": coach.plan_week(conn, user_id, sessions, today),
         "buddy": buddy.block(conn, user_id, readiness=readiness, health_latest=latest,
                              form=form_now["form"] if form_now else None, today_workout=today_workout,
                              last_workout=last_workout, streak=streak, sessions=sessions, today=today),

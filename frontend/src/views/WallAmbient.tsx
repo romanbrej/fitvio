@@ -1,18 +1,23 @@
-import { Check, ChevronRight, Flame, Zap } from 'lucide-react'
+import { ChevronRight, Flame, Zap } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Ambient, Sport, SportTrend } from '../api'
 import { Buddy } from '../components/Buddy'
 import { SportIcon, VerdictPill } from '../components/icons'
 import { Sparkline } from '../components/Sparkline'
-import { WorkoutShape } from '../components/WorkoutShape'
+import { WeekStrip } from '../components/WeekStrip'
 import { formState, hoursMinutes, num, signed, SPORT_LABEL } from '../format'
-import { READINESS_LEVEL, feedbackText, headline, minutes, paceStr, phraseLabel, workoutSummary } from '../mission'
+import { READINESS_LEVEL, feedbackText, headline, paceStr } from '../mission'
 import './Wall.css'
 
 const SPORTS: Sport[] = ['running', 'cycling', 'swimming', 'strength']
 const SPORT_COLOR: Record<Sport, string> = {
   running: 'var(--run)', cycling: 'var(--ride)', swimming: 'var(--swim)', strength: 'var(--gym)', other: 'var(--muted)',
+}
+
+/** "Half Marathon Plan with Garmin Run Coach" → "Half Marathon Plan" — the wall has little room. */
+function planName(name: string): string {
+  return name.replace(/\s+with Garmin.*$/i, '')
 }
 
 function shortWhen(iso: string): string {
@@ -40,6 +45,7 @@ function useFitText<T extends HTMLElement>(text: string, max: number, min: numbe
         s -= 4
         el.style.fontSize = `${s}px`
       }
+      el.style.fontSize = ''  // the CSS caps it by the screen height too (--fit)
       setSize(s)
     }
     fit()
@@ -53,54 +59,26 @@ function useFitText<T extends HTMLElement>(text: string, max: number, min: numbe
 
 function Mission({ a }: { a: Ambient }) {
   const nav = useNavigate()
-  const w = a.today_workout
+  const pw = a.plan_week
   const h = headline(a)
-  const open = () => nav(`/u/${a.user_id}/today`)
+  const open = () => nav(`/u/${a.user_id}/plan`)
   const b = a.buddy
-  const [titleRef, titleSize] = useFitText<HTMLHeadingElement>(h.title, w ? 80 : 112, 56)
+  const todayOpen = !!pw?.days.some(d => d.status === 'today')
+  const [titleRef, titleSize] = useFitText<HTMLHeadingElement>(h.title, pw ? 80 : 112, 56)
   return (
-    <section className={`card mission stripes${w ? '' : ' no-workout'}${b ? ' has-buddy' : ''}`}>
+    <section className={`card mission stripes${pw ? '' : ' no-workout'}${b ? ' has-buddy' : ''}`}>
       <div className="mission-main">
       <div className="mission-label">
         <Zap size={18} color="var(--volt)" strokeWidth={2.4} /> Today’s mission
+        {pw?.plan && (
+          <span className="mission-plan">
+            {planName(pw.plan.name)}{pw.plan.week && pw.plan.weeks ? ` · week ${pw.plan.week}/${pw.plan.weeks}` : ''}
+          </span>
+        )}
       </div>
-      <h1 ref={titleRef} className="display mission-title" style={{ fontSize: titleSize }}>{h.title}</h1>
-      {!w && <p className="mission-sub">{h.sub}</p>}
-
-      {w && !w.done && (
-        <button className="workout-preview" onClick={open}>
-          <div className="workout-head">
-            <SportIcon sport={w.sport} size={20} color={SPORT_COLOR[w.sport]} />
-            <span className="workout-title">{w.title}{w.est_duration_s ? ` · ${minutes(w.est_duration_s)}` : ''}</span>
-            <span className="workout-meta num">
-              {[phraseLabel(w.phrase), w.est_load != null ? `load ~${w.est_load}` : null].filter(Boolean).join(' · ')}
-            </span>
-            <span className="grow" />
-            <span className="tag garmin">From Garmin</span>
-            <span className="link">Plan <ChevronRight size={16} /></span>
-          </div>
-          <WorkoutShape steps={w.steps} />
-          <div className="workout-line">
-            {workoutSummary(w).map((p, i) => <span key={i} className={i === 1 || workoutSummary(w).length === 1 ? 'strong' : ''}>{p}</span>)}
-          </div>
-        </button>
-      )}
-
-      {w?.done && (
-        <button className="workout-preview done" onClick={() => nav(`/session/${encodeURIComponent(w.done!.session_id)}`)}>
-          <div className="workout-head">
-            <span className="done-check"><Check size={20} strokeWidth={3} /></span>
-            <span className="workout-title">{w.title} · done</span>
-            {w.done.verdict && <VerdictPill verdict={w.done.verdict} />}
-            <span className="grow" />
-            <span className="link">Session <ChevronRight size={16} /></span>
-          </div>
-          <div className="workout-line">
-            {w.done.targets && <span className="strong">{w.done.targets.hit}/{w.done.targets.of} work blocks in the target pace</span>}
-            {w.done.headline && <span>{w.done.headline}</span>}
-          </div>
-        </button>
-      )}
+      <h1 ref={titleRef} className="display mission-title" style={{ '--fit': `${titleSize}px` } as React.CSSProperties}>{h.title}</h1>
+      {!todayOpen && <p className="mission-sub">{h.sub}</p>}
+      {pw && <WeekStrip week={pw} onOpen={open} />}
       </div>
       {b && (
         <aside className="mission-buddy" aria-label={`Your ${b.animal} is ${MOOD_LABEL[b.mood]}`}>

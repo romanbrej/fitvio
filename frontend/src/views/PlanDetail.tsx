@@ -2,11 +2,12 @@ import { Check, ChevronRight } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../App'
 import { api } from '../api'
-import type { Ambient, PlannedWorkout } from '../api'
+import type { Ambient, PlanDay, PlanWeek, PlannedWorkout } from '../api'
 import { SportIcon, VerdictPill } from '../components/icons'
+import { StatusMark, shortDuration } from '../components/WeekStrip'
 import { WorkoutShape } from '../components/WorkoutShape'
 import { SPORT_LABEL } from '../format'
-import { READINESS_LEVEL, feedbackText, minutes, phraseLabel, stepKindLabel, stepLength, stepLook, targetText } from '../mission'
+import { READINESS_LEVEL, isEasy, feedbackText, minutes, phraseLabel, stepKindLabel, stepLength, stepLook, targetText } from '../mission'
 import { useFetch } from '../useFetch'
 import './Detail.css'
 
@@ -31,21 +32,107 @@ function readyLines(a: Ambient): { ok: boolean; title: string; lines: string[] }
   return { ok: !low, title: low ? 'Take it easy' : 'Yes — go for it', lines }
 }
 
+const STATUS_LINE: Record<string, string> = { missed: 'Missed', today: 'Today', planned: 'Planned', rest: 'Rest day' }
+
+function statusLine(d: PlanDay): string {
+  if (d.status !== 'done') return STATUS_LINE[d.status]
+  const v = d.verdict === 'better' ? 'Better' : d.verdict === 'worse' ? 'Worse' : d.verdict === 'in_line' ? 'In line' : null
+  return ['Done', v, d.targets ? `${d.targets.hit}/${d.targets.of} hit` : null].filter(Boolean).join(' · ')
+}
+
+/** "Half Marathon Plan with Garmin Run Coach" → "Half Marathon Plan". */
+function planName(name: string): string {
+  return name.replace(/\s+with Garmin.*$/i, '')
+}
+
+function PlanHero({ a, pw }: { a: Ambient; pw: PlanWeek | null }) {
+  const p = pw?.plan ?? a.today_workout?.plan ?? null
+  const weeksLeft = p?.end ? Math.ceil((new Date(`${p.end}T12:00:00`).getTime() - Date.now()) / (7 * 86400000)) : null
+  return (
+    <section className="card hero stripes">
+      <div className="hero-grid">
+        <div className="stack" style={{ gap: 6 }}>
+          <div className="label">Training plan · from Garmin Connect</div>
+          <h1 className="display hero-title" style={{ fontStyle: 'italic' }}>{p ? planName(p.name) : 'This week'}</h1>
+          <div className="hero-sub">
+            {[p?.week && p.weeks ? `Week ${p.week} of ${p.weeks}` : null,
+              p?.end ? `ends ${dayLabel(p.end)}` : null,
+              pw ? `${pw.done} of ${pw.due} done so far` : null].filter(Boolean).join(' · ')}
+          </div>
+        </div>
+        {p?.weeks && p.week ? (
+          <div className="plan-progress" aria-label={`Week ${p.week} of ${p.weeks}`}>
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <span className="label">Plan progress</span>
+              {weeksLeft != null && weeksLeft > 0 && <span className="label" style={{ color: 'var(--volt)' }}>{weeksLeft} weeks to go</span>}
+            </div>
+            <div className="plan-weeks" style={{ gridTemplateColumns: `repeat(${p.weeks}, minmax(0, 1fr))` }}>
+              {Array.from({ length: p.weeks }, (_, i) => (
+                <div key={i} className={`plan-wk${i + 1 < p.week! ? ' past' : i + 1 === p.week ? ' now' : ''}`}>
+                  <i /><span className="num">{i + 1}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  )
+}
+
+function WeekCards({ pw }: { pw: PlanWeek }) {
+  const nav = useNavigate()
+  return (
+    <section className="stack" style={{ gap: 10 }}>
+      <div className="card-title" style={{ margin: 0 }}>{new Date(`${pw.start}T12:00:00`).getDay() === 0 ? 'The next 7 days' : 'This week'}</div>
+      <div className="plan-days">
+        {pw.days.map(d => {
+          const body = (
+            <>
+              <div className="row" style={{ justifyContent: 'space-between' }}>
+                <span className="label pd-day">{dayLabel(d.day)}</span>
+                <StatusMark status={d.status} size={24} />
+              </div>
+              <div className="pd-title">{d.title ?? 'Rest'}</div>
+              <div className="pd-sub">{d.status === 'rest' ? 'Recover' : [shortDuration(d.est_duration_s), phraseLabel(d.phrase)].filter(Boolean).join(' · ')}</div>
+              <div className="pd-shape">{d.steps?.length ? <WorkoutShape steps={d.steps} height={40} easy={isEasy(d.phrase)} /> : null}</div>
+              <div className={`pd-status st-${d.status}`}>{statusLine(d)}</div>
+            </>
+          )
+          return d.status === 'done' && d.session_id
+            ? <button key={d.day} className={`card plan-day st-${d.status}`} onClick={() => nav(`/session/${encodeURIComponent(d.session_id!)}`)}>{body}</button>
+            : <div key={d.day} className={`card plan-day st-${d.status}`}>{body}</div>
+        })}
+      </div>
+    </section>
+  )
+}
+
 function Content({ a }: { a: Ambient }) {
+  const pw = a.plan_week ?? null
+  const end = pw ? new Date(new Date(`${pw.start}T12:00:00`).getTime() + 7 * 86400000).toISOString().slice(0, 10) : ''
+  const later = a.upcoming.filter(u => u.day >= end)
+  return (
+    <div className="detail">
+      <PlanHero a={a} pw={pw} />
+      {pw && <WeekCards pw={pw} />}
+      <Today a={a} />
+      <Upcoming items={later} />
+    </div>
+  )
+}
+
+function Today({ a }: { a: Ambient }) {
   const nav = useNavigate()
   const w: PlannedWorkout | null = a.today_workout
   const ss = a.sweet_spot
   const s = a.streak
   if (!w) {
     return (
-      <div className="detail">
-        <section className="card hero stripes">
-          <div className="label">Today · from your Garmin plan</div>
-          <h1 className="display hero-title" style={{ color: 'var(--volt)' }}>Nothing planned.</h1>
-          <p className="hero-sub">No workout in your Garmin Connect calendar today.</p>
-        </section>
-        <Upcoming a={a} />
-      </div>
+      <section className="card">
+        <div className="card-title">Today</div>
+        <div className="display" style={{ fontSize: 34 }}>Nothing planned — a rest day.</div>
+      </section>
     )
   }
   const ready = readyLines(a)
@@ -53,20 +140,19 @@ function Content({ a }: { a: Ambient }) {
   const workSec = workSteps.reduce((t, x) => t + (x.duration_s ?? 0), 0)
   const after = ss && w.est_load != null && !w.done ? ss.load + w.est_load : null
   return (
-    <div className="detail">
-      <section className="card hero stripes">
+    <>
+      <section className="card hero">
         <div className="hero-grid">
           <div className="stack" style={{ gap: 8 }}>
             <div className="label row" style={{ gap: 8 }}>
               <SportIcon sport={w.sport} size={18} /> {dayLabel(w.day)} · today in your Garmin plan
             </div>
-            <h1 className="display hero-title" style={{ color: 'var(--volt)' }}>{w.title}{w.est_duration_s ? ` · ${minutes(w.est_duration_s)}` : ''}</h1>
+            <h2 className="display hero-title" style={{ color: 'var(--volt)', fontSize: 56 }}>{w.title}{w.est_duration_s ? ` · ${minutes(w.est_duration_s)}` : ''}</h2>
             {w.description && <div className="hero-sub">“{w.description}”</div>}
             <div className="row" style={{ gap: 8 }}>
               {w.done
                 ? <span className="pill tone-better"><Check size={15} /> Done{w.done.linked ? ' · started from the workout' : ''}</span>
                 : <span className="tag garmin"><Check size={14} /> On your watch · synced from Garmin Connect</span>}
-              {w.plan && <span className="chip">{w.plan.name}{w.plan.week && w.plan.weeks ? ` · week ${w.plan.week} of ${w.plan.weeks}` : ''}</span>}
             </div>
           </div>
           <div className="kpi-grid">
@@ -94,7 +180,7 @@ function Content({ a }: { a: Ambient }) {
       {w.steps.length > 0 && (
         <section className="card">
           <div className="card-title">Workout profile</div>
-          <WorkoutShape steps={w.steps} height={190} labels={x => x.kind === 'interval' ? targetText(x) : null} />
+          <WorkoutShape steps={w.steps} height={190} easy={isEasy(w.phrase)} labels={x => x.kind === 'interval' ? targetText(x) : null} />
           <div className="wshape-axis num">
             {w.steps.map((x, i) => <span key={i} style={{ flexGrow: x.duration_s ?? 60 }}>{stepLength(x)}</span>)}
           </div>
@@ -111,7 +197,7 @@ function Content({ a }: { a: Ambient }) {
                 {w.steps.map((x, i) => (
                   <tr key={i}>
                     <td className="num faint">{i + 1}</td>
-                    <td><span className="step-name"><i style={{ background: stepLook(x).color }} />{stepKindLabel(x.kind)}</span>{x.description ? <span className="muted"> · {x.description}</span> : null}</td>
+                    <td><span className="step-name"><i style={{ background: stepLook(x, isEasy(w.phrase)).color }} />{stepKindLabel(x.kind)}</span>{x.description ? <span className="muted"> · {x.description}</span> : null}</td>
                     <td className="num">{stepLength(x)}</td>
                     <td className="num" style={{ color: x.kind === 'interval' ? 'var(--volt)' : undefined }}>{targetText(x) ?? 'easy'}</td>
                   </tr>
@@ -158,9 +244,7 @@ function Content({ a }: { a: Ambient }) {
           </div>
         </section>
       </div>}
-
-      <Upcoming a={a} />
-    </div>
+    </>
   )
 }
 
@@ -178,13 +262,13 @@ function formAfter(a: Ambient, load: number): number {
   return ctl - atl
 }
 
-function Upcoming({ a }: { a: Ambient }) {
-  if (!a.upcoming.length) return null
+function Upcoming({ items }: { items: Ambient['upcoming'] }) {
+  if (!items.length) return null
   return (
     <section className="stack" style={{ gap: 10 }}>
-      <div className="card-title" style={{ margin: 0 }}>Coming up in your Garmin plan</div>
+      <div className="card-title" style={{ margin: 0 }}>After that <span className="muted" style={{ textTransform: 'none', letterSpacing: 0 }}>· Garmin Coach adapts the coming days to your readiness</span></div>
       <div className="upcoming">
-        {a.upcoming.slice(0, 4).map(u => (
+        {items.slice(0, 4).map(u => (
           <div key={u.day} className="card up-card">
             <div className="label" style={{ color: 'var(--run)' }}>{dayLabel(u.day)}</div>
             <div className="display" style={{ fontSize: 28, fontWeight: 800 }}>{u.title}</div>
@@ -199,7 +283,7 @@ function Upcoming({ a }: { a: Ambient }) {
   )
 }
 
-export function TodayDetail() {
+export function PlanDetail() {
   const { user } = useParams()
   const { wall } = useApp()
   const own = wall && wall.mode !== 'setup' && wall.user_id === user ? wall.ambient : null

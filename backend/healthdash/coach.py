@@ -129,8 +129,9 @@ def _targets_hit(workout: dict, streams: dict | None) -> dict | None:
 
 def _done(conn: sqlite3.Connection, workout: dict, sessions: list[dict], today: date) -> dict | None:
     """Garmin names a run started from the workout after it ("City - Schwelle") — that's a sure link.
-    Otherwise the first session of the same sport that day counts."""
-    todays = [s for s in sessions if s["start_time"][:10] == today.isoformat() and s["sport"] == workout.get("sport")]
+    Otherwise the first session of the same sport (10 min or more) that day counts."""
+    todays = [s for s in sessions if s["start_time"][:10] == today.isoformat() and s["sport"] == workout.get("sport")
+              and (s.get("duration_s") or 0) >= STREAK_MIN_DURATION_S]
     if not todays:
         return None
     title = str(workout.get("title") or "").lower()
@@ -145,18 +146,26 @@ def _done(conn: sqlite3.Connection, workout: dict, sessions: list[dict], today: 
             "headline": v.get("headline"), "load": s.get("load"), "targets": hit}
 
 
-def planned(conn: sqlite3.Connection, user_id: str, sessions: list[dict], today: date) -> tuple[dict | None, list[dict]]:
-    """(today's workout or None, the next days' workouts)."""
-    rows = [db.row_to_dict(r) for r in conn.execute(
-        "SELECT * FROM planned_workouts WHERE user_id = ? AND day >= ? ORDER BY day, key",
-        (user_id, today.isoformat()))]
+def _workouts(conn: sqlite3.Connection, user_id: str, sessions: list[dict], today: date,
+              start: date, end: date | None = None) -> list[dict]:
+    """Stored planned workouts from `start` (to before `end`), as workout dicts with a load estimate."""
+    sql, args = "SELECT * FROM planned_workouts WHERE user_id = ? AND day >= ?", [user_id, start.isoformat()]
+    if end:
+        sql, args = sql + " AND day < ?", args + [end.isoformat()]
     out = []
-    for r in rows:
+    for r in conn.execute(sql + " ORDER BY day, key", args):
+        r = db.row_to_dict(r)
         w = dict(r["data"] or {})
         w.update(day=r["day"], title=w.get("title") or r["title"], sport=w.get("sport") or r["sport"],
                  fetched_at=r["fetched_at"])
         w["est_load"] = estimate_load(w, sessions, today)
         out.append(w)
+    return out
+
+
+def planned(conn: sqlite3.Connection, user_id: str, sessions: list[dict], today: date) -> tuple[dict | None, list[dict]]:
+    """(today's workout or None, the next days' workouts)."""
+    out = _workouts(conn, user_id, sessions, today, today)
     todays = [w for w in out if w["day"] == today.isoformat()]
     today_w = todays[0] if todays else None
     if today_w:
@@ -164,6 +173,48 @@ def planned(conn: sqlite3.Connection, user_id: str, sessions: list[dict], today:
     upcoming = [{k: w.get(k) for k in ("day", "title", "sport", "phrase", "description", "est_duration_s", "est_load")}
                 for w in out if w["day"] > today.isoformat()]
     return today_w, upcoming
+
+
+def plan_window(today: date) -> date:
+    """The week the plan strip shows: Mon–Sun, but on a Sunday from today on, so tomorrow is always in it."""
+    return today if today.weekday() == 6 else week_start(today)
+
+
+def plan_week(conn: sqlite3.Connection, user_id: str, sessions: list[dict], today: date) -> dict | None:
+    """Seven days of the Garmin plan with what became of each: done / missed / today / planned / rest.
+    A past day is done when a session of the same sport (10 min or more) was on that day. None without a plan."""
+    start = plan_window(today)
+    end = start + timedelta(days=7)
+    by_day: dict[str, dict] = {}
+    for w in _workouts(conn, user_id, sessions, today, start, end):
+        by_day.setdefault(w["day"], w)  # one per day; Garmin Coach plans one
+    if not by_day:
+        return None
+    plan = None
+    days, done, due = [], 0, 0
+    for i in range(7):
+        d = start + timedelta(days=i)
+        w = by_day.get(d.isoformat())
+        if not w:
+            days.append({"day": d.isoformat(), "status": "rest"})
+            continue
+        plan = w.get("plan") or plan  # the latest day was fetched most recently: its "week n" is current
+        item = {k: w.get(k) for k in ("day", "title", "sport", "phrase", "description", "est_duration_s",
+                                      "est_load", "steps")}
+        if d <= today:
+            hit = _done(conn, w, sessions, d)
+            due += 1 if d < today or hit else 0
+            if hit:
+                done += 1
+                item.update(status="done", session_id=hit["session_id"], verdict=hit["verdict"],
+                            targets=hit["targets"])
+            else:
+                item["status"] = "today" if d == today else "missed"
+        else:
+            item["status"] = "planned"
+        days.append(item)
+    return {"start": start.isoformat(), "days": days, "done": done, "due": due,
+            "planned": sum(1 for x in days if x["status"] != "rest"), "plan": plan}
 
 
 # --- running cadence -----------------------------------------------------------------------

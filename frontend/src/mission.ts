@@ -42,8 +42,16 @@ export function phraseLabel(p: string | null | undefined): string | null {
   return PHRASE[p.toUpperCase()] ?? p.toLowerCase().replace(/_/g, ' ').replace(/^./, c => c.toUpperCase())
 }
 
+/** Easy / long workouts (Garmin's purpose, e.g. BASE, EASY_WEEK_LOAD_BASE, LONG_WORKOUT, RECOVERY):
+ *  their steady main part is drawn calm, not as hard work. */
+export function isEasy(phrase: string | null | undefined): boolean {
+  const p = (phrase ?? '').toUpperCase()
+  return /(^|_)BASE$/.test(p) || p.startsWith('LONG') || p === 'RECOVERY'
+}
+
 /** Intensity of a step for the workout's shape (0–1) and its colour. */
-export function stepLook(step: WorkoutStep): { h: number; color: string } {
+export function stepLook(step: WorkoutStep, easy = false): { h: number; color: string } {
+  if (easy && ['interval', 'main', 'active'].includes(step.kind)) return { h: 0.55, color: 'var(--accent-2)' }
   switch (step.kind) {
     case 'warmup': return { h: 0.45, color: 'var(--inline)' }
     case 'cooldown': return { h: 0.32, color: '#475569' }

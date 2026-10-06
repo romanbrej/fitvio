@@ -1,14 +1,14 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
 import App from './App'
 import './theme.css'
 import { Accounts } from './views/Accounts'
 import { HealthDetail } from './views/HealthDetail'
 import { LoadDetail } from './views/LoadDetail'
+import { PlanDetail } from './views/PlanDetail'
 import { SessionDetailView } from './views/SessionDetail'
 import { SportDetail } from './views/SportDetail'
-import { TodayDetail } from './views/TodayDetail'
 import { ValidationDetail } from './views/ValidationDetail'
 import { Wall } from './views/Wall'
 
@@ -24,7 +24,8 @@ const router = createBrowserRouter([
       { path: 'u/:user/health/:metric', element: <HealthDetail /> },
       { path: 'u/:user/sport/:sport', element: <SportDetail /> },
       { path: 'u/:user/validation', element: <ValidationDetail /> },
-      { path: 'u/:user/today', element: <TodayDetail /> },
+      { path: 'u/:user/plan', element: <PlanDetail /> },
+      { path: 'u/:user/today', element: <Navigate to="../plan" relative="path" replace /> },
     ],
   },
 ])
