@@ -9,7 +9,7 @@ import { ago } from '../../format'
 import { usePhone } from '../ctx'
 import { Avatar, Card } from '../parts'
 
-const err = (e: unknown) => String(e).replace(/^Error: /, '')
+const errorText = (e: unknown) => String(e).replace(/^Error: /, '')
 
 /** Who uses this phone, their buddy, the Garmin accounts and auto-sync. */
 export function Me() {
@@ -19,7 +19,7 @@ export function Me() {
   const [check, setCheck] = useState<ActivityCheck | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
 
-  const load = useCallback(() => api.accounts().then(setAccounts).catch(e => setProblem(err(e))), [])
+  const load = useCallback(() => api.accounts().then(setAccounts).catch(e => setProblem(errorText(e))), [])
   useEffect(() => { load() }, [load])
   useEffect(() => { api.buddySettings().then(setBuddies).catch(() => setBuddies(null)) }, [])
   useEffect(() => { api.activityCheck().then(setCheck).catch(() => setCheck(null)) }, [])
@@ -32,16 +32,16 @@ export function Me() {
 
   const syncNow = async (id: string) => {
     setProblem(null)
-    try { await api.syncNow(id); await load() } catch (e) { setProblem(err(e)) }
+    try { await api.syncNow(id); await load() } catch (e) { setProblem(errorText(e)) }
   }
   const pickBuddy = async (animal: Animal) => {
     setProblem(null)
-    try { setBuddies(await api.setBuddy(me.id, animal)); refresh() } catch (e) { setProblem(err(e)) }
+    try { setBuddies(await api.setBuddy(me.id, animal)); refresh() } catch (e) { setProblem(errorText(e)) }
   }
   const toggleCheck = async () => {
     if (!check) return
     setProblem(null)
-    try { setCheck(await api.setActivityCheck(!check.enabled)) } catch (e) { setProblem(err(e)) }
+    try { setCheck(await api.setActivityCheck(!check.enabled)) } catch (e) { setProblem(errorText(e)) }
   }
   const mine = buddies?.users[me.id]
 

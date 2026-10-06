@@ -11,6 +11,8 @@ import './phone.css'
 
 const POLL_MS = 60_000
 const JOB_POLL_MS = 1500
+/** About 30 s of failed status checks: the job is gone (e.g. the server restarted), stop showing "Syncing". */
+const JOB_MAX_MISSES = 20
 
 const TABS = [
   { to: '/', label: 'Today', Icon: Zap, match: (p: string) => p === '/' || p.startsWith('/verdict') || p.startsWith('/session') },
@@ -41,7 +43,7 @@ export function PhoneApp() {
   const [config, setConfig] = useState<AppConfig | null>(null)
   const [configError, setConfigError] = useState(false)
   const [meId, setMeId] = useState<string | null>(meStore.get())
-  const [loaded, setAmbient] = useState<Ambient | null>(null)
+  const [fetched, setFetched] = useState<Ambient | null>(null)
   const [stale, setStale] = useState(false)
   const [syncJob, setSyncJob] = useState<Job | null>(null)
 
@@ -57,7 +59,7 @@ export function PhoneApp() {
     if (!myId) return
     try {
       const a = await api.ambient(myId)
-      setAmbient(a)
+      setFetched(a)
       setStale(false)
     } catch {
       setStale(true)
@@ -65,7 +67,7 @@ export function PhoneApp() {
   }, [myId])
 
   // after switching person, the old person's data is never shown
-  const ambient = loaded && loaded.user_id === myId ? loaded : null
+  const ambient = fetched?.user_id === myId ? fetched : null
 
   useEffect(() => {
     if (!myId) return
@@ -89,9 +91,10 @@ export function PhoneApp() {
     try {
       let job = await api.syncNow(myId)
       setSyncJob(job)
-      while (job.phase !== 'done' && job.phase !== 'error') {
+      let misses = 0
+      while (job.phase !== 'done' && job.phase !== 'error' && misses < JOB_MAX_MISSES) {
         await new Promise(r => setTimeout(r, JOB_POLL_MS))
-        try { job = await api.job(job.id); setSyncJob(job) } catch { /* server blip: keep polling */ }
+        try { job = await api.job(job.id); setSyncJob(job); misses = 0 } catch { misses++ }
       }
     } catch { /* already syncing or not allowed: the next poll shows the state */ }
     setSyncJob(null)

@@ -1,7 +1,8 @@
 import { ChevronLeft } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import type { Ambient, User } from '../api'
+import type { Ambient, PmcDay, User } from '../api'
+import { formState, num, signed } from '../format'
 
 export function Avatar({ user, size = 'md' }: { user: Pick<User, 'initials' | 'color'>; size?: 'sm' | 'md' | 'lg' | 'xl' }) {
   return <span className={`ph-avatar ${size}`} style={{ borderColor: user.color }}>{user.initials}</span>
@@ -34,6 +35,20 @@ export function SweetBar({ a, height = 12 }: { a: Ambient; height?: number }) {
       <i className="zone" style={{ left: pct(ss.low), width: `calc(${pct(ss.high)} - ${pct(ss.low)})` }} />
       <i className="over" style={{ left: pct(ss.high), right: 0 }} />
       <i className="fill" style={{ width: pct(ss.load) }} />
+    </div>
+  )
+}
+
+/** Fitness, fatigue and form side by side. `legend` adds the line style each has in the chart below it. */
+export function FormNumbers({ form, legend = false }: { form: PmcDay | null; legend?: boolean }) {
+  const state = formState(form?.form)
+  const mark = (line: string) => legend ? `${line} ` : ''
+  return (
+    <div className="ph-grid3">
+      <div><span className="ph-foot" style={{ color: 'var(--fitness)' }}>{mark('—')}Fitness</span><b className="num ph-v">{num(form?.fitness)}</b></div>
+      <div><span className="ph-foot" style={{ color: 'var(--fatigue)' }}>{mark('- -')}Fatigue</span><b className="num ph-v">{num(form?.fatigue)}</b></div>
+      <div><span className="ph-foot" style={{ color: 'var(--form)' }}>{mark('—')}Form</span><b className="num ph-v" style={{ color: 'var(--form)' }}>{signed(form?.form, 0)}</b>
+        <span className={`${legend ? 'ph-caption' : 'ph-foot'} tone-${state.tone}`}>{state.label.split(' — ')[0]}</span></div>
     </div>
   )
 }

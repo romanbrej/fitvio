@@ -1,19 +1,18 @@
 import { ChevronRight, Flame, Loader2, RefreshCw, Zap } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import type { Ambient, Sport } from '../../api'
+import type { Ambient, Streak as StreakData } from '../../api'
 import { Buddy } from '../../components/Buddy'
 import { SportIcon, VerdictIcon, VerdictPill } from '../../components/icons'
 import { improvedCount } from '../../components/Improvements'
 import { StatusMark, shortDuration, weekday } from '../../components/WeekStrip'
 import { WorkoutShape } from '../../components/WorkoutShape'
-import { ago, distance, duration, formState, hoursMinutes, num, pace, signed, SPORT_LABEL, VERDICT_LABEL, when } from '../../format'
+import { ago, distance, duration, hoursMinutes, num, SPORT_LABEL, VERDICT_LABEL, when } from '../../format'
 import { feedbackText, headline, isEasy, minutes, READINESS_LEVEL, workoutSummary } from '../../mission'
 import { planName, SPORT_COLOR, tileContent } from '../../views/WallAmbient'
 import { usePhone, seenStore } from '../ctx'
-import { Avatar, Card, SweetBar } from '../parts'
-import { isFresh, sweetHint, VERDICT_COLOR } from '../util'
-
-const SPORTS: Sport[] = ['running', 'cycling', 'swimming', 'strength']
+import { Avatar, Card, FormNumbers, SweetBar } from '../parts'
+import type { Note } from '../util'
+import { bodyBatteryNote, hrvBand, isFresh, MAIN_SPORTS, runPace, sweetHint, VERDICT_COLOR } from '../util'
 
 function Header() {
   const { me, ambient: a, syncJob, syncNow } = usePhone()
@@ -41,11 +40,8 @@ function VerdictHero({ a }: { a: Ambient }) {
   const s = a.recent.find(r => r.id === lw.id)
   const items = lw.improvements ?? []
   const color = VERDICT_COLOR[lw.verdict]
-  const stats = s ? [
-    s.distance_m ? distance(s.distance_m, s.sport) : null,
-    duration(s.duration_s),
-    s.sport === 'running' && s.distance_m && s.duration_s ? `${pace(s.distance_m / s.duration_s)}/km` : null,
-  ].filter(Boolean).join(' · ') : ''
+  const stats = s ? [s.distance_m ? distance(s.distance_m, s.sport) : null, duration(s.duration_s), runPace(s)]
+    .filter(Boolean).join(' · ') : ''
   return (
     <Link to={`/verdict/${encodeURIComponent(lw.id)}`} className="ph-hero" style={{ borderColor: color }}>
       <div className="ph-row">
@@ -140,23 +136,33 @@ function Mission({ a, fresh }: { a: Ambient; fresh: boolean }) {
   )
 }
 
+/** Last night's HRV against the normal range. */
+function hrvNote(hrv: number | null | undefined, band: [number, number] | null): Note | null {
+  if (hrv == null || !band) return null
+  if (hrv < band[0]) return { text: '▼ below range', tone: 'worse' }
+  if (hrv > band[1]) return { text: '▲ above range', tone: 'better' }
+  return { text: 'in range', tone: 'better' }
+}
+
+/** Resting HR against the usual: lower is better. */
+function rhrNote(rhr: number | null | undefined, usual: number | null | undefined): Note | null {
+  if (rhr == null || usual == null) return null
+  if (Math.abs(rhr - usual) < 1) return { text: 'as usual', tone: 'inline' }
+  const lower = rhr < usual
+  return { text: `${lower ? '▼' : '▲'} ${Math.abs(Math.round(rhr - usual))}`, tone: lower ? 'better' : 'worse' }
+}
+
 function Recovery({ a }: { a: Ambient }) {
   const r = a.readiness
   const h = a.health_latest
-  const base = a.health_baseline
   const C = 2 * Math.PI * 42
   const vo2 = a.vo2max.at(-1)?.value
-  const band = h.hrv_baseline_low && h.hrv_baseline_high ? [h.hrv_baseline_low, h.hrv_baseline_high] : null
   const tiles = [
-    { label: 'HRV', v: num(h.hrv_last_night), unit: 'ms', metric: 'hrv',
-      note: h.hrv_last_night == null || !band ? null : h.hrv_last_night < band[0] ? ['▼ below range', 'worse'] : h.hrv_last_night > band[1] ? ['▲ above range', 'better'] : ['in range', 'better'] },
-    { label: 'Resting HR', v: num(h.rhr), unit: 'bpm', metric: 'rhr',
-      note: h.rhr == null || base.rhr == null ? null : Math.abs(h.rhr - base.rhr) < 1 ? ['as usual', 'inline']
-        : [`${h.rhr < base.rhr ? '▼' : '▲'} ${Math.abs(Math.round(h.rhr - base.rhr))}`, h.rhr < base.rhr ? 'better' : 'worse'] },
+    { label: 'HRV', v: num(h.hrv_last_night), unit: 'ms', metric: 'hrv', note: hrvNote(h.hrv_last_night, hrvBand(h)) },
+    { label: 'Resting HR', v: num(h.rhr), unit: 'bpm', metric: 'rhr', note: rhrNote(h.rhr, a.health_baseline.rhr) },
     { label: 'Sleep', v: hoursMinutes(h.sleep_total_min).replace('h ', ':').replace('m', ''), unit: 'h', metric: 'sleep',
-      note: h.sleep_score != null ? [`Score ${num(h.sleep_score)}`, 'muted'] : null },
-    { label: 'Body Battery', v: num(h.bb_max), unit: '', metric: 'body_battery',
-      note: h.bb_max != null ? [h.bb_max >= 85 ? 'Full' : h.bb_max >= 60 ? 'Good' : 'Low', h.bb_max >= 60 ? 'better' : 'worse'] : null },
+      note: h.sleep_score != null ? { text: `Score ${num(h.sleep_score)}`, tone: 'muted' } : null },
+    { label: 'Body Battery', v: num(h.bb_max), unit: '', metric: 'body_battery', note: bodyBatteryNote(h.bb_max) },
   ]
   return (
     <Card>
@@ -182,7 +188,7 @@ function Recovery({ a }: { a: Ambient }) {
           <Link key={t.label} to={`/trends/health?metric=${t.metric}`} className="ph-tile">
             <span className="ph-label sm">{t.label}</span>
             <span><b className="num ph-tile-v">{t.v}</b>{t.unit && <span className="ph-unit"> {t.unit}</span>}</span>
-            {t.note && <span className={`ph-foot tone-${t.note[1]}`}>{t.note[0]}</span>}
+            {t.note && <span className={`ph-foot tone-${t.note.tone}`}>{t.note.text}</span>}
           </Link>
         ))}
       </div>
@@ -191,18 +197,11 @@ function Recovery({ a }: { a: Ambient }) {
 }
 
 function Load({ a }: { a: Ambient }) {
-  const f = a.form
-  const fs = formState(f?.form)
   const ss = a.sweet_spot
   return (
     <Link to="/trends" className="ph-card ph-link-card">
       <div className="ph-row"><span className="ph-h3">Training load</span><span className="ph-more ph-right">Details <ChevronRight size={16} aria-hidden /></span></div>
-      <div className="ph-grid3">
-        <div><span className="ph-foot" style={{ color: 'var(--fitness)' }}>Fitness</span><b className="num ph-v">{num(f?.fitness)}</b></div>
-        <div><span className="ph-foot" style={{ color: 'var(--fatigue)' }}>Fatigue</span><b className="num ph-v">{num(f?.fatigue)}</b></div>
-        <div><span className="ph-foot" style={{ color: 'var(--form)' }}>Form</span><b className="num ph-v" style={{ color: 'var(--form)' }}>{signed(f?.form, 0)}</b>
-          <span className={`ph-foot tone-${fs.tone}`}>{fs.label.split(' — ')[0]}</span></div>
-      </div>
+      <FormNumbers form={a.form} />
       {ss && (
         <>
           <div className="ph-row"><span className="ph-label sm">This week · TRIMP</span>
@@ -232,13 +231,16 @@ function Streak({ a }: { a: Ambient }) {
           </div>
         ))}
       </div>
-      <span className="ph-secondary" style={{ color: 'var(--accent-2)', fontWeight: 600 }}>
-        {s.needed === 0 ? `This week counts — ${s.this_week} workouts`
-          : s.days_left + 1 < s.needed ? 'Not enough days left — next week starts a new one'
-          : `${s.needed} more workout${s.needed > 1 ? 's' : ''} this week ${s.weeks ? 'keeps it alive' : 'starts a streak'}`}
-      </span>
+      <span className="ph-secondary" style={{ color: 'var(--accent-2)', fontWeight: 600 }}>{streakLine(s)}</span>
     </Card>
   )
+}
+
+/** What this week still needs for the streak. */
+function streakLine(s: StreakData): string {
+  if (s.needed === 0) return `This week counts — ${s.this_week} workouts`
+  if (s.days_left + 1 < s.needed) return 'Not enough days left — next week starts a new one'
+  return `${s.needed} more workout${s.needed > 1 ? 's' : ''} this week ${s.weeks ? 'keeps it alive' : 'starts a streak'}`
 }
 
 function Sports({ a }: { a: Ambient }) {
@@ -246,7 +248,7 @@ function Sports({ a }: { a: Ambient }) {
     <section className="ph-section">
       <span className="ph-label" style={{ padding: '0 4px' }}>Every sport</span>
       <div className="ph-grid2">
-        {SPORTS.map(sp => {
+        {MAIN_SPORTS.map(sp => {
           const t = a.trends[sp]
           const c = t ? tileContent(sp, t) : null
           const body = (

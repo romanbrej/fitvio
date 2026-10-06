@@ -6,6 +6,7 @@ import { Sparkline } from '../../components/Sparkline'
 import { hoursMinutes, num } from '../../format'
 import { usePhone } from '../ctx'
 import { Card } from '../parts'
+import { bodyBatteryNote, hrvBand } from '../util'
 import { TrendsNav } from './Trends'
 
 const RANGES = [7, 30, 90, 365] as const
@@ -47,11 +48,11 @@ export function Health() {
   }, [focus, days])
 
   const h = a.health_latest
-  const band = h.hrv_baseline_low && h.hrv_baseline_high ? [h.hrv_baseline_low, h.hrv_baseline_high] as [number, number] : null
+  const band = hrvBand(h)
+  const hrvBelow = h.hrv_last_night != null && band != null && h.hrv_last_night < band[0]
   const hrvNote = h.hrv_last_night == null || !band ? null
-    : h.hrv_last_night < band[0] ? `▼ below your normal range (${band[0]}–${band[1]} ms)`
-    : h.hrv_last_night > band[1] ? `▲ above your normal range (${band[0]}–${band[1]} ms)` : `in your normal range (${band[0]}–${band[1]} ms)`
-  const hrvTone = h.hrv_last_night != null && band && h.hrv_last_night < band[0] ? 'worse' : 'better'
+    : `${hrvBelow ? '▼ below' : h.hrv_last_night > band[1] ? '▲ above' : 'in'} your normal range (${band[0]}–${band[1]} ms)`
+  const bb = bodyBatteryNote(h.bb_max)
   const sleep = days ? days.filter(d => d.sleep_total_min != null) : []
   const since = new Date(Date.now() - range * 86400000).toISOString().slice(0, 10)
   const vo2 = a.vo2max.filter(v => v.day >= since)
@@ -68,7 +69,7 @@ export function Health() {
 
       {!days ? <div className="ph-boot">Loading…</div> : (
         <>
-          <Metric id="hrv" focus={focus} label="HRV · overnight" value={num(h.hrv_last_night)} unit="ms" note={hrvNote} tone={hrvTone}>
+          <Metric id="hrv" focus={focus} label="HRV · overnight" value={num(h.hrv_last_night)} unit="ms" note={hrvNote} tone={hrvBelow ? 'worse' : 'better'}>
             <Sparkline values={series(days, 'hrv_last_night')} height={120} color="var(--better)" band={band} />
           </Metric>
           <Metric id="rhr" focus={focus} label="Resting HR" value={num(h.rhr)} unit="bpm">
@@ -83,7 +84,7 @@ export function Health() {
             ) : <Sparkline values={series(days, 'sleep_total_min')} height={90} color="#818cf8" />}
           </Metric>
           <Metric id="body_battery" focus={focus} label="Body Battery" value={num(h.bb_max)}
-                  note={h.bb_max != null ? (h.bb_max >= 85 ? 'Full' : h.bb_max >= 60 ? 'Good' : 'Low') : null} tone={h.bb_max != null && h.bb_max >= 60 ? 'better' : 'worse'}>
+                  note={bb?.text} tone={bb?.tone}>
             <Sparkline values={series(days, 'bb_max')} height={90} color="var(--volt)" />
           </Metric>
           {vo2.length > 1 && (

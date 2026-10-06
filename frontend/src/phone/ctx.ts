@@ -32,14 +32,17 @@ export const meStore = {
 }
 
 /** Verdicts already opened on this phone (their hero card loses the NEW badge). */
+const SEEN_MAX = 30
+const readSeen = (): string[] => JSON.parse(localStorage.getItem(SEEN_KEY) ?? '[]')
+
 export const seenStore = {
   has: (id: string): boolean => {
-    try { return (JSON.parse(localStorage.getItem(SEEN_KEY) ?? '[]') as string[]).includes(id) } catch { return false }
+    try { return readSeen().includes(id) } catch { return false }
   },
   add: (id: string) => {
     try {
-      const ids = (JSON.parse(localStorage.getItem(SEEN_KEY) ?? '[]') as string[]).filter(x => x !== id)
-      localStorage.setItem(SEEN_KEY, JSON.stringify([...ids, id].slice(-30)))
+      const others = readSeen().filter(x => x !== id)
+      localStorage.setItem(SEEN_KEY, JSON.stringify([...others, id].slice(-SEEN_MAX)))
     } catch { /* not remembered */ }
   },
 }

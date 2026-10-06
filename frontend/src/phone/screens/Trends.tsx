@@ -1,15 +1,13 @@
 import { Activity, ChevronRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import type { Ambient, Sport } from '../../api'
+import type { Ambient } from '../../api'
 import { SportIcon, VerdictPill } from '../../components/icons'
 import { Sparkline } from '../../components/Sparkline'
-import { formState, num, signed, SPORT_LABEL } from '../../format'
+import { SPORT_LABEL } from '../../format'
 import { MiniPmc, SPORT_COLOR, tileContent } from '../../views/WallAmbient'
 import { usePhone } from '../ctx'
-import { Card, SweetBar } from '../parts'
-import { sweetHint } from '../util'
-
-const SPORTS: Sport[] = ['running', 'cycling', 'swimming', 'strength']
+import { Card, FormNumbers, SweetBar } from '../parts'
+import { MAIN_SPORTS, sweetHint } from '../util'
 
 export function TrendsNav({ on }: { on: 'load' | 'health' }) {
   return (
@@ -35,8 +33,6 @@ function weeklyLoads(a: Ambient, n = 8): { week: string; load: number }[] {
 export function Trends() {
   const { ambient } = usePhone()
   const a = ambient!
-  const f = a.form
-  const fs = formState(f?.form)
   const ss = a.sweet_spot
   const weeks = weeklyLoads(a)
   const top = Math.max(1, ...weeks.map(w => w.load), ss?.high ?? 0)
@@ -47,12 +43,7 @@ export function Trends() {
 
       <Card>
         <div className="ph-row"><span className="ph-h3">Training load</span><span className="ph-right ph-caption">6 weeks</span></div>
-        <div className="ph-grid3">
-          <div><span className="ph-foot" style={{ color: 'var(--fitness)' }}>— Fitness</span><b className="num ph-v">{num(f?.fitness)}</b></div>
-          <div><span className="ph-foot" style={{ color: 'var(--fatigue)' }}>- - Fatigue</span><b className="num ph-v">{num(f?.fatigue)}</b></div>
-          <div><span className="ph-foot" style={{ color: 'var(--form)' }}>— Form</span><b className="num ph-v" style={{ color: 'var(--form)' }}>{signed(f?.form, 0)}</b>
-            <span className={`ph-caption tone-${fs.tone}`}>{fs.label.split(' — ')[0]}</span></div>
-        </div>
+        <FormNumbers form={a.form} legend />
         <div className="ph-pmc"><MiniPmc days={a.pmc.slice(-42)} /></div>
         <div className="ph-axis"><span>6 weeks ago</span><span>today</span></div>
         <span className="ph-caption">Fitness is your 6-week training, fatigue the last week; form = fitness − fatigue. Above zero you’re fresh.</span>
@@ -78,7 +69,7 @@ export function Trends() {
 
       <section className="ph-section">
         <span className="ph-label" style={{ padding: '0 4px' }}>Am I improving?</span>
-        {SPORTS.map(sp => {
+        {MAIN_SPORTS.map(sp => {
           const t = a.trends[sp]
           const c = t ? tileContent(sp, t) : null
           const inner = (

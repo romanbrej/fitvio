@@ -156,7 +156,7 @@ def get_ambient(user_id: str, c: AppConfig = Depends(cfg), cn=Depends(conn)):
 
 @app.get("/api/users/{user_id}/sessions")
 def list_sessions(user_id: str, sport: str | None = None, limit: int = Query(60, ge=1, le=500),
-                  offset: int = Query(0, ge=0), type: str | None = Query(None, max_length=20),
+                  offset: int = Query(0, ge=0), session_type: str | None = Query(None, alias="type", max_length=20),
                   c: AppConfig = Depends(cfg), cn=Depends(conn)):
     """Newest first. `offset` pages through the whole history (the phone loads 50 at a time); `type` = session type."""
     _user_or_404(c, user_id)
@@ -167,9 +167,9 @@ def list_sessions(user_id: str, sport: str | None = None, limit: int = Query(60,
     if sport:
         q += " AND s.sport = ?"
         args.append(sport)
-    if type:
+    if session_type:
         q += " AND s.session_type = ?"
-        args.append(type)
+        args.append(session_type)
     q += " ORDER BY s.start_time DESC, s.id DESC LIMIT ? OFFSET ?"
     args += [limit, offset]
     return [db.row_to_dict(r) for r in cn.execute(q, args)]
