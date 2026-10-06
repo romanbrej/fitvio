@@ -70,6 +70,8 @@ New activities show up on the wall about 2–3 minutes after your watch syncs: t
 
 Built on [GarminDB](https://github.com/tcgoetz/GarminDB), [garminconnect](https://github.com/cyberjunky/python-garminconnect) and [fitdecode](https://github.com/polyvertex/fitdecode).
 
+Built with the help of [Claude Code](https://claude.com/claude-code) (an AI coding assistant); designed, reviewed and tested by me.
+
 Fitvio is not affiliated with or endorsed by Garmin. It uses the unofficial Garmin Connect login (through GarminDB and garminconnect), which Garmin can change at any time. It is not a medical device — its verdicts are training feedback, not health advice.
 
 Licensed under the [GNU General Public License v2.0](LICENSE).
