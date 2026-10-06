@@ -12,7 +12,8 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import date
+import time
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Callable
 
@@ -40,6 +41,20 @@ def _save(path: Path, data) -> None:
     path.write_text(json.dumps(data if data is not None else {}, default=str))
 
 
+# a whole status code, not digits inside the activity id or date that the error message also quotes
+_NO_CONTENT = re.compile(r"\b(?:204|404)\b")
+
+
+def _get_or_empty(connectapi: Callable, url: str):
+    """Garmin's answer, or {} when it has nothing for this activity/day (404/204). Other errors raise."""
+    try:
+        return connectapi(url)
+    except Exception as e:
+        if _NO_CONTENT.search(str(e)):
+            return {}
+        raise
+
+
 def missing(directory: Path, activity_id: str, day: date | str) -> tuple[bool, bool]:
     """(weather missing, acclimation missing) for one activity."""
     wid = weather_id(activity_id)
@@ -60,26 +75,13 @@ def fetch_extras(connectapi: Callable, directory: Path, activity_id: str, day: d
     directory.mkdir(parents=True, exist_ok=True)
     need_weather, need_accl = missing(directory, activity_id, day)
     requests = 0
-    if need_weather:
+    if need_weather:  # none for indoor activities or without GPS
         requests += 1
-        try:
-            data = connectapi(WEATHER_URL.format(activity_id=activity_id))
-        except Exception as e:
-            if "404" in str(e) or "204" in str(e):  # no weather for this activity (indoor, no GPS)
-                data = {}
-            else:
-                raise
-        _save(directory / f"weather_{activity_id}.json", data)
+        weather = _get_or_empty(connectapi, WEATHER_URL.format(activity_id=activity_id))
+        _save(directory / f"weather_{activity_id}.json", weather)
     if need_accl:
         requests += 1
-        try:
-            data = connectapi(ACCLIMATION_URL.format(day=day))
-        except Exception as e:
-            if "404" in str(e) or "204" in str(e):
-                data = {}
-            else:
-                raise
-        _save(directory / f"acclimation_{day}.json", data)
+        _save(directory / f"acclimation_{day}.json", _get_or_empty(connectapi, ACCLIMATION_URL.format(day=day)))
     return requests
 
 
@@ -129,7 +131,6 @@ def backfill(connectapi: Callable, directory: Path, items: list[tuple[str, str]]
     Polite to Garmin: a short pause between requests, exponential back-off on errors (e.g. rate
     limiting), and it gives up after repeated failures — the next run simply continues.
     """
-    import time
     sleep = sleep or time.sleep
     todo = [(aid, day) for aid, day in items if any(missing(directory, aid, day))]
     done = failed = 0
@@ -167,7 +168,6 @@ def update_vo2max(connectapi: Callable, directory: Path, today: date | None = No
 
     First run: the whole history (one request). Afterwards: from shortly before the newest stored day.
     """
-    from datetime import timedelta
     today = today or date.today()
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / VO2MAX_FILE

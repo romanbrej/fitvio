@@ -125,7 +125,19 @@ CREATE TABLE IF NOT EXISTS readiness_days (
     fetched_at  TEXT,
     PRIMARY KEY (user_id, day)
 );
+
+-- name, sex, max/resting HR, FTP … as detected from Garmin (profile.py)
+CREATE TABLE IF NOT EXISTS profiles (
+    user_id     TEXT NOT NULL,
+    field       TEXT NOT NULL,
+    value       TEXT,           -- JSON
+    source      TEXT,
+    updated_at  TEXT,
+    PRIMARY KEY (user_id, field)
+);
 """
+# Bump when SCHEMA or _migrate change: databases below this version get both applied on the next connect.
+SCHEMA_VERSION = 1
 
 JSON_COLUMNS = {"features", "reasons", "deltas", "context", "trend", "baseline_ids", "data"}
 
@@ -139,8 +151,11 @@ def connect(path: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(path), check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")  # API reads while the sync writes
-    conn.executescript(SCHEMA)
-    _migrate(conn)
+    # every API request opens a connection: create/migrate the schema only when the file is behind
+    if conn.execute("PRAGMA user_version").fetchone()[0] < SCHEMA_VERSION:
+        conn.executescript(SCHEMA)
+        _migrate(conn)
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     return conn
 
 
@@ -149,7 +164,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(health_days)")}
     if "vo2max_cycling" not in cols:
         conn.execute("ALTER TABLE health_days ADD COLUMN vo2max_cycling REAL")
-        conn.commit()
+    conn.commit()
 
 
 def row_to_dict(row: sqlite3.Row | None) -> dict | None:

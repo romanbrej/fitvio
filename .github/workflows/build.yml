@@ -16,6 +16,10 @@ concurrency:
 env:
   IMAGE: ghcr.io/${{ github.repository }}
 
+# least privilege: jobs get a read-only token unless they ask for more (the image job needs packages: write)
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest

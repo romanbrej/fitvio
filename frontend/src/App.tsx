@@ -28,6 +28,11 @@ const MORNING_FROM_HOUR = 4          // same as the server: a tap before this is
 const MORNING_RETRY_MS = 10 * 60_000 // someone's night is still missing: ask again on a tap after this
 const DAY_SCREEN_IDLE_MS = 60_000    // a minute without a tap on the overview → the calm day screen
 
+/** decodeURIComponent that survives a malformed URL (it throws on a stray "%") instead of crashing the app. */
+function safeDecode(s: string): string {
+  try { return decodeURIComponent(s) } catch { return s }
+}
+
 function inNight(start: string, end: string, d = new Date()): boolean {
   const m = d.getHours() * 60 + d.getMinutes()
   const [sh, sm] = start.split(':').map(Number)
@@ -204,7 +209,7 @@ export default function App() {
   }
   // Detail pages belong to the person in the URL (/u/:user/…); the wall to its current person.
   const routeUser = loc.pathname.match(/^\/u\/([^/]+)/)?.[1] ?? (loc.pathname.startsWith('/session/')
-    ? decodeURIComponent(loc.pathname.slice(9)).split(':')[0] : null)
+    ? safeDecode(loc.pathname.slice(9)).split(':')[0] : null)
   const userId = routeUser ?? (wall.mode === 'setup' ? null : wall.user_id)
   // the sync status we have is the wall person's; don't show it on another person's detail page
   const sync = wall.mode !== 'setup' && wall.user_id === userId ? wall.ambient.sync : null

@@ -107,7 +107,7 @@ def main(argv=None) -> int:
 
     if a.cmd == "watch":
         from .sync.activity_watch import watch_loop
-        watch_loop(cfg, conn)
+        watch_loop(conn)
         return 0
 
     if a.cmd == "ingest":

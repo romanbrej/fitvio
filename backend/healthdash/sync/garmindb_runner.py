@@ -44,7 +44,8 @@ def garmindb_cli() -> str:
 def init_user_config(user: UserConfig, email: str, data_root: Path | None = None,
                      since: datetime | None = None) -> Path:
     """Create the GarminDB config for a user. The password goes in a separate chmod-600 file
-    that the user fills in themselves; it is never written by this code."""
+    (`password.txt`, created empty here): `accounts.prepare` writes it, or the user fills it in by hand
+    after `healthdash init-user`. The config itself never contains the password."""
     import garmindb
 
     cfg_dir = user.garmindb_dir or (PROJECT_ROOT / "data" / "garmindb" / user.id / "config")
@@ -283,6 +284,11 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, tim
                 error = hit.strip()[:500]
             elif not (base_dir_from_config(user.garmindb_dir) / "DBs" / "garmin_activities.db").exists():
                 error = "garmindb finished but produced no activities database"
+            if error is None:
+                # today's training + readiness; never fails the sync. Still inside the lock: the cached
+                # login may be refreshed, and no other GarminDB run may touch the token file meanwhile.
+                from . import garmin_coach
+                garmin_coach.update_user(conn, user)
     except SyncBusy:
         raise
     except OSError as e:
@@ -295,9 +301,6 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, tim
     conn.commit()
     if error:
         log.error("sync %s failed: %s", user.id, error)
-    else:
-        from . import garmin_coach
-        garmin_coach.update_user(conn, user)  # today's training + readiness; never fails the sync
     return error is None
 
 

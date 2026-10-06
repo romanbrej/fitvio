@@ -212,25 +212,28 @@ async function post<T = void>(path: string, body: unknown): Promise<T> {
   return r.json()
 }
 
+/** A path segment from data or the URL (user ids, job ids): never lets it change the path. */
+const seg = encodeURIComponent
+
 export const api = {
   config: () => get<AppConfig>('/api/config'),
   wall: () => get<WallState>('/api/wall'),
-  ambient: (user: string) => get<Ambient>(`/api/users/${user}/ambient`),
+  ambient: (user: string) => get<Ambient>(`/api/users/${seg(user)}/ambient`),
   select: (user_id: string) => post('/api/wall/select', { user_id }),
   dismiss: (session_id: string) => post('/api/wall/dismiss', { session_id }),
-  session: (id: string) => get<SessionDetail>(`/api/sessions/${encodeURIComponent(id)}`),
+  session: (id: string) => get<SessionDetail>(`/api/sessions/${seg(id)}`),
   sessions: (user: string, sport?: string, limit = 60) =>
     get<(Session & { verdict: VerdictKind | null; headline: string | null })[]>(
-      `/api/users/${user}/sessions?limit=${limit}${sport ? `&sport=${sport}` : ''}`),
-  pmc: (user: string, days = 180) => get<PmcDay[]>(`/api/users/${user}/pmc?days=${days}`),
-  health: (user: string, days = 90) => get<HealthDay[]>(`/api/users/${user}/health?days=${days}`),
-  validation: (user: string) => get<Validation>(`/api/users/${user}/validation`),
-  profile: (user: string) => get<Profile>(`/api/users/${user}/profile`),
+      `/api/users/${seg(user)}/sessions?${new URLSearchParams({ limit: String(limit), ...(sport ? { sport } : {}) })}`),
+  pmc: (user: string, days = 180) => get<PmcDay[]>(`/api/users/${seg(user)}/pmc?days=${days}`),
+  health: (user: string, days = 90) => get<HealthDay[]>(`/api/users/${seg(user)}/health?days=${days}`),
+  validation: (user: string) => get<Validation>(`/api/users/${seg(user)}/validation`),
+  profile: (user: string) => get<Profile>(`/api/users/${seg(user)}/profile`),
   accounts: () => get<Account[]>('/api/accounts'),
   connect: (email: string, password: string) => post<Job>('/api/accounts', { email, password }),
-  job: (id: string) => get<Job>(`/api/jobs/${id}`),
-  mfa: (id: string, code: string) => post<{ ok: boolean }>(`/api/jobs/${id}/mfa`, { code }),
-  syncNow: (user: string) => post<Job>(`/api/users/${user}/sync`, {}),
+  job: (id: string) => get<Job>(`/api/jobs/${seg(id)}`),
+  mfa: (id: string, code: string) => post<{ ok: boolean }>(`/api/jobs/${seg(id)}/mfa`, { code }),
+  syncNow: (user: string) => post<Job>(`/api/users/${seg(user)}/sync`, {}),
   morning: () => post<{ started: Job[]; pending: boolean }>('/api/wall/morning', {}),
   activityCheck: () => get<ActivityCheck>('/api/settings/activity-check'),
   setActivityCheck: (enabled: boolean) => post<ActivityCheck>('/api/settings/activity-check', { enabled }),

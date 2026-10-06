@@ -112,6 +112,10 @@ _jobs: dict[str, Job] = {}
 _lock = threading.Lock()
 
 
+class ConnectBusy(RuntimeError):
+    """Another account is being connected right now (only one login at a time)."""
+
+
 def get(job_id: str) -> Job | None:
     return _jobs.get(job_id)
 
@@ -121,9 +125,9 @@ def active_for(user_id: str) -> Job | None:
         return next((j for j in reversed(list(_jobs.values())) if j.user_id == user_id and j.active), None)
 
 
-def connect_in_progress() -> bool:
-    with _lock:
-        return any(j.kind == "connect" and j.active for j in _jobs.values())
+def _connect_active() -> bool:
+    """Caller holds `_lock`."""
+    return any(j.kind == "connect" and j.active for j in _jobs.values())
 
 
 def submit_mfa(job_id: str, code: str) -> bool:
@@ -135,13 +139,26 @@ def submit_mfa(job_id: str, code: str) -> bool:
     return True
 
 
+def _add_locked(job: Job) -> Job:
+    """Caller holds `_lock`."""
+    _jobs[job.id] = job
+    # keep memory bounded: forget old finished jobs
+    for old in [j for j in _jobs.values() if not j.active][:-20]:
+        _jobs.pop(old.id, None)
+    return job
+
+
 def _add(job: Job) -> Job:
     with _lock:
-        _jobs[job.id] = job
-        # keep memory bounded: forget old finished jobs
-        for old in [j for j in _jobs.values() if not j.active][:-20]:
-            _jobs.pop(old.id, None)
-    return job
+        return _add_locked(job)
+
+
+def _now() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def _fail(job: Job, error: str) -> None:
+    job.phase, job.error, job.finished_at = "error", error, _now()
 
 
 def result_message(result: dict, full: bool) -> str:
@@ -193,13 +210,18 @@ def _download_and_import(job: Job, user: UserConfig, db_path: Path, full: bool, 
         log.exception("job %s failed", job.id)
         job.phase, job.error = "error", str(e)
     finally:
-        job.finished_at = datetime.now().isoformat(timespec="seconds")
+        job.finished_at = _now()
         conn.close()
 
 
 def start_connect(email: str, password: str, db_path: Path, on_registered: Callable[[], None] = lambda: None,
                   since: datetime | None = None) -> Job:
-    job = _add(Job(kind="connect", message="Logging in to Garmin Connect"))
+    """Log in and download in the background. Raises ConnectBusy while another connect runs; the
+    check and the new job happen under one lock, so two simultaneous requests can't both start."""
+    with _lock:
+        if _connect_active():
+            raise ConnectBusy("another account is being connected — wait for it to finish")
+        job = _add_locked(Job(kind="connect", message="Logging in to Garmin Connect"))
 
     def mfa_prompt() -> str:
         job.phase, job.message = "mfa_required", "Enter the security code Garmin just sent you"
@@ -209,19 +231,25 @@ def start_connect(email: str, password: str, db_path: Path, on_registered: Calla
         return job._mfa_code or ""
 
     def run():
-        user_id = new_user_id(email)
-        user = prepare(email, password, user_id, since)
+        # Every failure must end the job: an active job left behind would block all further connects.
+        user, stage, registered = None, "Login failed", False
         try:
+            user = prepare(email, password, new_user_id(email), since)
             job.name = login_interactive(user, mfa_prompt=mfa_prompt)
+            stage = "Saving the account failed"
+            register(user)
+            registered = True
+            user = load_config().user(user.id)
         except Exception as e:
-            discard(user)
-            job.phase, job.error = "error", f"Login failed: {e}"
-            job.finished_at = datetime.now().isoformat(timespec="seconds")
+            if stage != "Login failed":
+                log.exception("connect job %s: %s", job.id, stage)
+            if user and not registered:
+                discard(user)
+            _fail(job, f"{stage}: {e}")
             return
-        register(user)
-        job.user_id = user_id
+        job.user_id = user.id
         on_registered()
-        _download_and_import(job, load_config().user(user_id), db_path, full=True)
+        _download_and_import(job, user, db_path, full=True)
 
     threading.Thread(target=run, name=f"connect-{job.id}", daemon=True).start()
     return job

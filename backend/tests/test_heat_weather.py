@@ -74,6 +74,14 @@ def test_network_errors_are_not_stored_as_no_weather(tmp_path):
     assert not (tmp_path / "weather_42.json").exists()                      # retried next time
 
 
+def test_digits_of_the_activity_id_in_an_error_are_not_a_404(tmp_path):
+    def connectapi(path):  # Garmin's errors quote the URL, and ids like 12404567890 contain "404"
+        raise RuntimeError(f"500 Server Error: Internal Server Error for url: https://connectapi.garmin.com{path}")
+    with pytest.raises(RuntimeError):
+        garmin_extras.fetch_extras(connectapi, tmp_path, "12404567890", "2026-09-28")
+    assert not (tmp_path / "weather_12404567890.json").exists()             # retried next time
+
+
 def test_backfill_skips_what_exists_and_backs_off(tmp_path):
     (tmp_path / "weather_1.json").write_text("{}")
     (tmp_path / "acclimation_2026-01-01.json").write_text("{}")

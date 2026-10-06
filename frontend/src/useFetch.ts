@@ -6,6 +6,7 @@ export function useFetch<T>(fn: () => Promise<T>, deps: unknown[]): { data: T | 
   useEffect(() => {
     let alive = true
     setData(null)
+    setError(null)  // a failed earlier request must not stick to the new one
     fn().then(d => alive && setData(d)).catch(e => alive && setError(String(e)))
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps

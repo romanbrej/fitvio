@@ -220,12 +220,12 @@ def status(conn: sqlite3.Connection, cfg: AppConfig) -> dict:
     }
 
 
-def watch_loop(cfg: AppConfig | None, conn: sqlite3.Connection) -> None:
+def watch_loop(conn: sqlite3.Connection) -> None:
     """`healthdash watch`: runs forever in the sync container (restart: unless-stopped)."""
-    log.info("auto-sync: activity check every %d s (%02d:00–24:00), full sync every %d min",
-             CHECK_INTERVAL_S, ACTIVE_FROM_HOUR, FULL_SYNC_INTERVAL_S // 60)
     from ..config import load_config
 
+    log.info("auto-sync: activity check every %d s (%02d:00–24:00), full sync every %d min",
+             CHECK_INTERVAL_S, ACTIVE_FROM_HOUR, FULL_SYNC_INTERVAL_S // 60)
     next_full = 0.0  # a full sync right at start, like the old loop
     while True:
         cfg = load_config()  # people connected in the UI meanwhile are included

@@ -86,7 +86,10 @@ class GarminDbReader:
         return out
 
     def find_fit(self, activity_id: str) -> Path | None:
-        hits = sorted(self.fit_dir.glob(f"{activity_id}*.fit")) if self.fit_dir.exists() else []
+        """`<id>.fit` or `<id>_<suffix>.fit` — never another activity whose id merely starts with this one."""
+        if not self.fit_dir.exists():
+            return None
+        hits = sorted([*self.fit_dir.glob(f"{activity_id}.fit"), *self.fit_dir.glob(f"{activity_id}_*.fit")])
         return hits[0] if hits else None
 
     def load_activity(self, activity_id: str) -> ParsedActivity | None:

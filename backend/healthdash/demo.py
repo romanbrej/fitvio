@@ -203,7 +203,6 @@ def generate(conn: sqlite3.Connection, cfg: AppConfig, days: int = 150, seed: in
                      {"sex": "female", "max_hr": 185.0, "rest_hr": 55.0, "lthr": 166.0}]
     for ui, user in enumerate(cfg.users):
         # Stand-in for what profile.refresh() reads from Garmin on a real account.
-        profile._ensure(conn)
         for field, value in demo_profiles[ui % 2].items():
             conn.execute("INSERT OR REPLACE INTO profiles VALUES (?,?,?,?,?)",
                          (user.id, field, json.dumps(value), "demo data", now.isoformat()))

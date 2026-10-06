@@ -1,6 +1,8 @@
 import json
+from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from healthdash import config
@@ -187,3 +189,18 @@ def test_morning_tap_at_night_does_nothing_and_needs_the_home_network(client, mo
     assert client.post("/api/wall/morning").json()["started"] == [] and started == []
     main.app.dependency_overrides.clear()
     assert client.post("/api/wall/morning").status_code == 403
+
+
+@pytest.mark.parametrize("ip, allowed", [
+    ("192.168.1.20", True), ("127.0.0.1", True), ("::1", True), ("fd00::5", True),
+    ("::ffff:192.168.1.20", True),            # an IPv4 client on a dual-stack socket
+    ("::ffff:8.8.8.8", False), ("8.8.8.8", False), ("2001:4860::1", False), ("testclient", False),
+])
+def test_account_setup_only_from_the_home_network(ip, allowed):
+    request = SimpleNamespace(client=SimpleNamespace(host=ip))
+    if allowed:
+        main.local_network_only(request)
+    else:
+        with pytest.raises(HTTPException) as e:
+            main.local_network_only(request)
+        assert e.value.status_code == 403

@@ -6,8 +6,7 @@ import ipaddress
 import json
 import os
 import re
-from datetime import date, datetime, timedelta
-from pathlib import Path
+from datetime import date, datetime
 from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -168,7 +167,7 @@ def list_sessions(user_id: str, sport: str | None = None, limit: int = Query(60,
         q += " AND s.sport = ?"
         args.append(sport)
     q += " ORDER BY s.start_time DESC LIMIT ?"
-    args.append(min(limit, 500))
+    args.append(limit)
     return [db.row_to_dict(r) for r in cn.execute(q, args)]
 
 
@@ -191,9 +190,7 @@ def get_pmc(user_id: str, days: int = Query(180, ge=1, le=3650), c: AppConfig = 
 @app.get("/api/users/{user_id}/health")
 def get_health(user_id: str, days: int = Query(90, ge=1, le=3650), c: AppConfig = Depends(cfg), cn=Depends(conn)):
     _user_or_404(c, user_id)
-    d0 = (date.today() - timedelta(days=days)).isoformat()
-    return [dict(r) for r in cn.execute("SELECT * FROM health_days WHERE user_id = ? AND day >= ? ORDER BY day",
-                                        (user_id, d0))]
+    return wall.health_series(cn, user_id, days)
 
 
 @app.get("/api/users/{user_id}/profile")
@@ -211,7 +208,7 @@ def get_validation(user_id: str, c: AppConfig = Depends(cfg), cn=Depends(conn)):
 async def events(request: Request, c: AppConfig = Depends(cfg)):
     """Server-sent events: pushes 'refresh' whenever a verdict or sync status changes."""
 
-    def fingerprint() -> str:
+    def fingerprint() -> str:  # blocking SQLite: runs in a worker thread, not on the event loop
         cn = db.connect(c.db_path)
         try:
             v = cn.execute("SELECT MAX(created_at) AS m, COUNT(*) AS n FROM verdicts").fetchone()
@@ -221,11 +218,11 @@ async def events(request: Request, c: AppConfig = Depends(cfg)):
             cn.close()
 
     async def stream():
-        last = fingerprint()
+        last = await asyncio.to_thread(fingerprint)
         yield "event: hello\ndata: {}\n\n"
         while not await request.is_disconnected():
             await asyncio.sleep(10)
-            fp = fingerprint()
+            fp = await asyncio.to_thread(fingerprint)
             if fp != last:
                 last = fp
                 yield f"event: refresh\ndata: {json.dumps({'at': fp})}\n\n"
@@ -245,6 +242,9 @@ def local_network_only(request: Request) -> None:
         ip = ipaddress.ip_address(host)
     except ValueError:
         raise HTTPException(403, "account setup is only allowed from your home network")
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        # a dual-stack socket reports IPv4 clients as ::ffff:a.b.c.d; older Pythons call that whole range private
+        ip = ip.ipv4_mapped
     if not (ip.is_private or ip.is_loopback):
         raise HTTPException(403, "account setup is only allowed from your home network")
 
@@ -281,11 +281,12 @@ def connect_account(body: Connect, c: AppConfig = Depends(cfg)):
     email = body.email.strip()
     if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         raise HTTPException(422, "please enter a valid email address")
-    if accounts.connect_in_progress():
-        raise HTTPException(429, "another account is being connected — wait for it to finish")
     if (existing := accounts.is_connected(email)):
         raise HTTPException(409, f"this Garmin account is already connected (as '{existing}')")
-    job = accounts.start_connect(email, body.password, c.db_path, on_registered=reset_config)
+    try:
+        job = accounts.start_connect(email, body.password, c.db_path, on_registered=reset_config)
+    except accounts.ConnectBusy as e:
+        raise HTTPException(429, str(e)) from None
     return job.public()
 
 

@@ -7,7 +7,12 @@ import './ConnectForm.css'
 const JOB_KEY = 'healthwall.connectJob'
 const store = {
   get: () => { try { return localStorage.getItem(JOB_KEY) } catch { return null } },
-  set: (v: string | null) => { try { v ? localStorage.setItem(JOB_KEY, v) : localStorage.removeItem(JOB_KEY) } catch { /* private mode */ } },
+  set: (v: string | null) => {
+    try {
+      if (v) localStorage.setItem(JOB_KEY, v)
+      else localStorage.removeItem(JOB_KEY)
+    } catch { /* private mode */ }
+  },
 }
 
 const STEPS: { phase: Job['phase']; label: string }[] = [

@@ -31,24 +31,9 @@ DEFAULTS = {"max_hr": 190.0, "rest_hr": 55.0, "sex": "male"}
 # Changing these changes zones, session types and training load → reprocess history.
 THRESHOLD_TOLERANCE = {"max_hr": 2.0, "rest_hr": 3.0, "ftp": 5.0}
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS profiles (
-    user_id     TEXT NOT NULL,
-    field       TEXT NOT NULL,
-    value       TEXT,           -- JSON
-    source      TEXT,
-    updated_at  TEXT,
-    PRIMARY KEY (user_id, field)
-);
-"""
-
-
-def _ensure(conn: sqlite3.Connection) -> None:
-    conn.executescript(SCHEMA)
-
 
 def stored(conn: sqlite3.Connection, user_id: str) -> dict[str, dict]:
-    _ensure(conn)
+    """The stored profile (table `profiles`, created with the app database in db.py)."""
     return {r["field"]: {"value": json.loads(r["value"]), "source": r["source"], "updated_at": r["updated_at"]}
             for r in conn.execute("SELECT * FROM profiles WHERE user_id = ?", (user_id,))}
 
@@ -205,7 +190,6 @@ def derive(base_dir: Path, fit_limit: int = 20) -> dict[str, tuple[object, str]]
 
 def refresh(conn: sqlite3.Connection, user: UserConfig, base_dir: Path) -> bool:
     """Re-derive the profile. Returns True when zone-relevant values changed (→ reprocess history)."""
-    _ensure(conn)
     before = resolve(conn, user)
     had_profile = bool(stored(conn, user.id))
     now = datetime.now().isoformat(timespec="seconds")

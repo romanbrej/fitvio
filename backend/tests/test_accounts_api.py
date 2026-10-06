@@ -107,3 +107,44 @@ def test_sync_now_reports_what_arrived(client, tmp_path, monkeypatch, new, messa
     done = wait_for(client, job["id"], {"done", "error"})
     assert done["phase"] == "done" and done["message"] == message
     assert fulls == [False]  # only the latest days, not the whole history
+
+
+def test_only_one_connect_at_a_time(client):
+    main.app.dependency_overrides[main.local_network_only] = lambda: None
+    first = client.post("/api/accounts", json={"email": "alex@example.com", "password": "right"}).json()
+    wait_for(client, first["id"], {"mfa_required"})
+    second = client.post("/api/accounts", json={"email": "sam@example.com", "password": "right"})
+    assert second.status_code == 429
+    client.post(f"/api/jobs/{first['id']}/mfa", json={"code": "123456"})
+    assert wait_for(client, first["id"], {"done", "error"})["phase"] == "done"
+
+
+def test_a_crash_before_the_login_ends_the_job_and_frees_the_slot(client, monkeypatch):
+    main.app.dependency_overrides[main.local_network_only] = lambda: None
+
+    def broken_prepare(*a, **kw):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(accounts, "prepare", broken_prepare)
+    job = client.post("/api/accounts", json={"email": "kim@example.com", "password": "right"}).json()
+    done = wait_for(client, job["id"], {"done", "error"})
+    assert done["phase"] == "error" and "disk full" in done["error"] and done["finished_at"]
+    # an active job left behind would refuse every further connect with 429
+    again = client.post("/api/accounts", json={"email": "kim@example.com", "password": "right"})
+    assert again.status_code == 200
+    wait_for(client, again.json()["id"], {"done", "error"})
+
+
+def test_saving_the_account_failing_leaves_nothing_behind(client, tmp_path, monkeypatch):
+    main.app.dependency_overrides[main.local_network_only] = lambda: None
+
+    def broken_register(user):
+        raise ValueError("config not writable")
+
+    monkeypatch.setattr(accounts, "register", broken_register)
+    job = client.post("/api/accounts", json={"email": "sam@example.com", "password": "right"}).json()
+    wait_for(client, job["id"], {"mfa_required"})
+    client.post(f"/api/jobs/{job['id']}/mfa", json={"code": "123456"})
+    done = wait_for(client, job["id"], {"done", "error"})
+    assert done["phase"] == "error" and done["error"].startswith("Saving the account failed")
+    assert not (tmp_path / "data" / "garmindb" / "sam").exists()

@@ -12,13 +12,12 @@ today's workout instead of pretending it's a rest day.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import sqlite3
 from datetime import date, datetime, timedelta
 from typing import Callable
-
-import json
 
 from .. import db
 
@@ -35,17 +34,18 @@ FRESH_DAYS = 2        # today and tomorrow are fetched on every sync (Garmin Coa
 KEEP_DAYS = 14        # planned workouts older than this are deleted
 # ids from Garmin's answers go into request paths: accept only these shapes
 _UUID = re.compile(r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$")
-
-
-def _id(v) -> int | None:
-    s = str(v or "")
-    return int(s) if s.isdigit() and len(s) <= 20 else None
 PLANNED_TYPES = {"fbtAdaptiveWorkout", "workout"}
 # Garmin's sport keys → ours
 SPORTS = {"running": "running", "trail_running": "running", "treadmill_running": "running",
           "cycling": "cycling", "indoor_cycling": "cycling", "virtual_ride": "cycling",
           "swimming": "swimming", "lap_swimming": "swimming", "open_water_swimming": "swimming",
           "strength_training": "strength", "fitness_equipment": "strength"}
+
+
+def _id(v) -> int | None:
+    """A numeric Garmin id (workout, plan) that is safe to put into a request path, else None."""
+    s = str(v or "")
+    return int(s) if s.isdigit() and len(s) <= 20 else None
 
 
 # --- parsing (pure, tested against real anonymized answers in tests/fixtures/garmin) ---------
