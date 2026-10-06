@@ -14,16 +14,16 @@ import { useFetch } from '../useFetch'
 import './Detail.css'
 
 /** The local date as YYYY-MM-DD (not UTC: the plan's days are local days). */
-function localIso(d = new Date()): string {
+export function localIso(d = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function dayLabel(iso: string): string {
+export function dayLabel(iso: string): string {
   return new Date(`${iso}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 /** Why today is (or isn't) a good day for it — from Garmin's readiness and the app's own numbers. */
-function readyLines(a: Ambient): { ok: boolean; title: string; lines: string[] } {
+export function readyLines(a: Ambient): { ok: boolean; title: string; lines: string[] } {
   const r = a.readiness
   const form = a.form?.form
   const ss = a.sweet_spot
@@ -41,7 +41,7 @@ function readyLines(a: Ambient): { ok: boolean; title: string; lines: string[] }
 
 const STATUS_LINE: Record<string, string> = { missed: 'Missed', today: 'Today', planned: 'Planned', rest: 'Rest day' }
 
-function statusLine(d: PlanDay): string {
+export function statusLine(d: PlanDay): string {
   if (d.status !== 'done') return STATUS_LINE[d.status]
   const v = d.verdict === 'better' ? 'Better' : d.verdict === 'worse' ? 'Worse' : d.verdict === 'in_line' ? 'In line' : null
   return ['Done', v, d.targets ? `${d.targets.hit}/${d.targets.of} hit` : null].filter(Boolean).join(' · ')
@@ -144,7 +144,7 @@ function Content({ a }: { a: Ambient }) {
 type Shown = Pick<PlannedWorkout, 'day' | 'title' | 'sport' | 'phrase' | 'description' | 'est_duration_s' | 'est_load' | 'steps' | 'done'>
 
 /** The workout of a day: today's full one, a day of the plan week, or a later planned day. */
-function workoutFor(a: Ambient, day: string, today: string): { w: Shown | null; status: PlanStatus } {
+export function workoutFor(a: Ambient, day: string, today: string): { w: Shown | null; status: PlanStatus } {
   if (day === today && a.today_workout) return { w: a.today_workout, status: a.today_workout.done ? 'done' : 'today' }
   const pd = a.plan_week?.days.find(d => d.day === day)
   if (pd?.title && pd.sport) {
@@ -291,7 +291,7 @@ function DayWorkout({ a, day, today }: { a: Ambient; day: string; today: string 
 }
 
 /** Form tomorrow morning if today's workout is done: one day of CTL/ATL decay with today's load. */
-function formAfter(a: Ambient, load: number): number {
+export function formAfter(a: Ambient, load: number): number {
   const f = a.form!
   const kc = 1 - Math.exp(-1 / 42), ka = 1 - Math.exp(-1 / 7)
   const todayLoad = (a.pmc.at(-1)?.load ?? 0) + load

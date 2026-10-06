@@ -85,4 +85,4 @@ Any screen with a modern browser works. For a wall display:
 - **iPad:** in Safari, *Add to Home Screen* (it opens fullscreen), then *Guided Access*, and set Auto-Lock to Never.
 - **Any other screen:** a browser in fullscreen / kiosk mode.
 
-The layout is made for a landscape tablet (around 1280 × 800 CSS px); bigger screens at pixel ratio 1 are scaled up automatically, smaller ones stack. Accounts → *This screen* shows the size the wall lays out at and whether it fits on one screen. The night screen times are set with `night_start` and `night_end` in `config/users.json` (`wall` section).
+The layout is made for a landscape tablet (around 1280 × 800 CSS px); bigger screens at pixel ratio 1 are scaled up automatically. Phones (narrower than 700 px) get their own phone app instead. Accounts → *This screen* shows the size the wall lays out at and whether it fits on one screen. The night screen times are set with `night_start` and `night_end` in `config/users.json` (`wall` section).

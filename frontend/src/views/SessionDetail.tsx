@@ -43,7 +43,7 @@ type Row = [string, string]
 interface FactGroups { key: Row[]; groups: { title: string; rows: Row[] }[] }
 
 /** The session's numbers: up to 6 key numbers big, the rest in small themed groups. */
-function factGroups(s: SessionDetail): FactGroups {
+export function factGroups(s: SessionDetail): FactGroups {
   const f = s.features || {}
   const spm = f.avg_cadence ? `${num(f.avg_cadence * (f.avg_cadence < 120 ? 2 : 1))} spm` : null
   const key: Row[] = [['Duration', duration(s.duration_s)]]
@@ -105,7 +105,7 @@ function factGroups(s: SessionDetail): FactGroups {
 
 const ZONE_COLORS = ['#64748b', '#38bdf8', '#3ddc84', '#f5b83d', '#f87171']
 
-function StreamChart({ s }: { s: SessionDetail }) {
+export function StreamChart({ s }: { s: SessionDetail }) {
   const st = s.streams
   if (!st || !st.t.length) return null
   const running = s.sport === 'running'
@@ -325,7 +325,7 @@ export function SessionDetailView() {
   )
 }
 
-function keyMetric(sport: string, f: Record<string, any>): string {
+export function keyMetric(sport: string, f: Record<string, any>): string {
   if (sport === 'running') return num(f?.ef_adj, 2)
   if (sport === 'cycling') return f?.ef ? `${num(f.ef, 2)} W/b` : '—'
   if (sport === 'swimming') return f?.pace_100m_s ? `${duration(f.pace_100m_s)}/100` : '—'

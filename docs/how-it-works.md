@@ -48,6 +48,7 @@ A little animal that lives on the wall and reacts to your data: *overjoyed* afte
 - **Glance → tap → detail.** Every card opens a detail page: every number, HR and pace/power charts, laps, sets, the exact baseline sessions you were compared with, "Am I improving?" per sport, and health trends over up to 365 days. The display returns to the wall after 2 minutes idle.
 - **Day and night screens.** After a minute without a tap the overview fades to a calm day screen — big clock, today's headline, a few facts and your buddy. Between `night_start` and `night_end` a dark night screen takes over. A tap wakes the wall.
 - **Multi-user.** Each person has their own Garmin login and their own GarminDB. The newest activity takes over the wall with that person's avatar; tap an avatar to switch.
+- **On your phone.** Open the same address on a phone (home Wi-Fi) and you get a personal app instead of the wall: pick yourself once (remembered on that phone), then four tabs — Today, Plan, Trends, Me. A fresh workout shows as a card on top of Today, not a takeover, and nothing on the phone changes what the wall shows.
 - **Big screens scale up.** A tablet that renders at pixel ratio 1 (e.g. 1920 × 1080 CSS px in a kiosk browser) gets the whole wall zoomed so it looks like the ~1280 × 800 design.
 
 ## Syncing

@@ -15,6 +15,17 @@ A self-hosted dashboard for a tablet on your wall. It pulls your activities and 
 
 <sub>Screenshots use the built-in demo data.</sub>
 
+## On your phone
+
+Open the same address on your phone (home Wi-Fi) and Fitvio becomes your personal training companion: pick yourself once, then four tabs — **Today, Plan, Trends, Me**. A fresh workout shows up as a verdict card on top of Today instead of taking over the screen, and nothing you do on the phone changes what the wall shows.
+
+<p>
+  <img src="docs/screenshots/phone-today.png" width="24%" alt="Phone: Today — the fresh verdict card, today's mission, the week and readiness">
+  <img src="docs/screenshots/phone-verdict.png" width="24%" alt="Phone: the verdict — better than your recent easy runs, 4 of 5 improved">
+  <img src="docs/screenshots/phone-plan.png" width="24%" alt="Phone: the Garmin plan — the week as cards and the workout step by step">
+  <img src="docs/screenshots/phone-trends.png" width="24%" alt="Phone: Trends — fitness, fatigue and form, and this week's load against the sweet spot">
+</p>
+
 ## Quick start
 
 You need a machine in your home network with **Docker** (amd64 or arm64) and a **Garmin Connect** account.
@@ -47,6 +58,7 @@ docker run --rm -p 8765:8765 -e FITVIO_CONFIG=/tmp/demo/users.json -e FITVIO_DB=
 - **A training buddy** — pick one of 8 animals; it cheers after a good session, gets hungry when you skip, sleeps at night.
 - **Made for the wall** — big type, day and night screens, the newest activity takes over the screen, auto-scales to big tablets.
 - **For the whole household** — one Garmin login per person; tap an avatar to switch.
+- **On your phone too** — a personal app with Today, Plan, Trends and Me (home Wi-Fi only).
 - **Private by design** — runs on your server, LAN only; your Garmin login and health data never leave your home.
 
 ## How it works

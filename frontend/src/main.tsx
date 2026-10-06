@@ -4,6 +4,8 @@ import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
 import App from './App'
 import './theme.css'
 import { applyUiScale } from './uiScale'
+import { isPhone, reloadWhenPhoneChanges } from './phone/isPhone'
+import { phoneRoutes } from './phone/routes'
 import { Accounts } from './views/Accounts'
 import { HealthDetail } from './views/HealthDetail'
 import { LoadDetail } from './views/LoadDetail'
@@ -13,7 +15,7 @@ import { SportDetail } from './views/SportDetail'
 import { ValidationDetail } from './views/ValidationDetail'
 import { Wall } from './views/Wall'
 
-const router = createBrowserRouter([
+const wallRoutes = [
   {
     path: '/',
     element: <App />,
@@ -29,9 +31,13 @@ const router = createBrowserRouter([
       { path: 'u/:user/today', element: <Navigate to="../plan" relative="path" replace /> },
     ],
   },
-])
+]
 
-applyUiScale()
+// A phone gets the personal companion app; everything else (the wall tablet, laptops) the wall.
+const phone = isPhone()
+reloadWhenPhoneChanges(phone)
+if (!phone) applyUiScale()
+const router = createBrowserRouter(phone ? phoneRoutes : wallRoutes)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

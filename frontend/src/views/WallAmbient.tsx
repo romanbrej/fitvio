@@ -12,16 +12,16 @@ import { READINESS_LEVEL, feedbackText, headline, paceStr } from '../mission'
 import './Wall.css'
 
 const SPORTS: Sport[] = ['running', 'cycling', 'swimming', 'strength']
-const SPORT_COLOR: Record<Sport, string> = {
+export const SPORT_COLOR: Record<Sport, string> = {
   running: 'var(--run)', cycling: 'var(--ride)', swimming: 'var(--swim)', strength: 'var(--gym)', other: 'var(--muted)',
 }
 
 /** "Half Marathon Plan with Garmin Run Coach" → "Half Marathon Plan" — the wall has little room. */
-function planName(name: string): string {
+export function planName(name: string): string {
   return name.replace(/\s+with Garmin.*$/i, '')
 }
 
-function shortWhen(iso: string): string {
+export function shortWhen(iso: string): string {
   const days = Math.floor((Date.now() - new Date(iso).setHours(0, 0, 0, 0)) / 86400000)
   return days <= 0 ? 'Today' : days === 1 ? 'Yesterday' : `${days} d ago`
 }
@@ -197,7 +197,7 @@ function zeroPct(days: Ambient['pmc']): number {
 }
 
 /** 6 weeks of fitness (blue), fatigue (pink, dashed) and form (yellow) on one chart and one scale, with a zero line. */
-function MiniPmc({ days }: { days: Ambient['pmc'] }) {
+export function MiniPmc({ days }: { days: Ambient['pmc'] }) {
   if (days.length < 2) return null
   const W = 500, H = 100
   const vals = days.flatMap(d => [d.fitness, d.fatigue, d.form, 0])
@@ -322,7 +322,7 @@ function weekNo(iso: string): number {
 }
 
 /* Sport tiles: one big number in real units, its trend, and the last verdict. */
-function tileContent(sport: Sport, t: SportTrend): { big: string; unit?: string; caption: string; extra?: string; spark: number[]; tone: string } {
+export function tileContent(sport: Sport, t: SportTrend): { big: string; unit?: string; caption: string; extra?: string; spark: number[]; tone: string } {
   const st = t.status
   if (sport === 'running' && st?.pace_s_per_km) {
     const c = st.change_s_per_km

@@ -14,7 +14,7 @@ export function deltaTone(d: Delta): string {
   return d.z >= 0.6 ? 'better' : d.z <= -0.6 ? 'worse' : 'inline'
 }
 
-function facts(s: Session): [string, string][] {
+export function facts(s: Session): [string, string][] {
   const f = s.features || {}
   const out: [string, string][] = [['Duration', duration(s.duration_s)]]
   if (s.distance_m) out.push(['Distance', distance(s.distance_m, s.sport)])
