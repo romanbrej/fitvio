@@ -4,7 +4,7 @@ import json
 import pytest
 
 import garmindb.download as dl
-from healthdash.sync import garmindb_fast as fast
+from fitvio.sync import garmindb_fast as fast
 
 
 class FakeDownload:

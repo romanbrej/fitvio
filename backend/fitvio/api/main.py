@@ -16,15 +16,15 @@ from pydantic import BaseModel, Field
 
 from .. import accounts, buddy, db, profile, wall
 from ..analytics import load as load_model
-from ..config import PROJECT_ROOT, AppConfig, load_config
+from ..config import PROJECT_ROOT, AppConfig, env, load_config
 from ..pipeline import user_sessions
 from ..sync import activity_watch
 
-app = FastAPI(title="Health Dashboard", docs_url=None, redoc_url=None, openapi_url=None)
+app = FastAPI(title="Fitvio", docs_url=None, redoc_url=None, openapi_url=None)
 _cfg: AppConfig | None = None
 
-# Extra hostnames the wall may be reached by (e.g. "healthwall" or "pi.fritz.box"), comma-separated.
-EXTRA_HOSTS = {h.strip().lower() for h in os.environ.get("HEALTHDASH_ALLOWED_HOSTS", "").split(",") if h.strip()}
+# Extra hostnames the wall may be reached by (e.g. "fitvio" or "pi.fritz.box"), comma-separated.
+EXTRA_HOSTS = {h.strip().lower() for h in env("ALLOWED_HOSTS", "").split(",") if h.strip()}
 LOCAL_SUFFIXES = (".local", ".lan", ".home", ".internal", ".fritz.box", ".home.arpa")
 
 SECURITY_HEADERS = {
@@ -372,7 +372,7 @@ def get_activity_check(c: AppConfig = Depends(cfg), cn=Depends(conn)):
 
 @app.post("/api/settings/activity-check", dependencies=[Depends(local_network_only)])
 def set_activity_check(body: ActivityCheck, c: AppConfig = Depends(cfg), cn=Depends(conn)):
-    """The kill switch for the auto-sync check (the separate `healthdash watch` process reads it each round)."""
+    """The kill switch for the auto-sync check (the separate `fitvio watch` process reads it each round)."""
     activity_watch.set_enabled(cn, body.enabled)
     if body.enabled:  # switching it back on also ends a rate-limit pause
         db.set_state(cn, activity_watch.K_BACKOFF, "")

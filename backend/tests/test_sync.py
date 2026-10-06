@@ -1,9 +1,9 @@
 import json
 import stat
 
-from healthdash import db
-from healthdash.config import UserConfig
-from healthdash.sync import garmindb_runner
+from fitvio import db
+from fitvio.config import UserConfig
+from fitvio.sync import garmindb_runner
 
 
 def fake_cli(tmp_path, output: str, rc: int = 0):
@@ -68,7 +68,7 @@ echo "INFO:__main__:___Importing All Data___" >> garmindb.log; echo "done"
 
 
 def test_moved_project_config_is_repaired_to_relative_paths(tmp_path):
-    from healthdash.ingest.garmindb_reader import base_dir_from_config
+    from fitvio.ingest.garmindb_reader import base_dir_from_config
     person = tmp_path / "data" / "garmindb" / "alex"
     cfg_dir = person / "config"
     cfg_dir.mkdir(parents=True)

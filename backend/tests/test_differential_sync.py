@@ -8,11 +8,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from healthdash import accounts, db, pipeline
-from healthdash.activity import ParsedActivity
-from healthdash.config import UserConfig
-from healthdash.sync import garmindb_fast as fast
-from healthdash.sync import garmindb_runner
+from fitvio import accounts, db, pipeline
+from fitvio.activity import ParsedActivity
+from fitvio.config import UserConfig
+from fitvio.sync import garmindb_fast as fast
+from fitvio.sync import garmindb_runner
 
 from .test_analytics import steady_records
 
@@ -175,7 +175,7 @@ def test_run_sync_passes_last_sync_start_only_for_latest(tmp_path, monkeypatch):
         {"directories": {"relative_to_home": False, "base_dir": "HealthData"}}))
     seen = tmp_path / "seen.txt"
     exe = tmp_path / "fake.sh"
-    exe.write_text(f'#!/bin/sh\necho "${{HEALTHDASH_SYNC_SINCE:-none}}" >> {seen}\necho ok\n')
+    exe.write_text(f'#!/bin/sh\necho "${{FITVIO_SYNC_SINCE:-none}}" >> {seen}\necho ok\n')
     exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
     monkeypatch.setattr(garmindb_runner, "garmindb_command", lambda: [str(exe)])
     user = UserConfig(id="u", garmindb_config_dir=str(cfg_dir))
@@ -220,7 +220,7 @@ def test_edited_activity_is_reingested_without_retaking_the_wall(tmp_path, monke
         def health_days(self, since):
             return []
 
-    import healthdash.ingest.garmindb_reader as reader_mod
+    import fitvio.ingest.garmindb_reader as reader_mod
     monkeypatch.setattr(reader_mod, "GarminDbReader", FakeReader)
     monkeypatch.setattr(reader_mod, "base_dir_from_config", lambda d: tmp_path)
     monkeypatch.setattr(pipeline.profile, "refresh", lambda conn, user, base: False)
@@ -281,7 +281,7 @@ def test_new_workout_is_on_the_wall_before_the_history_is_reprocessed(tmp_path, 
         def health_days(self, since):
             return []
 
-    import healthdash.ingest.garmindb_reader as reader_mod
+    import fitvio.ingest.garmindb_reader as reader_mod
     monkeypatch.setattr(reader_mod, "GarminDbReader", FakeReader)
     monkeypatch.setattr(reader_mod, "base_dir_from_config", lambda d: tmp_path)
     monkeypatch.setattr(pipeline.profile, "refresh", lambda conn, user, base: True)  # e.g. a new max HR

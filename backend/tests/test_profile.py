@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from healthdash import db, profile
-from healthdash.config import UserConfig
+from fitvio import db, profile
+from fitvio.config import UserConfig
 
 
 def garmindb_dir(tmp_path, rhr_values=(50, 52, 51, 49, 50, 53), activity_maxes=(185, 188, 191, 170),
@@ -34,7 +34,7 @@ def watch(monkeypatch):
     """Stand-in for the zones_target/user_profile messages inside the FIT files."""
     data = {"zones_target": {"max_heart_rate": 192, "threshold_heart_rate": 170, "functional_threshold_power": 245},
             "user_profile": {"gender": "female", "resting_heart_rate": 58}, "sport": {"sport": "cycling"}}
-    from healthdash.ingest import fit_parser
+    from fitvio.ingest import fit_parser
     monkeypatch.setattr(fit_parser, "parse_fit_profile", lambda path: data)
     return data
 
@@ -62,7 +62,7 @@ def test_ftp_comes_from_rides_not_running_power(tmp_path, monkeypatch):
         "101_ACTIVITY.fit": {**ride, "zones_target": {"functional_threshold_power": 204}},
     }
     run = {"zones_target": {"functional_threshold_power": 369, "max_heart_rate": 194}, "sport": {"sport": "running"}}
-    from healthdash.ingest import fit_parser
+    from fitvio.ingest import fit_parser
     monkeypatch.setattr(fit_parser, "parse_fit_profile", lambda path: files.get(path.name, run))
     found = profile.derive(base)
     assert found["ftp"][0] == 204
@@ -77,7 +77,7 @@ def test_outdated_watch_max_hr_is_replaced_by_measured(tmp_path, watch):
 
 
 def test_without_watch_settings_uses_measured_max(tmp_path, monkeypatch):
-    from healthdash.ingest import fit_parser
+    from fitvio.ingest import fit_parser
     monkeypatch.setattr(fit_parser, "parse_fit_profile", lambda path: {})
     found = profile.derive(garmindb_dir(tmp_path))
     assert found["max_hr"][0] == 185  # 3rd highest of 191/188/185

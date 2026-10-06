@@ -3,10 +3,10 @@ from datetime import datetime
 
 import pytest
 
-from healthdash import db
-from healthdash.config import AppConfig, UserConfig
-from healthdash.sync import activity_watch as w
-from healthdash.sync.garmindb_runner import SyncBusy
+from fitvio import db
+from fitvio.config import AppConfig, UserConfig
+from fitvio.sync import activity_watch as w
+from fitvio.sync.garmindb_runner import SyncBusy
 
 NOON = datetime(2026, 9, 29, 12, 0)
 
@@ -120,7 +120,7 @@ def test_busy_and_network_errors_are_retried_quietly(env):
 
 def test_check_never_touches_the_password(env, monkeypatch):
     """No cached tokens → paused, without ever constructing a password login."""
-    import healthdash.sync.garmindb_runner as runner
+    import fitvio.sync.garmindb_runner as runner
     monkeypatch.setattr(runner, "garmin_client", lambda *a, **k: pytest.fail("password login attempted"))
     conn, cfg = env
     with pytest.raises(w.AuthExpired):

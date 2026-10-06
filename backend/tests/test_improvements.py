@@ -1,5 +1,5 @@
 """'What improved' after an activity."""
-from healthdash.improvements import Weights, best_items, delta_items, fitness_item, vo2max_item
+from fitvio.improvements import Weights, best_items, delta_items, fitness_item, vo2max_item
 
 
 def run(day="2026-09-28", dist=10000, speed=None, sid="s"):
@@ -52,7 +52,7 @@ def test_longest_and_fastest_in_90_days_are_bests():
 
 
 def test_good_news_comes_first(monkeypatch):
-    import healthdash.improvements as imp
+    import fitvio.improvements as imp
     monkeypatch.setattr(imp, "user_sessions", lambda conn, uid: [])
     monkeypatch.setattr(imp.profile, "stored", lambda conn, uid: {})
 

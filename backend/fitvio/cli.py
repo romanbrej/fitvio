@@ -1,13 +1,13 @@
-"""healthdash command line.
+"""fitvio command line.
 
-  healthdash init-user <user_id> <garmin_email>   create the GarminDB config for a user
-  healthdash sync [--user ID] [--full]            GarminDB download + ingest + verdicts
-  healthdash watch                                auto-sync on new activities (+ hourly full sync)
-  healthdash ingest [--user ID] [--full]          ingest only (GarminDB data already present)
-  healthdash evaluate [--user ID]                 recompute all verdicts
-  healthdash backtest [--user ID] [--sport S]     print verdicts over history
-  healthdash demo [--days N]                      fill the DB with synthetic data
-  healthdash serve [--host H] [--port P]          run the API + wall UI
+  fitvio init-user <user_id> <garmin_email>   create the GarminDB config for a user
+  fitvio sync [--user ID] [--full]            GarminDB download + ingest + verdicts
+  fitvio watch                                auto-sync on new activities (+ hourly full sync)
+  fitvio ingest [--user ID] [--full]          ingest only (GarminDB data already present)
+  fitvio evaluate [--user ID]                 recompute all verdicts
+  fitvio backtest [--user ID] [--sport S]     print verdicts over history
+  fitvio demo [--days N]                      fill the DB with synthetic data
+  fitvio serve [--host H] [--port P]          run the API + wall UI
 """
 from __future__ import annotations
 
@@ -25,13 +25,13 @@ def _users(cfg, user_id):
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(prog="healthdash")
+    p = argparse.ArgumentParser(prog="fitvio")
     p.add_argument("-v", "--verbose", action="store_true")
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("add-person", help="connect a Garmin account (asks for email + password)")
     s.add_argument("--id", help="short id, default: from the email address")
     s.add_argument("--since", help="download health data from this date (YYYY-MM-DD), default: 5 years back")
-    s.add_argument("--no-sync", action="store_true", help="only connect, download later with `healthdash sync --full`")
+    s.add_argument("--no-sync", action="store_true", help="only connect, download later with `fitvio sync --full`")
     s = sub.add_parser("profile", help="show what was detected from Garmin")
     s.add_argument("--user")
     s = sub.add_parser("init-user")
@@ -59,7 +59,7 @@ def main(argv=None) -> int:
 
     if a.cmd == "serve":
         import uvicorn
-        uvicorn.run("healthdash.api.main:app", host=a.host, port=a.port)
+        uvicorn.run("fitvio.api.main:app", host=a.host, port=a.port)
         return 0
 
     conn = db.connect(cfg.db_path)
@@ -79,7 +79,7 @@ def main(argv=None) -> int:
         print(f"GarminDB config written to {d}\n"
               f"Now put your Garmin password (only) into {d / 'password.txt'} and set\n"
               f'  "garmindb_config_dir": "{d}"\nfor user "{a.user_id}" in config/users.json, then run:\n'
-              f"  healthdash sync --user {a.user_id} --full")
+              f"  fitvio sync --user {a.user_id} --full")
         return 0
 
     if a.cmd == "sync":
@@ -211,13 +211,13 @@ def add_person(conn, a) -> int:
         name = login_interactive(user)
     except Exception as e:
         accounts.discard(user)
-        print(f"Login failed: {e}\nNothing was saved — check email/password and run `healthdash add-person` again.",
+        print(f"Login failed: {e}\nNothing was saved — check email/password and run `fitvio add-person` again.",
               file=sys.stderr)
         return 1
     accounts.register(user)
     print(f"Connected as {name or email}.")
     if a.no_sync:
-        print(f"Download later with: healthdash sync --user {user_id} --full")
+        print(f"Download later with: fitvio sync --user {user_id} --full")
         return 0
 
     print("Downloading your complete Garmin history. The first time this can take a long while "
@@ -227,7 +227,7 @@ def add_person(conn, a) -> int:
                   on_step=lambda i, n, key, label: print(f"\nStep {i + 1} of {n}: {label}"))
     if not ok:
         err = conn.execute("SELECT last_error FROM sync_status WHERE user_id = ?", (user_id,)).fetchone()[0]
-        print(f"Download failed: {err}\nRetry with: healthdash sync --user {user_id} --full", file=sys.stderr)
+        print(f"Download failed: {err}\nRetry with: fitvio sync --user {user_id} --full", file=sys.stderr)
         return 1
     result = pipeline.ingest_from_garmindb(conn, user, full=True)
     print(f"Imported {result['activities']} activities.")

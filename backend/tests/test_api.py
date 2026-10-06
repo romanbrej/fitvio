@@ -4,10 +4,10 @@ from datetime import datetime
 import pytest
 from fastapi.testclient import TestClient
 
-from healthdash import db
-from healthdash.api import main
-from healthdash.config import load_config
-from healthdash.demo import generate
+from fitvio import db
+from fitvio.api import main
+from fitvio.config import load_config
+from fitvio.demo import generate
 
 
 @pytest.fixture(scope="module")
@@ -62,7 +62,7 @@ def test_verdict_shows_what_improved_and_wall_shows_fitness_curve(client):
 
 
 def test_last_workout_card_resets_at_midnight():
-    from healthdash.wall import _is_today
+    from fitvio.wall import _is_today
     assert _is_today("2026-09-29T19:30:00", datetime(2026, 9, 29, 23, 59))
     assert not _is_today("2026-09-29T19:30:00", datetime(2026, 9, 30, 0, 0))
 
@@ -84,7 +84,7 @@ def test_unknown_user_404(client):
 
 def test_sport_status_running_pace_and_cycling_wkg():
     from datetime import date as d
-    from healthdash import improvements, wall
+    from fitvio import improvements, wall
     today = d(2026, 10, 2)
 
     def run(day, speed, typ="easy", avg_hr=152):

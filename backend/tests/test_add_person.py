@@ -2,14 +2,14 @@ import json
 
 import pytest
 
-from healthdash import cli, config
-from healthdash.sync import garmindb_runner
+from fitvio import cli, config
+from fitvio.sync import garmindb_runner
 
 
 @pytest.fixture
 def env(tmp_path, monkeypatch):
-    monkeypatch.setenv("HEALTHDASH_CONFIG", str(tmp_path / "users.json"))
-    monkeypatch.setenv("HEALTHDASH_DB", str(tmp_path / "app.db"))
+    monkeypatch.setenv("FITVIO_CONFIG", str(tmp_path / "users.json"))
+    monkeypatch.setenv("FITVIO_DB", str(tmp_path / "app.db"))
     monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)
     answers = iter(["alex.runner@example.com"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))

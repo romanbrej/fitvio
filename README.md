@@ -1,8 +1,8 @@
-# Health Wall
+# Fitvio
 
 **Your Garmin data on the wall — and one honest answer after every workout: *did this session make me better?***
 
-[![build](https://github.com/romanbrej/fitness-dashboard/actions/workflows/build.yml/badge.svg)](https://github.com/romanbrej/fitness-dashboard/actions/workflows/build.yml)
+[![build](https://github.com/romanbrej/fitvio/actions/workflows/build.yml/badge.svg)](https://github.com/romanbrej/fitvio/actions/workflows/build.yml)
 [![License: GPL v2](https://img.shields.io/badge/license-GPL--2.0-blue.svg)](LICENSE)
 ![Docker: amd64 + arm64](https://img.shields.io/badge/docker-amd64%20%7C%20arm64-2496ED?logo=docker&logoColor=white)
 ![Self-hosted](https://img.shields.io/badge/self--hosted-home%20network%20only-success)
@@ -20,9 +20,9 @@ A self-hosted dashboard for a tablet on your wall. It pulls your activities and 
 You need a machine in your home network with **Docker** (amd64 or arm64) and a **Garmin Connect** account.
 
 ```bash
-mkdir health-wall && cd health-wall
-curl -fsSLO https://raw.githubusercontent.com/romanbrej/fitness-dashboard/main/docker-compose.yml
-mkdir -p data config && printf 'HW_UID=%s\nHW_GID=%s\nTZ=Europe/Berlin\n' "$(id -u)" "$(id -g)" > .env
+mkdir fitvio && cd fitvio
+curl -fsSLO https://raw.githubusercontent.com/romanbrej/fitvio/main/docker-compose.yml
+mkdir -p data config && printf 'FITVIO_UID=%s\nFITVIO_GID=%s\nTZ=Europe/Berlin\n' "$(id -u)" "$(id -g)" > .env
 docker compose up -d
 ```
 
@@ -31,8 +31,8 @@ Open **`http://<server-ip>:8765`**, sign in with your Garmin account, and watch 
 **Just want to look around?** One command, no Garmin account, made-up data:
 
 ```bash
-docker run --rm -p 8765:8765 -e HEALTHDASH_CONFIG=/tmp/demo/users.json -e HEALTHDASH_DB=/tmp/demo/app.db \
-  ghcr.io/romanbrej/fitness-dashboard sh -c 'mkdir -p /tmp/demo && cp config/users.example.json /tmp/demo/users.json && healthdash demo && healthdash serve --host 0.0.0.0'
+docker run --rm -p 8765:8765 -e FITVIO_CONFIG=/tmp/demo/users.json -e FITVIO_DB=/tmp/demo/app.db \
+  ghcr.io/romanbrej/fitvio sh -c 'mkdir -p /tmp/demo && cp config/users.example.json /tmp/demo/users.json && fitvio demo && fitvio serve --host 0.0.0.0'
 ```
 
 …then open `http://localhost:8765`.
@@ -52,7 +52,7 @@ docker run --rm -p 8765:8765 -e HEALTHDASH_CONFIG=/tmp/demo/users.json -e HEALTH
 ## How it works
 
 ```
-Garmin watch → Garmin Connect → GarminDB (on your server) → healthdash: ingest, analyse, verdicts → wall (any browser)
+Garmin watch → Garmin Connect → GarminDB (on your server) → fitvio: ingest, analyse, verdicts → wall (any browser)
 ```
 
 New activities show up on the wall about 2–3 minutes after your watch syncs: the app checks Garmin for a new activity every 2 minutes and runs a quick differential sync; health data syncs hourly. More in [How it works](docs/how-it-works.md).
@@ -70,6 +70,6 @@ New activities show up on the wall about 2–3 minutes after your watch syncs: t
 
 Built on [GarminDB](https://github.com/tcgoetz/GarminDB), [garminconnect](https://github.com/cyberjunky/python-garminconnect) and [fitdecode](https://github.com/polyvertex/fitdecode).
 
-Health Wall is not affiliated with or endorsed by Garmin. It uses the unofficial Garmin Connect login (through GarminDB and garminconnect), which Garmin can change at any time. It is not a medical device — its verdicts are training feedback, not health advice.
+Fitvio is not affiliated with or endorsed by Garmin. It uses the unofficial Garmin Connect login (through GarminDB and garminconnect), which Garmin can change at any time. It is not a medical device — its verdicts are training feedback, not health advice.
 
 Licensed under the [GNU General Public License v2.0](LICENSE).

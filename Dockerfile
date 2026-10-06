@@ -1,4 +1,4 @@
-# Health Wall — one image for the dashboard (web) and the Garmin sync.
+# Fitvio — one image for the dashboard (web) and the Garmin sync.
 # Build: docker compose build      Run: docker compose up -d      (see docker-compose.yml)
 
 # --- 1. frontend (React/Vite) -----------------------------------------------------------
@@ -26,10 +26,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends tzdata \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY backend/pyproject.toml backend/
-COPY backend/healthdash backend/healthdash
+COPY backend/fitvio backend/fitvio
 # editable install: the app finds config/ and data/ relative to its source (/app)
 RUN pip install -e ./backend
 COPY --from=frontend /src/frontend/dist frontend/dist
 COPY config/users.example.json config/
 EXPOSE 8765
-CMD ["healthdash", "serve", "--host", "0.0.0.0", "--port", "8765"]
+CMD ["fitvio", "serve", "--host", "0.0.0.0", "--port", "8765"]

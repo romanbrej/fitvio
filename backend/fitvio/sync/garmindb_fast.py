@@ -8,10 +8,10 @@ This wrapper patches only the download loops (nothing else) and then runs the un
 `garmindb_cli.py` with the same arguments:
   * days already on disk are skipped without a request and without a pause
     (the most recent `download_days_overlap` days are always refreshed, as GarminDB intends)
-  * the pause between real requests is adaptive: HEALTHDASH_GARMIN_PAUSE (default 0.25 s),
+  * the pause between real requests is adaptive: FITVIO_GARMIN_PAUSE (default 0.25 s),
     doubled on errors / rate limiting up to 8 s, and eased back down after successes
   * monitoring remembers finished days in `.downloaded_days.json`, so it resumes too
-  * hydration is skipped (Health Wall doesn't use it; HEALTHDASH_HYDRATION=1 keeps it)
+  * hydration is skipped (Fitvio doesn't use it; FITVIO_HYDRATION=1 keeps it)
   * garmindb.log lines get a timestamp, so run_sync can log how long each step took
   * activities are compared with what is saved: a summary or details file is only rewritten when
     Garmin's version differs (renamed, RPE/feel added, …), recent activities are always checked
@@ -19,13 +19,13 @@ This wrapper patches only the download loops (nothing else) and then runs the un
 Unzipping (monitoring days, activity files) only writes files that are new or differ from what is on
 disk, so re-downloaded but identical files keep their mtime and are not imported again.
 
-Differential import (HEALTHDASH_SYNC_SINCE = start of the last successful sync, set by run_sync):
+Differential import (FITVIO_SYNC_SINCE = start of the last successful sync, set by run_sync):
   * `--latest` imports only files written since then, instead of GarminDB's "last 24 hours".
     Files are only written when new or changed, so this is a real comparison.
   * the analyze step only fills in missing sleep rows for the changed days. GarminDB's summary databases
-    (day/week/month/year stats) are not read by Health Wall, so they are only rebuilt by a full sync.
+    (day/week/month/year stats) are not read by Fitvio, so they are only rebuilt by a full sync.
 
-Usage (done by run_sync): python -m healthdash.sync.garmindb_fast <garmindb_cli args…>
+Usage (done by run_sync): python -m fitvio.sync.garmindb_fast <garmindb_cli args…>
 """
 from __future__ import annotations
 
@@ -45,17 +45,18 @@ from tqdm import tqdm
 
 import garmindb.download as dl
 
-from healthdash.sync import garmin_extras
+from fitvio.config import env
+from fitvio.sync import garmin_extras
 
 root_logger = logging.getLogger()
 
-BASE_PAUSE_S = float(os.environ.get("HEALTHDASH_GARMIN_PAUSE", "0.25"))
+BASE_PAUSE_S = float(env("GARMIN_PAUSE", "0.25"))
 MAX_PAUSE_S = 8.0
-KEEP_HYDRATION = os.environ.get("HEALTHDASH_HYDRATION") == "1"
+KEEP_HYDRATION = env("HYDRATION") == "1"
 
 
 def _sync_since() -> datetime.datetime | None:
-    raw = os.environ.get("HEALTHDASH_SYNC_SINCE")
+    raw = env("SYNC_SINCE")
     try:
         return datetime.datetime.fromisoformat(raw) if raw else None
     except ValueError:
@@ -164,7 +165,7 @@ def get_monitoring(self, directory_func, date, days):
 def get_hydration(self, directory_func, date, days, overwrite):
     if KEEP_HYDRATION:
         return _original_hydration(self, directory_func, date, days, overwrite)
-    root_logger.info("Getting hydration: skipped, not used by Health Wall")
+    root_logger.info("Getting hydration: skipped, not used by Fitvio")
 
 
 _original_hydration = dl.Download.get_hydration
@@ -300,7 +301,7 @@ def _patch_differential_import(since: datetime.datetime) -> None:
     FileProcessor.dir_to_files = classmethod(dir_to_files)
 
     def summary(self):
-        # Health Wall reads garmin.db and garmin_activities.db only, never the summary databases. The one
+        # Fitvio reads garmin.db and garmin_activities.db only, never the summary databases. The one
         # thing analyze adds there is a sleep row built from sleep events when the sleep JSON had none.
         days = [since.date() + datetime.timedelta(days=n) for n in range(max(1, (datetime.date.today() - since.date()).days + 1))]
         root_logger.info("Analyze: sleep rows for %s..%s only (summary databases are rebuilt by a full sync)",

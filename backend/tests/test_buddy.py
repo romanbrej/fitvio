@@ -5,10 +5,10 @@ from datetime import date, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from healthdash import buddy, db
-from healthdash.api import main
-from healthdash.config import load_config
-from healthdash.demo import generate
+from fitvio import buddy, db
+from fitvio.api import main
+from fitvio.config import load_config
+from fitvio.demo import generate
 
 TODAY = date(2026, 10, 5)
 

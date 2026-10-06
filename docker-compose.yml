@@ -1,15 +1,15 @@
-# Health Wall on Docker — any always-on machine in your home network (amd64 or arm64).
+# Fitvio on Docker — any always-on machine in your home network (amd64 or arm64).
 #   docker compose up -d             start (pulls the prebuilt image from GHCR)
 #   docker compose up -d --build     build the image yourself instead
 #   docker compose logs -f sync      watch the Garmin sync
 #   ./deploy/install-updater.sh      automatic updates: pulls a newer image every 5 minutes
 # Data and settings stay on the host in ./data and ./config (credentials, tokens, health data).
-# Optional .env: HW_UID / HW_GID = the host user owning those folders (id -u / id -g), TZ = your time zone.
-# Rollback: HW_TAG=sha-<commit> in .env, then docker compose up -d (remove it to follow latest again).
+# Optional .env: FITVIO_UID / FITVIO_GID = the host user owning those folders (id -u / id -g), TZ = your time zone.
+# Rollback: FITVIO_TAG=sha-<commit> in .env, then docker compose up -d (remove it to follow latest again).
 
 x-common: &common
-  image: ghcr.io/romanbrej/fitness-dashboard:${HW_TAG:-latest}
-  user: "${HW_UID:-1000}:${HW_GID:-1000}"
+  image: ghcr.io/romanbrej/fitvio:${FITVIO_TAG:-latest}
+  user: "${FITVIO_UID:-1000}:${FITVIO_GID:-1000}"
   environment:
     TZ: ${TZ:-Europe/Berlin}
   volumes:
@@ -21,7 +21,7 @@ services:
   web:
     <<: *common
     build: .
-    command: ["healthdash", "serve", "--host", "0.0.0.0", "--port", "8765"]
+    command: ["fitvio", "serve", "--host", "0.0.0.0", "--port", "8765"]
     ports:
       - "8765:8765"
     healthcheck:
@@ -34,7 +34,7 @@ services:
     <<: *common
     # auto-sync: checks Garmin for a new activity every 2 min (05:00–24:00) and syncs right away;
     # full differential sync (health data) hourly. Switch the check off in Accounts.
-    command: ["healthdash", "watch"]
+    command: ["fitvio", "watch"]
     depends_on:
       - web
 

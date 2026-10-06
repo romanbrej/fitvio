@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the Health Wall without Docker on a systemd-based Linux (Python >= 3.11).
+# Install Fitvio without Docker on a systemd-based Linux (Python >= 3.11).
 # Run from the project root:  ./deploy/install.sh
 # The frontend is built here if Node is present, otherwise build it elsewhere and copy frontend/dist over first.
 set -euo pipefail
@@ -20,14 +20,14 @@ fi
 
 mkdir -p data
 
-for unit in healthdash-api.service healthdash-sync.service healthdash-sync.timer; do
+for unit in fitvio-api.service fitvio-sync.service fitvio-sync.timer; do
   sed -e "s#__ROOT__#$ROOT#g" -e "s#__USER__#$USER_NAME#g" "deploy/systemd/$unit" | sudo tee "/etc/systemd/system/$unit" >/dev/null
 done
 sudo systemctl daemon-reload
-sudo systemctl enable --now healthdash-api.service healthdash-sync.timer
+sudo systemctl enable --now fitvio-api.service fitvio-sync.timer
 
 IP="$(hostname -I | awk '{print $1}')"
 echo
 echo "Installed. Wall UI: http://$IP:8765"
 echo "Next, for each person (asks only for the Garmin email + password):"
-echo "  .venv/bin/healthdash add-person"
+echo "  .venv/bin/fitvio add-person"

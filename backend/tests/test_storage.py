@@ -1,7 +1,7 @@
 import sqlite3
 
-from healthdash import db, profile, wall
-from healthdash.ingest.garmindb_reader import GarminDbReader
+from fitvio import db, profile, wall
+from fitvio.ingest.garmindb_reader import GarminDbReader
 
 
 def test_schema_is_stamped_and_older_databases_are_migrated(tmp_path):
@@ -45,3 +45,12 @@ def test_fit_file_of_another_activity_with_the_same_prefix_is_not_used(tmp_path)
     (fit_dir / "123_ACTIVITY.fit").write_bytes(b"")
     assert reader.find_fit("123").name == "123_ACTIVITY.fit"
     assert reader.find_fit("1234").name == "1234_ACTIVITY.fit"
+
+
+def test_settings_from_before_the_rename_still_work(monkeypatch):
+    from fitvio.config import env
+    monkeypatch.delenv("FITVIO_DB", raising=False)
+    monkeypatch.setenv("HEALTHDASH_DB", "/old.db")
+    assert env("DB") == "/old.db"
+    monkeypatch.setenv("FITVIO_DB", "/new.db")
+    assert env("DB") == "/new.db"  # the new name wins

@@ -1,5 +1,5 @@
 [Unit]
-Description=Run the Health Wall sync every 10 minutes
+Description=Run the Fitvio sync every 10 minutes
 
 [Timer]
 OnBootSec=2min

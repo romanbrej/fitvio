@@ -5,14 +5,14 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from healthdash import config
-from healthdash.api import main
+from fitvio import config
+from fitvio.api import main
 
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    monkeypatch.setenv("HEALTHDASH_CONFIG", str(tmp_path / "users.json"))
-    monkeypatch.setenv("HEALTHDASH_DB", str(tmp_path / "app.db"))
+    monkeypatch.setenv("FITVIO_CONFIG", str(tmp_path / "users.json"))
+    monkeypatch.setenv("FITVIO_DB", str(tmp_path / "app.db"))
     main.reset_config()
     yield TestClient(main.app)
     main.app.dependency_overrides.clear()
@@ -57,14 +57,14 @@ def test_input_limits(client):
 def test_real_account_never_written_to_example_config(tmp_path, monkeypatch):
     example = tmp_path / "users.example.json"
     example.write_text(json.dumps({"users": []}))
-    monkeypatch.setenv("HEALTHDASH_CONFIG", str(example))
+    monkeypatch.setenv("FITVIO_CONFIG", str(example))
     with pytest.raises(ValueError, match="example"):
         config.add_user("someone", "data/garmindb/someone/config")
     assert json.loads(example.read_text()) == {"users": []}
 
 
 def test_users_config_is_private(tmp_path, monkeypatch):
-    monkeypatch.setenv("HEALTHDASH_CONFIG", str(tmp_path / "users.json"))
+    monkeypatch.setenv("FITVIO_CONFIG", str(tmp_path / "users.json"))
     config.add_user("someone", "data/garmindb/someone/config")
     assert (tmp_path / "users.json").stat().st_mode & 0o077 == 0
 
@@ -72,7 +72,7 @@ def test_users_config_is_private(tmp_path, monkeypatch):
 def test_manual_sync_has_a_cooldown(client, tmp_path, monkeypatch):
     from datetime import datetime, timedelta
 
-    from healthdash import accounts, db
+    from fitvio import accounts, db
     main.app.dependency_overrides[main.local_network_only] = lambda: None
     (tmp_path / "users.json").write_text(json.dumps({"users": [{"id": "alex", "garmindb_config_dir": "x/config"}]}))
     main.reset_config()
@@ -92,7 +92,7 @@ def test_manual_sync_has_a_cooldown(client, tmp_path, monkeypatch):
 def test_person_folder_permissions_self_heal(tmp_path):
     import os
 
-    from healthdash.sync import garmindb_runner
+    from fitvio.sync import garmindb_runner
     person = tmp_path / "garmindb" / "alex"
     (person / "config").mkdir(parents=True)
     os.chmod(person, 0o755)  # created by an older version
@@ -101,7 +101,7 @@ def test_person_folder_permissions_self_heal(tmp_path):
 
 
 def test_app_data_dir_is_private(tmp_path):
-    from healthdash import db
+    from fitvio import db
     db.connect(tmp_path / "data" / "app.db")
     assert (tmp_path / "data").stat().st_mode & 0o077 == 0
 
@@ -125,7 +125,7 @@ def morning(client, tmp_path, monkeypatch):
     """Two people, 07:00, the quick sync stubbed out (records who it was started for)."""
     from datetime import datetime
 
-    from healthdash import accounts, db
+    from fitvio import accounts, db
     main.app.dependency_overrides[main.local_network_only] = lambda: None
     (tmp_path / "users.json").write_text(json.dumps({"users": [
         {"id": "alex", "garmindb_config_dir": "x/config"}, {"id": "sam", "garmindb_config_dir": "y/config"}]}))

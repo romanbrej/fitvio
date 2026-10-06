@@ -1,6 +1,6 @@
 # Wall Page Overrides
 
-> **PROJECT:** Health Dashboard
+> **PROJECT:** Fitvio
 > **Generated:** 2026-09-28 21:44:56
 > **Page Type:** Dashboard / Data View
 

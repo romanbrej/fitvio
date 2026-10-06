@@ -3,10 +3,10 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from healthdash.activity import Lap, ParsedActivity, Record, normalize_sport
-from healthdash.analytics import load, physio
-from healthdash.analytics.features import compute_features
-from healthdash.config import UserConfig
+from fitvio.activity import Lap, ParsedActivity, Record, normalize_sport
+from fitvio.analytics import load, physio
+from fitvio.analytics.features import compute_features
+from fitvio.config import UserConfig
 
 USER = UserConfig(id="u", name="Test User", max_hr=190, rest_hr=50)
 
@@ -159,7 +159,7 @@ def test_interval_reps_judge_only_the_work():
 
 
 def test_intervals_use_rep_metrics_and_same_workout():
-    from healthdash.models.sports import model_for
+    from fitvio.models.sports import model_for
 
     def session(i, name, speed, day):
         f = compute_features(interval_activity(name, speed), USER)
@@ -203,7 +203,7 @@ def interval_session(i, start, **kw):
 
 
 def test_short_reps_are_not_compared_with_long_reps():
-    from healthdash.models.sports import model_for
+    from fitvio.models.sports import model_for
     today = interval_session(99, "2026-10-02T11:00:00", name="City Running", reps=8, rep_s=60, rest_s=120, work_speed=4.2)
     vo2 = [interval_session(i, f"2026-09-{10 + i:02d}T07:00:00", reps=4, rep_s=240, rest_s=120, work_speed=3.4)
            for i in range(4)]
@@ -213,7 +213,7 @@ def test_short_reps_are_not_compared_with_long_reps():
 
 
 def test_short_reps_judged_on_pace_and_how_it_held():
-    from healthdash.models.sports import model_for
+    from fitvio.models.sports import model_for
     today = interval_session(99, "2026-10-02T11:00:00", name="City Running", reps=8, rep_s=60, rest_s=120, work_speed=4.3)
     same = [interval_session(i, f"2026-09-{10 + i:02d}T07:00:00", name="City - Anaerob", reps=7, rep_s=55,
                              rest_s=120, work_speed=4.0, fade=0.08) for i in range(3)]
@@ -224,7 +224,7 @@ def test_short_reps_judged_on_pace_and_how_it_held():
 
 
 def test_intervals_older_than_six_months_dont_count():
-    from healthdash.models.sports import model_for
+    from fitvio.models.sports import model_for
     today = interval_session(99, "2026-10-02T11:00:00", reps=8, rep_s=60, rest_s=120)
     old = [interval_session(i, f"2025-0{2 + i}-10T07:00:00", reps=7, rep_s=60, rest_s=120) for i in range(3)]
     assert model_for("running").evaluate(today, old, None, None)["verdict"] == "not_comparable"

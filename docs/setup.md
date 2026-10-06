@@ -9,14 +9,14 @@
 ## Install with Docker
 
 ```bash
-mkdir health-wall && cd health-wall
-curl -fsSLO https://raw.githubusercontent.com/romanbrej/fitness-dashboard/main/docker-compose.yml
+mkdir fitvio && cd fitvio
+curl -fsSLO https://raw.githubusercontent.com/romanbrej/fitvio/main/docker-compose.yml
 mkdir -p data config
-printf 'HW_UID=%s\nHW_GID=%s\nTZ=Europe/Berlin\n' "$(id -u)" "$(id -g)" > .env   # containers run as you; set your time zone
+printf 'FITVIO_UID=%s\nFITVIO_GID=%s\nTZ=Europe/Berlin\n' "$(id -u)" "$(id -g)" > .env   # containers run as you; set your time zone
 docker compose up -d
 ```
 
-Two containers start from the prebuilt image (`ghcr.io/romanbrej/fitness-dashboard`, amd64 + arm64):
+Two containers start from the prebuilt image (`ghcr.io/romanbrej/fitvio`, amd64 + arm64):
 
 | Container | Job |
 |---|---|
@@ -27,13 +27,13 @@ Your data and logins stay on the host in `./data` and `./config`. They are mount
 
 - **Logs:** `docker compose logs -f sync` (or `web`).
 - **Build it yourself instead:** clone the repository and run `docker compose up -d --build`.
-- **Rollback:** put `HW_TAG=sha-<commit>` in `.env`, then `docker compose up -d`. Remove it again to follow `latest`.
+- **Rollback:** put `FITVIO_TAG=sha-<commit>` in `.env`, then `docker compose up -d`. Remove it again to follow `latest`.
 
 ### Updates
 
 - **By hand:** `docker compose pull && docker compose up -d`.
-- **Automatically:** clone the repository to `~/health-wall` (your `data/`, `config/` and `.env` live there too) and run `./deploy/install-updater.sh`. A systemd user timer then checks for a newer image every 5 minutes and restarts the containers only when it changed. The server pulls; nothing from outside runs on it.
-- Without systemd, a cron line does the same: `*/5 * * * * cd ~/health-wall && docker compose pull -q && docker compose up -d`.
+- **Automatically:** clone the repository to `~/fitvio` (your `data/`, `config/` and `.env` live there too) and run `./deploy/install-updater.sh`. A systemd user timer then checks for a newer image every 5 minutes and restarts the containers only when it changed. The server pulls; nothing from outside runs on it.
+- Without systemd, a cron line does the same: `*/5 * * * * cd ~/fitvio && docker compose pull -q && docker compose up -d`.
 
 ## Connect Garmin
 
@@ -44,7 +44,7 @@ Logins are only accepted from your home network (private or loopback addresses),
 ### From a terminal
 
 ```bash
-docker compose exec web healthdash add-person     # or .venv/bin/healthdash add-person without Docker
+docker compose exec web fitvio add-person     # or .venv/bin/fitvio add-person without Docker
 # Garmin email: …
 # Garmin password: …        (plus the MFA code if your account uses two-factor auth)
 ```
@@ -63,7 +63,7 @@ That one command:
 | Threshold HR, FTP | Your watch settings. Without an FTP, it's estimated per ride from your power data |
 
 These values refresh on every sync. If your max or resting HR moves, your whole history is recalculated with the new zones.
-To see what was detected: `healthdash profile`, or open the *Training load* page on the wall.
+To see what was detected: `fitvio profile`, or open the *Training load* page on the wall.
 To override a value anyway, add it to that person in `config/users.json` (e.g. `"max_hr": 192`).
 
 The password is stored `chmod 600` in `data/garmindb/<id>/config/password.txt`, in case the cached tokens ever expire.
@@ -73,10 +73,10 @@ The password is stored `chmod 600` in `data/garmindb/<id>/config/password.txt`, 
 On a systemd-based Linux with Python ≥ 3.11:
 
 ```bash
-git clone https://github.com/romanbrej/fitness-dashboard.git health-wall && cd health-wall && ./deploy/install.sh
+git clone https://github.com/romanbrej/fitvio.git fitvio && cd fitvio && ./deploy/install.sh
 ```
 
-This installs `healthdash-api.service` (the UI and API on port 8765) and `healthdash-sync.timer`. It builds the frontend if Node is installed; otherwise build it elsewhere (`cd frontend && npm run build`) and copy `frontend/dist` over.
+This installs `fitvio-api.service` (the UI and API on port 8765) and `fitvio-sync.timer`. It builds the frontend if Node is installed; otherwise build it elsewhere (`cd frontend && npm run build`) and copy `frontend/dist` over.
 
 ## Put it on the wall
 

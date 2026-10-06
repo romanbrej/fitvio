@@ -4,7 +4,7 @@ import { api } from '../api'
 import type { Job } from '../api'
 import './ConnectForm.css'
 
-const JOB_KEY = 'healthwall.connectJob'
+const JOB_KEY = 'fitvio.connectJob'
 const store = {
   get: () => { try { return localStorage.getItem(JOB_KEY) } catch { return null } },
   set: (v: string | null) => {

@@ -1,5 +1,5 @@
 [Unit]
-Description=Health Wall: check for a new image every 5 minutes
+Description=Fitvio: check for a new image every 5 minutes
 
 [Timer]
 OnBootSec=2min

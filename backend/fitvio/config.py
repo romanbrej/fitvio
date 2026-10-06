@@ -1,7 +1,7 @@
 """App configuration: users, paths and wall behaviour.
 
 Loaded from config/users.json (see config/users.example.json). The path can be
-overridden with the HEALTHDASH_CONFIG env var, the app database with HEALTHDASH_DB.
+overridden with the FITVIO_CONFIG env var, the app database with FITVIO_DB.
 """
 from __future__ import annotations
 
@@ -11,6 +11,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+ENV_PREFIX = "FITVIO_"
+LEGACY_ENV_PREFIX = "HEALTHDASH_"  # the project's name before Fitvio; old settings keep working
+
+
+def env(name: str, default: str | None = None) -> str | None:
+    """The setting FITVIO_<name> from the environment (or the older HEALTHDASH_<name>)."""
+    return os.environ.get(ENV_PREFIX + name) or os.environ.get(LEGACY_ENV_PREFIX + name) or default
 
 
 @dataclass
@@ -73,7 +80,7 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     raw = json.loads(path.read_text()) if path.exists() else {"users": []}
     users = [UserConfig(**u) for u in raw.get("users", [])]
     wall = WallConfig(**raw.get("wall", {}))
-    db_path = Path(os.environ.get("HEALTHDASH_DB") or raw.get("db_path") or PROJECT_ROOT / "data" / "app.db")
+    db_path = Path(env("DB") or raw.get("db_path") or PROJECT_ROOT / "data" / "app.db")
     return AppConfig(users=users, wall=wall, db_path=db_path.expanduser())
 
 
@@ -81,7 +88,7 @@ COLORS = ["#3B82F6", "#F97316", "#22C55E", "#EC4899", "#A78BFA", "#FACC15"]
 
 
 def config_path() -> Path:
-    return Path(os.environ.get("HEALTHDASH_CONFIG") or PROJECT_ROOT / "config" / "users.json")
+    return Path(env("CONFIG") or PROJECT_ROOT / "config" / "users.json")
 
 
 def add_user(user_id: str, garmindb_config_dir: str) -> UserConfig:

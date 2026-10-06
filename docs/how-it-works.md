@@ -1,7 +1,7 @@
 # How it works
 
 ```
-Garmin watch → Garmin Connect → GarminDB (per person, on your server) → healthdash ingest + verdicts → API → wall display (any browser)
+Garmin watch → Garmin Connect → GarminDB (per person, on your server) → fitvio ingest + verdicts → API → wall display (any browser)
 ```
 
 ## Today's mission
@@ -35,7 +35,7 @@ When there are fewer than 3 comparable sessions it says **"Not comparable yet"**
 | Everything else | Training load and recovery impact |
 
 **Heat and humidity.** Running efficiency is adjusted with **Garmin's own weather for the activity** (the same weather box Garmin Connect shows, taken from a station near the start at start time) and **Garmin's heat acclimation**. It uses the runners' temperature + dew point rule: the sum in °F sets how much harder the same effort was (0 % up to 100 °F, up to 12 % above 180 °F). Heat acclimation reduces that effect by up to half, which is a heuristic. Indoor and treadmill sessions get no heat adjustment. The wrist temperature sensor isn't used for this, because body heat skews it, and FIT files use 127 as a "no value" marker.
-Weather and acclimation are downloaded with each sync. For older history, run `healthdash backfill-extras` once (a first download does this automatically).
+Weather and acclimation are downloaded with each sync. For older history, run `fitvio backfill-extras` once (a first download does this automatically).
 
 **Verdict check.** Rate *How did you feel* and *Perceived effort* on your watch after each activity. The app tracks how often the verdicts agree with how you felt, and lists the disagreements.
 
@@ -81,4 +81,4 @@ It protects your Garmin account, because the app uses the unofficial Garmin Conn
 - Garmin has no public webhook. A new activity is found by polling (every 2 min, 05:00–24:00); at night it waits for the hourly sync.
 - Pool HR from a wrist sensor is unreliable. Swimming verdicts rely on pace and SWOLF, not HR.
 - Garmin's strength categories are broad (for example "squat" covers goblet and back squat). The numeric variant is kept in the exercise key so different variants aren't mixed.
-- The FIT parsing has only been tested against GarminDB's documented layout and synthetic data. Check `healthdash backtest` after your first real sync.
+- The FIT parsing has only been tested against GarminDB's documented layout and synthetic data. Check `fitvio backtest` after your first real sync.

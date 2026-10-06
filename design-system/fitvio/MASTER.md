@@ -6,7 +6,7 @@
 
 ---
 
-**Project:** Health Dashboard
+**Project:** Fitvio
 **Generated:** 2026-09-28 21:44:56
 **Category:** Analytics Dashboard
 

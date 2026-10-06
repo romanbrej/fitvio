@@ -1,6 +1,6 @@
 # Security and privacy
 
-The Health Wall is made for your home network. Your Garmin login and health data never leave your server, except for the requests to Garmin Connect that GarminDB and the app make on your behalf.
+Fitvio is made for your home network. Your Garmin login and health data never leave your server, except for the requests to Garmin Connect that GarminDB and the app make on your behalf.
 
 ## What stays on your server
 
@@ -16,7 +16,7 @@ Everything under `data/` and `config/users.json` is git-ignored and never built 
 ## How the web app is protected
 
 - **Home network only.** Garmin logins and settings changes are only accepted from private or loopback addresses. The dashboard speaks plain HTTP, so never forward port 8765 to the internet.
-- **DNS rebinding.** The server only answers to IP addresses, `localhost`, bare LAN hostnames and local domains (`.local`, `.lan`, `.home`, `.fritz.box`, …). To use another hostname, set `HEALTHDASH_ALLOWED_HOSTS=myname.example`.
+- **DNS rebinding.** The server only answers to IP addresses, `localhost`, bare LAN hostnames and local domains (`.local`, `.lan`, `.home`, `.fritz.box`, …). To use another hostname, set `FITVIO_ALLOWED_HOSTS=myname.example`.
 - **Cross-site requests.** State-changing requests from another origin are refused, and non-JSON bodies are rejected.
 - **Headers.** A strict Content-Security-Policy, `X-Frame-Options: DENY` (no clickjacking of the login form), `nosniff`, `no-referrer`, and `no-store` on API responses.
 - **Input validation.** Lengths and formats are checked (email, password, MFA code, query ranges). Only one account can be connected at a time.

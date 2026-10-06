@@ -4,12 +4,12 @@ from datetime import datetime
 
 import pytest
 
-from healthdash.activity import ParsedActivity, plausible_temp
-from healthdash.analytics import physio
-from healthdash.analytics.features import compute_features
-from healthdash.config import UserConfig
-from healthdash.models.sports import RunningModel
-from healthdash.sync import garmin_extras
+from fitvio.activity import ParsedActivity, plausible_temp
+from fitvio.analytics import physio
+from fitvio.analytics.features import compute_features
+from fitvio.config import UserConfig
+from fitvio.models.sports import RunningModel
+from fitvio.sync import garmin_extras
 
 from .test_analytics import steady_records
 
@@ -165,7 +165,7 @@ def test_precise_vo2max_history_first_all_then_incremental(tmp_path):
 
 def test_health_days_use_precise_vo2max(tmp_path):
     import sqlite3
-    from healthdash.ingest.garmindb_reader import GarminDbReader
+    from fitvio.ingest.garmindb_reader import GarminDbReader
     (tmp_path / "DBs").mkdir()
     for name in ("garmin.db", "garmin_activities.db"):
         sqlite3.connect(tmp_path / "DBs" / name).close()

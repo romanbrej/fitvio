@@ -221,7 +221,7 @@ def status(conn: sqlite3.Connection, cfg: AppConfig) -> dict:
 
 
 def watch_loop(conn: sqlite3.Connection) -> None:
-    """`healthdash watch`: runs forever in the sync container (restart: unless-stopped)."""
+    """`fitvio watch`: runs forever in the sync container (restart: unless-stopped)."""
     from ..config import load_config
 
     log.info("auto-sync: activity check every %d s (%02d:00–24:00), full sync every %d min",

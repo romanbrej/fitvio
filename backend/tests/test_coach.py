@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from healthdash import coach, db
-from healthdash.sync import garmin_coach
+from fitvio import coach, db
+from fitvio.sync import garmin_coach
 
 FIX = Path(__file__).parent / "fixtures" / "garmin"
 
@@ -131,7 +131,7 @@ def test_old_planned_workouts_are_pruned():
 
 def test_no_coach_requests_during_the_rate_limit_pause(monkeypatch):
     from datetime import datetime as dt
-    from healthdash.sync import activity_watch
+    from fitvio.sync import activity_watch
     conn = db.connect(":memory:")
     db.set_state(conn, activity_watch.K_BACKOFF, (dt.now() + timedelta(hours=1)).isoformat(timespec="seconds"))
     monkeypatch.setattr(activity_watch, "cached_client", lambda u: pytest.fail("must not call Garmin"))

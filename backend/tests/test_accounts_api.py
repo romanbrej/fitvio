@@ -4,8 +4,8 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from healthdash import accounts, config
-from healthdash.api import main
+from fitvio import accounts, config
+from fitvio.api import main
 
 
 def wait_for(client, job_id, phases, timeout=5):
@@ -20,8 +20,8 @@ def wait_for(client, job_id, phases, timeout=5):
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    monkeypatch.setenv("HEALTHDASH_CONFIG", str(tmp_path / "users.json"))
-    monkeypatch.setenv("HEALTHDASH_DB", str(tmp_path / "app.db"))
+    monkeypatch.setenv("FITVIO_CONFIG", str(tmp_path / "users.json"))
+    monkeypatch.setenv("FITVIO_DB", str(tmp_path / "app.db"))
     monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)
     main.reset_config()
 
@@ -40,7 +40,7 @@ def client(tmp_path, monkeypatch):
 
     monkeypatch.setattr(accounts, "login_interactive", fake_login)
     monkeypatch.setattr(accounts, "run_sync", fake_sync)
-    import healthdash.cli as cli_mod
+    import fitvio.cli as cli_mod
     monkeypatch.setattr(cli_mod, "backfill_extras", lambda user, on_progress=None: on_progress(1, 1))
     monkeypatch.setattr(accounts.pipeline, "ingest_from_garmindb", lambda conn, user, full=False, **kw: {"activities": 42})
     c = TestClient(main.app)
@@ -93,7 +93,7 @@ def test_mfa_code_when_not_asked_is_rejected(client):
 
 @pytest.mark.parametrize("new, message", [(0, "Up to date"), (1, "1 new activity"), (3, "3 new activities")])
 def test_sync_now_reports_what_arrived(client, tmp_path, monkeypatch, new, message):
-    from healthdash import db
+    from fitvio import db
     main.app.dependency_overrides[main.local_network_only] = lambda: None
     (tmp_path / "users.json").write_text(json.dumps({"users": [{"id": "alex", "garmindb_config_dir": "x/config"}]}))
     main.reset_config()

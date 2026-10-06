@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Callable
 
 from .. import db
-from ..config import PROJECT_ROOT, UserConfig
+from ..config import PROJECT_ROOT, UserConfig, env
 from ..ingest.garmindb_reader import base_dir_from_config
 
 FAILURE_MARKERS = ("failed to login", "traceback (most recent call last)", "login failed", "401 client error",
@@ -31,9 +31,9 @@ log = logging.getLogger(__name__)
 
 
 def garmindb_command() -> list[str]:
-    if os.environ.get("HEALTHDASH_PLAIN_GARMINDB") == "1":  # escape hatch: unpatched GarminDB
+    if env("PLAIN_GARMINDB") == "1":  # escape hatch: unpatched GarminDB
         return [garmindb_cli()]
-    return [sys.executable, "-m", "healthdash.sync.garmindb_fast"]
+    return [sys.executable, "-m", "fitvio.sync.garmindb_fast"]
 
 
 def garmindb_cli() -> str:
@@ -45,7 +45,7 @@ def init_user_config(user: UserConfig, email: str, data_root: Path | None = None
                      since: datetime | None = None) -> Path:
     """Create the GarminDB config for a user. The password goes in a separate chmod-600 file
     (`password.txt`, created empty here): `accounts.prepare` writes it, or the user fills it in by hand
-    after `healthdash init-user`. The config itself never contains the password."""
+    after `fitvio init-user`. The config itself never contains the password."""
     import garmindb
 
     cfg_dir = user.garmindb_dir or (PROJECT_ROOT / "data" / "garmindb" / user.id / "config")
@@ -227,15 +227,15 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, tim
     # GarminDB's CLI, run through our wrapper with faster, resumable download loops (garmindb_fast.py)
     stats = QUICK_STATS if quick and not full else ["--all"]
     cmd = [*garmindb_command(), "-f", str(user.garmindb_dir), *stats, "--download", "--import", "--analyze"]
-    env = os.environ.copy()
+    env_vars = os.environ.copy()
     if not full:
         cmd.append("--latest")
         since = changed_since(conn, user.id)
         if since:
             # differential import: only files written since the last successful sync (garmindb_fast.py)
-            env["HEALTHDASH_SYNC_SINCE"] = since.isoformat(timespec="seconds")
+            env_vars["FITVIO_SYNC_SINCE"] = since.isoformat(timespec="seconds")
     normalize_config(user.garmindb_dir)
-    log.info("sync %s: %s (changes since %s)", user.id, " ".join(cmd), env.get("HEALTHDASH_SYNC_SINCE", "-"))
+    log.info("sync %s: %s (changes since %s)", user.id, " ".join(cmd), env_vars.get("FITVIO_SYNC_SINCE", "-"))
     error = None
     lines: list[str] = []
     try:
@@ -245,7 +245,7 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, tim
             workdir = user.garmindb_dir.parent
             log_file = workdir / "garmindb.log"
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
-                                    stdin=subprocess.DEVNULL, cwd=workdir, env=env)
+                                    stdin=subprocess.DEVNULL, cwd=workdir, env=env_vars)
             timer = threading.Timer(timeout_s, proc.kill)
             timer.start()
             follower = LogFollower(log_file)
@@ -305,7 +305,7 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, tim
 
 
 def sync_user(conn: sqlite3.Connection, user: UserConfig, full: bool = False) -> tuple[bool, dict | None]:
-    """Download (GarminDB) + ingest + verdicts for one person — what `healthdash sync` does per person.
+    """Download (GarminDB) + ingest + verdicts for one person — what `fitvio sync` does per person.
     Returns (download ok, ingest result or None). Raises SyncBusy when another sync holds the lock."""
     since = None if full else changed_since(conn, user.id)  # before the sync moves it
     ok = run_sync(conn, user, full=full)

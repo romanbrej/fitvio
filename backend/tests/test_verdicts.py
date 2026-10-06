@@ -2,9 +2,9 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from healthdash import db, pipeline, wall
-from healthdash.activity import ExerciseSet, ParsedActivity
-from healthdash.config import AppConfig, UserConfig, WallConfig
+from fitvio import db, pipeline, wall
+from fitvio.activity import ExerciseSet, ParsedActivity
+from fitvio.config import AppConfig, UserConfig, WallConfig
 
 from .test_analytics import steady_records
 
