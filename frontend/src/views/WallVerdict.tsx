@@ -1,4 +1,5 @@
 import { AlertTriangle, ChevronRight, X } from 'lucide-react'
+import { CardButton } from '../components/CardButton'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../App'
 import type { Ambient, Delta, Session } from '../api'
@@ -83,11 +84,11 @@ export function WallVerdict({ session, ambient }: { session: Session; ambient: A
         <Improvements items={session.improvements ?? []}
                       onClick={() => nav(`/u/${session.user_id}/load`)} />
 
-        <button className="card facts" onClick={open}>
+        <CardButton className="facts" onClick={open}>
           {facts(session).map(([k, val]) => (
             <div key={k}><div className="fact-k">{k}</div><div className="fact-v num">{val}</div></div>
           ))}
-        </button>
+        </CardButton>
 
         <div className="verdict-actions">
           <button className="btn primary" onClick={open}>All details <ChevronRight size={20} /></button>

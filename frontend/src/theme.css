@@ -91,14 +91,14 @@ button { font: inherit; color: inherit; }
   min-width: 0;
 }
 
-button.card, a.card {
+button.card, a.card, .card-btn {
   text-align: left;
   cursor: pointer;
   text-decoration: none;
   transition: border-color 180ms ease, transform 180ms ease, background-color 180ms ease;
 }
-button.card:active, a.card:active { transform: scale(0.985); border-color: var(--primary); }
-button.card:focus-visible, a.card:focus-visible, button:focus-visible {
+button.card:active, a.card:active, .card-btn:active { transform: scale(0.985); border-color: var(--primary); }
+.card-btn:focus-visible, button.card:focus-visible, a.card:focus-visible, button:focus-visible {
   outline: 3px solid var(--primary);
   outline-offset: 2px;
 }

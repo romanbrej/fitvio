@@ -1,4 +1,5 @@
 import { Star } from 'lucide-react'
+import { CardButton } from './CardButton'
 import type { Improvement } from '../api'
 import './Improvements.css'
 
@@ -29,11 +30,11 @@ export function improvedCount(items: Improvement[]): number {
 export function Improvements({ items, onClick }: { items: Improvement[]; onClick?: () => void }) {
   const up = improvedCount(items)
   return (
-    <button className="card improvements" onClick={onClick} disabled={!onClick}>
+    <CardButton className="improvements" onClick={onClick} disabled={!onClick}>
       {items.length > 0
         ? <div className="display improve-head">You improved <span style={{ color: up ? 'var(--volt)' : 'var(--inline)' }}>{up}</span> of {items.length}</div>
         : <div className="card-title" style={{ margin: 0 }}>What improved</div>}
       <ImprovementList items={items} />
-    </button>
+    </CardButton>
   )
 }

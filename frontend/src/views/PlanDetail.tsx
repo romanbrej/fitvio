@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useApp } from '../App'
 import { api } from '../api'
 import type { Ambient, PlanDay, PlanStatus, PlanWeek, PlannedWorkout } from '../api'
+import { CardButton } from '../components/CardButton'
 import { SportIcon, VerdictPill } from '../components/icons'
 import { StatusMark, shortDuration } from '../components/WeekStrip'
 import { WorkoutShape } from '../components/WorkoutShape'
@@ -206,7 +207,7 @@ function DayWorkout({ a, day, today }: { a: Ambient; day: string; today: string 
       </section>
 
       {w.done && (
-        <button className="card done-card" onClick={() => nav(`/session/${encodeURIComponent(w.done!.session_id)}`)}>
+        <CardButton className="done-card" onClick={() => nav(`/session/${encodeURIComponent(w.done!.session_id)}`)}>
           <span className="done-check"><Check size={22} strokeWidth={3} /></span>
           <div className="stack" style={{ gap: 2, minWidth: 0 }}>
             <div className="display" style={{ fontSize: 30 }}>Done · {w.done.name ?? w.title}</div>
@@ -215,7 +216,7 @@ function DayWorkout({ a, day, today }: { a: Ambient; day: string; today: string 
           <span className="grow" />
           {w.done.verdict && <VerdictPill verdict={w.done.verdict} />}
           <span className="link">Session <ChevronRight size={16} /></span>
-        </button>
+        </CardButton>
       )}
 
       {w.steps.length > 0 && (

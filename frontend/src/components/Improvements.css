@@ -1,6 +1,7 @@
 /* "What improved" checklist after an activity (takeover screen + session detail) */
 .improvements { display: flex; flex-direction: column; gap: 8px; width: 100%; text-align: left; }
-.improvements:disabled { cursor: default; }
+.improvements[aria-disabled] { cursor: default; }
+.improvements[aria-disabled]:active { transform: none; border-color: var(--border); }
 .improve-head { font-size: 38px; font-weight: 900; margin-bottom: 4px; }
 .improve-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .improve-list li {

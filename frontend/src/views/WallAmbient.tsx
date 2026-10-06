@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Ambient, Sport, SportTrend } from '../api'
 import { Buddy } from '../components/Buddy'
+import { CardButton } from '../components/CardButton'
 import { SportIcon, VerdictPill } from '../components/icons'
 import { Sparkline } from '../components/Sparkline'
 import { WeekStrip } from '../components/WeekStrip'
@@ -233,7 +234,7 @@ function LoadCard({ a }: { a: Ambient }) {
     else hint = `~${Math.round((ss.low - ss.load) / 10) * 10} more to the sweet spot.`
   }
   return (
-    <button className="card loadcard" onClick={() => nav(`/u/${a.user_id}/load`)}>
+    <CardButton className="loadcard" onClick={() => nav(`/u/${a.user_id}/load`)}>
       <div className="card-head">
         <span className="display card-name">Training load</span>
         <span className="pmc-inline">
@@ -273,7 +274,7 @@ function LoadCard({ a }: { a: Ambient }) {
           ) : <div className="muted">No training load yet</div>}
         </div>
       </div>
-    </button>
+    </CardButton>
   )
 }
 
@@ -371,7 +372,7 @@ function SportTile({ a, sport }: { a: Ambient; sport: Sport }) {
   const t = a.trends[sport]
   const c = t ? tileContent(sport, t) : null
   return (
-    <button className="card sport-tile" style={{ '--sc': SPORT_COLOR[sport] } as React.CSSProperties}
+    <CardButton className="sport-tile" style={{ '--sc': SPORT_COLOR[sport] } as React.CSSProperties}
             onClick={() => nav(`/u/${a.user_id}/sport/${sport}`)}>
       <div className="sport-tile-head">
         <SportIcon sport={sport} size={22} color={SPORT_COLOR[sport]} />
@@ -388,7 +389,7 @@ function SportTile({ a, sport }: { a: Ambient; sport: Sport }) {
           <div className="sport-foot"><VerdictPill verdict={t!.last_verdict} /></div>
         </>
       ) : <div className="muted" style={{ marginTop: 8 }}>No sessions yet</div>}
-    </button>
+    </CardButton>
   )
 }
 
