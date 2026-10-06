@@ -155,8 +155,10 @@ def get_ambient(user_id: str, c: AppConfig = Depends(cfg), cn=Depends(conn)):
 
 
 @app.get("/api/users/{user_id}/sessions")
-def list_sessions(user_id: str, sport: str | None = None, limit: int = Query(60, ge=1, le=500), c: AppConfig = Depends(cfg),
-                  cn=Depends(conn)):
+def list_sessions(user_id: str, sport: str | None = None, limit: int = Query(60, ge=1, le=500),
+                  offset: int = Query(0, ge=0), type: str | None = Query(None, max_length=20),
+                  c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    """Newest first. `offset` pages through the whole history (the phone loads 50 at a time); `type` = session type."""
     _user_or_404(c, user_id)
     q = """SELECT s.id, s.name, s.sport, s.session_type, s.start_time, s.duration_s, s.distance_m, s.avg_hr,
                   s.load, s.rpe, s.feel, s.features, v.verdict, v.headline, v.confidence
@@ -165,9 +167,25 @@ def list_sessions(user_id: str, sport: str | None = None, limit: int = Query(60,
     if sport:
         q += " AND s.sport = ?"
         args.append(sport)
-    q += " ORDER BY s.start_time DESC LIMIT ?"
-    args.append(limit)
+    if type:
+        q += " AND s.session_type = ?"
+        args.append(type)
+    q += " ORDER BY s.start_time DESC, s.id DESC LIMIT ? OFFSET ?"
+    args += [limit, offset]
     return [db.row_to_dict(r) for r in cn.execute(q, args)]
+
+
+@app.get("/api/users/{user_id}/session-types")
+def session_types(user_id: str, sport: str | None = None, c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    """How many sessions of each type (easy, long, …) someone has — the phone's filter chips."""
+    _user_or_404(c, user_id)
+    q = "SELECT session_type AS type, COUNT(*) AS count FROM sessions WHERE user_id = ?"
+    args: list = [user_id]
+    if sport:
+        q += " AND sport = ?"
+        args.append(sport)
+    q += " GROUP BY session_type ORDER BY count DESC"
+    return [{"type": r["type"], "count": r["count"]} for r in cn.execute(q, args)]
 
 
 @app.get("/api/sessions/{session_id}")

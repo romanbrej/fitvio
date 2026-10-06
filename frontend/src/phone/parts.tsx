@@ -1,15 +1,23 @@
 import { ChevronLeft } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import type { Ambient, User } from '../api'
 
 export function Avatar({ user, size = 'md' }: { user: Pick<User, 'initials' | 'color'>; size?: 'sm' | 'md' | 'lg' | 'xl' }) {
   return <span className={`ph-avatar ${size}`} style={{ borderColor: user.color }}>{user.initials}</span>
 }
 
-/** "‹ Today" — a sub page's way back (44 px tall). */
+/** "‹ Today" — a sub page's way back (44 px tall). With in-app history it goes back where you came from
+ *  (a list keeps its scroll spot and filter); opened directly, it goes to `to`. */
 export function Back({ to, label }: { to: string; label: string }) {
-  return <Link to={to} className="ph-back"><ChevronLeft size={22} strokeWidth={2.2} aria-hidden />{label}</Link>
+  const nav = useNavigate()
+  const loc = useLocation()
+  const inApp = loc.key !== 'default'
+  return (
+    <Link to={to} className="ph-back" onClick={e => { if (inApp) { e.preventDefault(); nav(-1) } }}>
+      <ChevronLeft size={22} strokeWidth={2.2} aria-hidden />{inApp ? 'Back' : label}
+    </Link>
+  )
 }
 
 export function Card({ children, className = '', ...rest }: { children: ReactNode; className?: string } & React.HTMLAttributes<HTMLElement>) {

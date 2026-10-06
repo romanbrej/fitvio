@@ -1,4 +1,4 @@
-import { ChevronRight } from 'lucide-react'
+import { Activity, ChevronRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { Ambient, Sport } from '../../api'
 import { SportIcon, VerdictPill } from '../../components/icons'
@@ -101,10 +101,15 @@ export function Trends() {
           )
           const style = { borderTopColor: SPORT_COLOR[sp] }
           return t
-            ? <Link key={sp} to={`/session/${encodeURIComponent(t.last_session)}`} className="ph-card ph-sport-row" style={style}
-                    aria-label={`${SPORT_LABEL[sp]} — open the last session`}>{inner}<ChevronRight size={18} color="var(--faint)" aria-hidden /></Link>
+            ? <Link key={sp} to={`/trends/sport/${sp}`} className="ph-card ph-sport-row" style={style}
+                    aria-label={`${SPORT_LABEL[sp]} — all sessions`}>{inner}<ChevronRight size={18} color="var(--faint)" aria-hidden /></Link>
             : <div key={sp} className="ph-card ph-sport-row" style={style}>{inner}</div>
         })}
+        <Link to="/trends/sport/all" className="ph-card ph-last">
+          <Activity size={24} color="var(--volt)" aria-hidden />
+          <div className="ph-grow"><span className="ph-strong">All activities</span><span className="ph-foot">Every session, hikes and yoga included</span></div>
+          <ChevronRight size={18} color="var(--faint)" aria-hidden />
+        </Link>
       </section>
     </div>
   )

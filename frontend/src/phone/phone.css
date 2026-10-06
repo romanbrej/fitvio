@@ -291,3 +291,20 @@ a.ph-card:active, .ph-hero:active, .ph-tile:active, .ph-day:active, .ph-list-row
 /* the connect form (shared with the wall) at phone width */
 .ph .connect input { font-size: 17px; }
 .ph .connect { max-width: none; }
+
+/* a sport's whole history (Trends → sport) */
+.ph-chips { display: flex; gap: 8px; overflow-x: auto; margin: 0 -16px; padding: 0 16px; scrollbar-width: none; }
+.ph-chips::-webkit-scrollbar { display: none; }
+.ph-chips .ph-chip-btn { flex: none; padding: 0 14px; font-family: var(--font); font-weight: 600; white-space: nowrap; }
+.ph-chips .ph-chip-btn .num { opacity: 0.7; margin-left: 4px; font-size: 13px; }
+.ph-history { display: flex; flex-direction: column; }
+.ph-month { margin: 16px 4px 4px; font: 700 13px var(--display); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+.ph-history > div:first-child .ph-month { margin-top: 4px; }
+.ph-hrow {
+  display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 0; border-bottom: 1px solid #1d232e;
+  color: var(--text); text-decoration: none;
+}
+.ph-hrow:active { background: var(--surface-2); }
+.ph-hrow .pill { font-size: 12px; }
+.ph-history-end { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 0; }
+.ph-history-done { text-align: center; padding: 16px 0; }

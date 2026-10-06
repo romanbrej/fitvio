@@ -261,8 +261,8 @@ function Sports({ a }: { a: Ambient }) {
           )
           const style = { borderTopColor: SPORT_COLOR[sp] }
           return t
-            ? <Link key={sp} to={`/session/${encodeURIComponent(t.last_session)}`} className="ph-card ph-sport" style={style}
-                    aria-label={`${SPORT_LABEL[sp]} — open the last session`}>{body}</Link>
+            ? <Link key={sp} to={`/trends/sport/${sp}`} className="ph-card ph-sport" style={style}
+                    aria-label={`${SPORT_LABEL[sp]} — all sessions`}>{body}</Link>
             : <div key={sp} className="ph-card ph-sport" style={style}>{body}</div>
         })}
       </div>

@@ -222,9 +222,14 @@ export const api = {
   select: (user_id: string) => post('/api/wall/select', { user_id }),
   dismiss: (session_id: string) => post('/api/wall/dismiss', { session_id }),
   session: (id: string) => get<SessionDetail>(`/api/sessions/${seg(id)}`),
-  sessions: (user: string, sport?: string, limit = 60) =>
+  sessions: (user: string, sport?: string, limit = 60, opts: { offset?: number; type?: string } = {}) =>
     get<(Session & { verdict: VerdictKind | null; headline: string | null })[]>(
-      `/api/users/${seg(user)}/sessions?${new URLSearchParams({ limit: String(limit), ...(sport ? { sport } : {}) })}`),
+      `/api/users/${seg(user)}/sessions?${new URLSearchParams({
+        limit: String(limit), ...(sport ? { sport } : {}),
+        ...(opts.offset ? { offset: String(opts.offset) } : {}), ...(opts.type ? { type: opts.type } : {}),
+      })}`),
+  sessionTypes: (user: string, sport?: string) =>
+    get<{ type: string; count: number }[]>(`/api/users/${seg(user)}/session-types${sport ? `?${new URLSearchParams({ sport })}` : ''}`),
   pmc: (user: string, days = 180) => get<PmcDay[]>(`/api/users/${seg(user)}/pmc?days=${days}`),
   health: (user: string, days = 90) => get<HealthDay[]>(`/api/users/${seg(user)}/health?days=${days}`),
   validation: (user: string) => get<Validation>(`/api/users/${seg(user)}/validation`),

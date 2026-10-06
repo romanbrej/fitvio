@@ -84,6 +84,23 @@ def test_session_detail_and_lists(client):
     assert "agreement_pct" in client.get("/api/users/a/validation").json()
 
 
+def test_session_history_pages_and_filters(client):
+    everything = client.get("/api/users/a/sessions?limit=500").json()
+    first = client.get("/api/users/a/sessions?limit=10").json()
+    second = client.get("/api/users/a/sessions?limit=10&offset=10").json()
+    # pages follow each other without gaps or overlap, newest first
+    assert [s["id"] for s in first + second] == [s["id"] for s in everything[:20]]
+    assert [s["start_time"] for s in everything] == sorted((s["start_time"] for s in everything), reverse=True)
+
+    types = client.get("/api/users/a/session-types?sport=running").json()
+    runs = client.get("/api/users/a/sessions?sport=running&limit=500").json()
+    assert sum(t["count"] for t in types) == len(runs)
+    t = types[0]["type"]
+    only = client.get(f"/api/users/a/sessions?sport=running&type={t}&limit=500").json()
+    assert len(only) == types[0]["count"] and {s["session_type"] for s in only} == {t}
+    assert client.get("/api/users/nope/session-types").status_code == 404
+
+
 def test_unknown_user_404(client):
     assert client.get("/api/users/nope/ambient").status_code == 404
 
