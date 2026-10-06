@@ -22,7 +22,7 @@ Tap any day of the week strip. The plan page shows the plan (name, week n of N, 
 
 ## Post-activity verdict
 
-Each new activity is compared with your *similar* sessions from the last 8 to 17 weeks: same sport, same session type (easy / long / tempo / intervals / race), a comparable duration, and indoor vs outdoor kept apart. The result is **Better / In line / Worse**, with the top reasons in plain language, a confidence level, and the effect on your fitness, fatigue and form. It takes over the wall for an hour after the activity.
+Each new activity is compared with your *similar* sessions from the last 8 to 17 weeks: same sport, same session type (easy / long / tempo / intervals / race), a comparable duration, and indoor vs outdoor kept apart. The result is **Better / In line / Worse**, with the top reasons in plain language, a confidence level, and the effect on your fitness, fatigue and form. It takes over the wall for an hour after the activity. Tapping another person's avatar pauses it — the verdict comes back after a minute without a tap; only *Overview* on the verdict ends it early.
 When there are fewer than 3 comparable sessions it says **"Not comparable yet"** instead of guessing.
 
 | Sport | What "improved" means |

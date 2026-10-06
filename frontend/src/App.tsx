@@ -1,7 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api } from './api'
-import type { AppConfig, Job, WallState } from './api'
+import type { Ambient, AppConfig, Job, WallState } from './api'
 import { DayScreen } from './components/DayScreen'
 import { NightScreen } from './components/NightScreen'
 import { TopBar } from './components/TopBar'
@@ -27,6 +27,7 @@ const OUTCOME_MS = { ok: 6_000, failed: 15_000 }
 const MORNING_FROM_HOUR = 4          // same as the server: a tap before this is still the night
 const MORNING_RETRY_MS = 10 * 60_000 // someone's night is still missing: ask again on a tap after this
 const DAY_SCREEN_IDLE_MS = 60_000    // a minute without a tap on the overview → the calm day screen
+const PAUSE_IDLE_MS = 60_000         // someone else's avatar tapped during a verdict: the verdict returns after a minute without input
 
 /** decodeURIComponent that survives a malformed URL (it throws on a stray "%") instead of crashing the app. */
 function safeDecode(s: string): string {
@@ -44,7 +45,9 @@ function inNight(start: string, end: string, d = new Date()): boolean {
 
 export default function App() {
   const [config, setConfig] = useState<AppConfig | null>(null)
-  const [wall, setWall] = useState<WallState | null>(null)
+  const [serverWall, setWall] = useState<WallState | null>(null)
+  // Another person tapped their avatar during a takeover: show them, without ending the verdict (it returns when idle).
+  const [pause, setPause] = useState<{ user: string; session: string; ambient: Ambient } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [night, setNight] = useState(false)
   const [wakeUntil, setWakeUntil] = useState(0)
@@ -77,6 +80,34 @@ export default function App() {
     es.addEventListener('refresh', () => refresh())
     return () => { clearInterval(poll); es.close() }
   }, [refresh])
+
+  // What this screen shows: the server's wall, or the paused-for person's overview.
+  const paused = pause && serverWall?.mode === 'verdict' && serverWall.session.id === pause.session ? pause : null
+  const wall = useMemo<WallState | null>(
+    () => paused ? { mode: 'ambient', user_id: paused.user, ambient: paused.ambient } : serverWall, [paused, serverWall])
+
+  // The pause ends after a minute without input, or once its verdict is over (or a newer one arrived).
+  const pauseUser = paused?.user
+  useEffect(() => {
+    if (!pauseUser) return  // a stale pause (verdict over or replaced) is simply ignored above
+    let timer = window.setTimeout(() => setPause(null), PAUSE_IDLE_MS)
+    const reset = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => setPause(null), PAUSE_IDLE_MS)
+    }
+    const evs = ['pointerdown', 'keydown', 'scroll', 'wheel'] as const
+    evs.forEach(e => window.addEventListener(e, reset, { passive: true }))
+    return () => {
+      window.clearTimeout(timer)
+      evs.forEach(e => window.removeEventListener(e, reset))
+    }
+  }, [pauseUser])
+
+  // Keep the paused-for person's overview as fresh as the wall.
+  useEffect(() => {
+    if (!pauseUser) return
+    api.ambient(pauseUser).then(a => setPause(p => p && p.user === pauseUser ? { ...p, ambient: a } : p)).catch(() => {})
+  }, [serverWall, pauseUser])
 
   // A fresh verdict pulls the wall back to the front even from a detail page.
   const prevMode = useRef<string | null>(null)
@@ -136,9 +167,16 @@ export default function App() {
 
   const select = useCallback(async (id: string) => {
     await api.select(id)
+    if (serverWall?.mode === 'verdict' && id !== serverWall.user_id) {
+      // someone else during a takeover: show them for now; the verdict stays and comes back when idle
+      const ambient = await api.ambient(id)
+      setPause({ user: id, session: serverWall.session.id, ambient })
+    } else {
+      setPause(null)  // the verdict's own person (or no takeover): back to what the server shows
+    }
     await refresh()
     if (loc.pathname !== '/') nav('/')
-  }, [refresh, loc.pathname, nav])
+  }, [serverWall, refresh, loc.pathname, nav])
 
   // Show a running sync job in the top bar until it finishes, then refresh the wall.
   const follow = useCallback(async (job: Job) => {

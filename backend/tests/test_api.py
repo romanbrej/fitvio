@@ -31,15 +31,21 @@ def test_config(client):
     assert [u["initials"] for u in r["users"]] == ["AR", "B"]
 
 
-def test_wall_shows_fresh_verdict_then_select_goes_ambient(client):
+def test_wall_verdict_survives_avatar_tap_until_dismissed(client):
     w = client.get("/api/wall").json()
     assert w["mode"] == "verdict"
     assert w["user_id"] == "a"  # demo: user a's run finished most recently
     assert w["session"]["verdict"]["headline"]
+    sid = w["session"]["id"]
+    # another person tapping their avatar must not end the takeover (the screen only pauses it)
     client.post("/api/wall/select", json={"user_id": "b"})
     w = client.get("/api/wall").json()
-    assert w["mode"] in ("ambient", "verdict")
-    if w["mode"] == "verdict":  # b's own fresh run may still be up
+    assert w["mode"] == "verdict" and w["session"]["id"] == sid
+    # "Overview" ends it for good
+    client.post("/api/wall/dismiss", json={"session_id": sid})
+    w = client.get("/api/wall").json()
+    assert w["mode"] == "ambient" or w["session"]["id"] != sid
+    if w["mode"] == "ambient":
         assert w["user_id"] == "b"
 
 

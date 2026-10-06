@@ -136,10 +136,9 @@ class Dismiss(BaseModel):
 @app.post("/api/wall/select")
 def select_user(body: Select, c: AppConfig = Depends(cfg), cn=Depends(conn)):
     _user_or_404(c, body.user_id)
+    # A tap on an avatar doesn't end a takeover: the wall pauses it on screen and it comes back when idle.
+    # Only "Overview" on the verdict (/api/wall/dismiss) ends it early.
     db.set_state(cn, "selected_user", body.user_id)
-    fresh = wall.fresh_verdict(cn, c)
-    if fresh:  # an explicit tap on an avatar beats the automatic takeover
-        wall.dismiss(cn, fresh["session_id"], c)
     return {"ok": True}
 
 
