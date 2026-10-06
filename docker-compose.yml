@@ -1,13 +1,11 @@
-# Health Wall on Docker, on any always-on machine in your home network.
-# The image is built by GitHub Actions on every push to main (.github/workflows/build.yml) and pushed to
-# a container registry; its optional deploy job runs on the server (self-hosted runner) and pulls + restarts web and sync.
-# See README "Getting started" and "Hosting".
-#   docker compose pull && docker compose up -d   start / apply compose changes
-#   docker compose up -d --build                  build locally instead (uses the same image name)
-#   docker compose logs -f sync                   watch the Garmin sync
+# Health Wall on Docker — any always-on machine in your home network (amd64 or arm64).
+#   docker compose up -d             start (pulls the prebuilt image from GHCR)
+#   docker compose up -d --build     build the image yourself instead
+#   docker compose logs -f sync      watch the Garmin sync
+#   ./deploy/install-updater.sh      automatic updates: pulls a newer image every 5 minutes
 # Data and settings stay on the host in ./data and ./config (credentials, tokens, health data).
-# Set HW_UID / HW_GID in .env to the host user owning those folders (id -u / id -g).
-# Rollback: HW_TAG=sha-<commit> in .env, then docker compose up -d (deploys then keep that tag).
+# Optional .env: HW_UID / HW_GID = the host user owning those folders (id -u / id -g), TZ = your time zone.
+# Rollback: HW_TAG=sha-<commit> in .env, then docker compose up -d (remove it to follow latest again).
 
 x-common: &common
   image: ghcr.io/romanbrej/fitness-dashboard:${HW_TAG:-latest}

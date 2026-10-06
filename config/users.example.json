@@ -1,16 +1,16 @@
 {
   "users": [
     {
-      "id": "roman",
-      "name": "Roman",
+      "id": "alex",
+      "name": "Alex",
       "color": "#3B82F6",
-      "garmindb_config_dir": "data/garmindb/roman/config"
+      "garmindb_config_dir": "data/garmindb/alex/config"
     },
     {
-      "id": "partner",
-      "name": "Partner",
+      "id": "sam",
+      "name": "Sam",
       "color": "#F97316",
-      "garmindb_config_dir": "data/garmindb/partner/config"
+      "garmindb_config_dir": "data/garmindb/sam/config"
     }
   ],
   "wall": {

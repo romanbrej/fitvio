@@ -1,11 +1,12 @@
-# Test, then build the image (platform below: set it to your server's) and push it to the container registry.
-# Then the optional `deploy` job runs on the server (self-hosted runner, deploy/install-runner.sh) and restarts the app.
+# Test, then build the multi-arch image (amd64 + arm64) and push it to GHCR.
+# Servers update themselves: deploy/install-updater.sh pulls a newer image every few minutes.
+# (No self-hosted runner on purpose: on a public repo it would let pull requests run code on your server.)
 name: build
 
 on:
   push:
     branches: [main]
-    paths-ignore: ['**.md', 'design-system/**']
+    paths-ignore: ['**.md', 'docs/**', 'design-system/**', 'LICENSE']
   workflow_dispatch:
 
 concurrency:
@@ -66,7 +67,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/arm64
+          platforms: linux/amd64,linux/arm64
           push: true
           # one plain manifest per build (no attestation index) → one package version per push
           provenance: false
@@ -79,25 +80,5 @@ jobs:
         with:
           package-name: ${{ github.event.repository.name }}
           package-type: container
-          min-versions-to-keep: 5
-
-  deploy:
-    needs: image
-    runs-on: [self-hosted, pi]
-    concurrency: deploy
-    steps:
-      - name: Pull latest image and restart
-        run: |
-          cd "$HOME/health-wall"
-          docker compose pull --quiet
-          docker compose up -d --no-build --remove-orphans
-          docker image prune -f
-      - name: Health check
-        run: |
-          for i in $(seq 1 30); do
-            curl -fsS -m 5 http://127.0.0.1:8765/api/health && exit 0
-            sleep 2
-          done
-          echo "web did not become healthy" >&2
-          cd "$HOME/health-wall" && docker compose ps && docker compose logs --tail 50 web
-          exit 1
+          # a multi-arch push stores 3 versions (index + one manifest per platform): 15 = the last 5 builds
+          min-versions-to-keep: 15

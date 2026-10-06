@@ -1,0 +1,7 @@
+[Unit]
+Description=Health Wall: pull a newer image and restart if it changed
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/health-wall/deploy/update.sh
