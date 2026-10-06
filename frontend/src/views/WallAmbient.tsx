@@ -63,7 +63,6 @@ function Mission({ a }: { a: Ambient }) {
   const h = headline(a)
   const open = (day: string) => nav(`/u/${a.user_id}/plan?day=${day}`)
   const b = a.buddy
-  const todayOpen = !!pw?.days.some(d => d.status === 'today')
   const [titleRef, titleSize] = useFitText<HTMLHeadingElement>(h.title, pw ? 80 : 112, 56)
   return (
     <section className={`card mission stripes${pw ? '' : ' no-workout'}${b ? ' has-buddy' : ''}`}>
@@ -77,7 +76,7 @@ function Mission({ a }: { a: Ambient }) {
         )}
       </div>
       <h1 ref={titleRef} className="display mission-title" style={{ '--fit': `${titleSize}px` } as React.CSSProperties}>{h.title}</h1>
-      {!todayOpen && <p className="mission-sub">{h.sub}</p>}
+      {!pw && <p className="mission-sub">{h.sub}</p>}  {/* with the week strip there's no room for it; the buddy says it */}
       {pw && <WeekStrip week={pw} onOpen={open} />}
       </div>
       {b && (

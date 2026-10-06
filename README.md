@@ -5,6 +5,12 @@ When you come home from an activity, the wall answers one question: **did this s
 The rest of the time it shows today's plan, your training form, recovery and how each sport is trending — with a little
 training buddy that reacts to how you're doing.
 
+![The wall: today's mission with the week of your Garmin plan, readiness, training load, week streak and sport trends](docs/screenshots/wall.png)
+
+![After a workout: the verdict — better, in line or worse than your similar sessions, and why](docs/screenshots/verdict.png)
+
+<sub>Screenshots use the built-in demo data (`healthdash demo`).</sub>
+
 ```
 Garmin watch → Garmin Connect → GarminDB (per person, on your server) → healthdash ingest + verdicts → API → wall display (any browser)
 ```

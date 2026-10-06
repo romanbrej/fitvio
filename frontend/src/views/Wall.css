@@ -57,7 +57,7 @@
   display: flex; align-items: center; gap: 10px;
   font: 700 16px var(--display); letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted);
 }
-.mission-title { margin: 0; font-size: min(var(--fit, 80px), calc(var(--vh) * 10.5)); color: var(--volt); white-space: nowrap; overflow: hidden; }
+.mission-title { margin: 0; font-size: min(var(--fit, 80px), calc(var(--vh) * 10.5)); color: var(--volt); white-space: nowrap; overflow: hidden; flex-shrink: 0; }
 .mission.no-workout .mission-title { font-size: min(var(--fit, 112px), calc(var(--vh) * 14)); margin-top: 6px; }
 .mission-sub { margin: 4px 0 0; font-size: 22px; color: var(--text-2); max-width: 620px; }
 .mission-plan {
