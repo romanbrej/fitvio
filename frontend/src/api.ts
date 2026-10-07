@@ -70,7 +70,10 @@ export interface SportTrend {
   status?: {
     pace_s_per_km?: number; change_s_per_km?: number | null
     w_per_beat?: number | null; w_per_beat_change_pct?: number | null; ftp_wkg?: number | null; hr_wkg?: number | null
-    ref_hr?: number | null; points: { day: string; value: number }[]
+    ref_hr?: number | null
+    /** strength: sessions in the last 6 weeks and the 6 before, minutes, e1RM trend when weights are logged */
+    sessions_6w?: number; sessions_prev_6w?: number; minutes_6w?: number; e1rm_change_pct?: number | null
+    points: { day: string; value: number }[]
   } | null
   /** running only: median cadence of easy/long runs in 6 weeks vs the 6 before */
   cadence?: { spm: number; change: number | null; runs: number } | null

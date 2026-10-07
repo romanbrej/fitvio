@@ -323,7 +323,7 @@ function weekNo(iso: string): number {
 
 /* Sport tiles: one big number in real units and where its trend is heading. A move smaller than the
  * steady band is noise (GPS, wind, heat), so the pill doesn't flip from one session to the next. */
-const STEADY = { run_s_per_km: 4, pct: 1.5 }
+const STEADY = { run_s_per_km: 4, pct: 1.5, gym_sessions: 2 }
 const STALE_DAYS = 42
 
 type Tone = 'better' | 'inline' | 'worse' | 'muted'
@@ -369,6 +369,21 @@ function tileBody(sport: Sport, t: SportTrend): { big: string; unit?: string; ca
       extra: st.ftp_wkg ? `FTP ${st.ftp_wkg.toFixed(1)} W/kg` : undefined,
       spark: st.points.map(p => p.value), tone,
     }
+  }
+  if (sport === 'strength' && st?.sessions_6w != null) {
+    // circuits without weights: how often you go, the last 6 weeks vs the 6 before; with weights: e1RM
+    const n = st.sessions_6w, prev = st.sessions_prev_6w ?? 0
+    const perWeek = `${(n / 6).toFixed(1)}×/wk`
+    const spark = st.points.map(p => p.value)
+    if (st.e1rm_change_pct != null) {
+      return { big: signed(st.e1rm_change_pct, 1, '%'), caption: 'e1RM · 6 wks', extra: perWeek, spark,
+               tone: toneOf(st.e1rm_change_pct, STEADY.pct) }
+    }
+    const tone = toneOf(n - prev, STEADY.gym_sessions)
+    const trend = tone === 'inline' ? 'steady vs the 6 wks before'
+      : `${n > prev ? '▲' : '▼'} ${Math.abs(n - prev)} ${n > prev ? 'more' : 'fewer'} than the 6 wks before`
+    return { big: (n / 6).toFixed(1), unit: '×/wk', caption: `${n} in 6 wks · ${trend}`,
+             extra: n ? `${Math.round((st.minutes_6w ?? 0) / 6)} min/wk` : undefined, spark, tone }
   }
   // a trend this steep comes from too few sessions: don't show it on the wall
   const raw6 = t.pct_per_week == null ? null : t.pct_per_week * 6

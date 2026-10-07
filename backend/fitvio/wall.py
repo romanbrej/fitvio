@@ -119,6 +119,7 @@ def sport_status(sessions: list[dict], sport: str, ftp: float | None, weights: i
              and how many s/km it changed over that time (+ = faster).
     cycling: power per heartbeat of the rides with power in 3 months, plus W/kg of FTP and of the
              power at the reference HR.
+    strength: sessions per 6 weeks vs the 6 before, and the e1RM trend when weights are logged.
     """
     def recent(days, keep):
         lo = (today - timedelta(days=days)).isoformat()
@@ -160,7 +161,39 @@ def sport_status(sessions: list[dict], sport: str, ftp: float | None, weights: i
                 "hr_wkg": round(lf["power_at_ref_hr"] / ride_kg, 2) if lf.get("power_at_ref_hr") and ride_kg else None,
                 "ref_hr": lf.get("ref_hr"),
                 "points": [{"day": s["start_time"][:10], "value": round(s["features"]["ef"], 3)} for s in rides]}
+    if sport == "strength":
+        return strength_status(recent(84, lambda s: True), today)
     return None
+
+
+def strength_status(gym: list[dict], today: date) -> dict:
+    """The gym card: how often (sessions and minutes, the last 6 weeks vs the 6 before), and, when
+    weights are logged, how the estimated 1RM moved. Circuits without weights only get the first."""
+    split = (today - timedelta(days=42)).isoformat()
+    now = [s for s in gym if s["start_time"][:10] >= split]
+    before = [s for s in gym if s["start_time"][:10] < split]
+    weeks = [0] * 12
+    for s in gym:
+        weeks[min(11, (today - date.fromisoformat(s["start_time"][:10])).days // 7)] += 1
+
+    # per exercise with 3+ weighted sessions in 6 weeks: e1RM slope over 6 weeks in % of its mean
+    by_ex: dict[str, list[tuple[float, float]]] = {}
+    for s in now:
+        day = (date.fromisoformat(s["start_time"][:10]) - today).days
+        for ex, d in ((s.get("features") or {}).get("exercises") or {}).items():
+            if d.get("e1rm"):
+                by_ex.setdefault(ex, []).append((day, d["e1rm"]))
+    changes = []
+    for pts in by_ex.values():
+        slope = physio.linear_slope([p[0] for p in pts], [p[1] for p in pts]) if len(pts) >= 3 else None
+        mean = sum(p[1] for p in pts) / len(pts)
+        if slope is not None and mean:
+            changes.append(slope * 42 / mean * 100)
+    return {"sessions_6w": len(now), "sessions_prev_6w": len(before),
+            "minutes_6w": round(sum(s.get("duration_s") or 0 for s in now) / 60),
+            "e1rm_change_pct": round(median(changes), 1) if changes else None,
+            "points": [{"day": (today - timedelta(weeks=11 - i)).isoformat(), "value": n}
+                       for i, n in enumerate(reversed(weeks))]}
 
 
 def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
@@ -216,7 +249,7 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
         weigh_ins = [dict(r) for r in conn.execute(
             "SELECT day, weight_kg FROM health_days WHERE user_id = ? AND weight_kg IS NOT NULL ORDER BY day", (user_id,))]
         weights = improvements.Weights(weigh_ins, (prof.get("weight_kg") or {}).get("value"))
-        for sport in ("running", "cycling"):
+        for sport in ("running", "cycling", "strength"):
             if sport in trends:
                 trends[sport]["status"] = sport_status(sessions, sport, (prof.get("ftp") or {}).get("value"),
                                                        weights, today)
