@@ -150,7 +150,6 @@ def speed_at_hr(records: list[Record], speeds: list[float | None], target_hr: fl
     return my + slope * (target_hr - mx)
 
 
-STEADY_HR_BAND = 3.0     # bpm around the target HR that count as "at" it
 STEADY_SPEED_S = 60.0    # pace must have been steady (±10 %) this long…
 STEADY_HR_S = 30.0       # …and HR settled (moved ≤ 4 bpm) this long
 COOL_OFF_S = 180.0       # after HR was 10+ bpm above the target, it sits at the target while you jog slowly
@@ -174,11 +173,11 @@ class _Window:
 
 
 def steady_speed_at_hr(records: list[Record], speeds: list[float | None], target_hr: float,
-                       skip_s: float = 300.0) -> tuple[float, float] | None:
+                       below: float = 5.0, above: float = 3.0, skip_s: float = 300.0) -> tuple[float, float] | None:
     """Median speed of the seconds a run actually spent steady at target_hr: (m/s, seconds).
 
     Measured, never extrapolated — every kind of run counts, but only for its steady seconds near the
-    target: after the warm-up, pace steady for a minute, HR settled, and not in the cool-off after a hard
+    target (from `below` bpm under it to `above` bpm over it): after the warm-up, pace steady for a minute, HR settled, and not in the cool-off after a hard
     effort (HR lags pace in intervals). None when that adds up to under a minute.
     """
     if not records:
@@ -195,7 +194,7 @@ def steady_speed_at_hr(records: list[Record], speeds: list[float | None], target
             continue
         h_lo, h_hi = hr_w.push(r.t, r.hr)
         if (r.t - records[0].t < max(warm, STEADY_SPEED_S) or not dt or not v or v <= 0.5
-                or abs(r.hr - target_hr) > STEADY_HR_BAND or r.t - last_hard <= COOL_OFF_S
+                or not -below <= r.hr - target_hr <= above or r.t - last_hard <= COOL_OFF_S
                 or s_lo <= 0.5 or s_hi > s_lo * 1.10 or h_hi - h_lo > 4):
             continue
         pts.append((v, dt))

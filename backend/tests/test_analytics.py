@@ -67,7 +67,7 @@ def test_steady_speed_at_hr_measures_instead_of_extrapolating():
     recs = _run([(300, 2.0, 120, 140), (2400, 2.4, 140, 165)])
     v, secs = physio.steady_speed_at_hr(recs, [r.speed for r in recs], 151)
     assert v == pytest.approx(2.4)
-    assert 400 < secs < 700                                  # only the stretch at 148–154 bpm
+    assert 600 < secs < 900                                  # only the stretch at 146–154 bpm
 
 
 def test_steady_speed_at_hr_skips_interval_recoveries():
@@ -261,3 +261,13 @@ def test_intervals_older_than_six_months_dont_count():
     today = interval_session(99, "2026-10-02T11:00:00", reps=8, rep_s=60, rest_s=120)
     old = [interval_session(i, f"2025-0{2 + i}-10T07:00:00", reps=7, rep_s=60, rest_s=120) for i in range(3)]
     assert model_for("running").evaluate(today, old, None, None)["verdict"] == "not_comparable"
+
+
+def test_ref_hr_band_is_personal():
+    from fitvio.analytics.features import ref_hr, ref_hr_band
+    me = UserConfig(id="a", name="A", max_hr=194, rest_hr=50)
+    other = UserConfig(id="b", name="B", max_hr=180, rest_hr=60)
+    assert ref_hr(me) == 151
+    assert ref_hr_band(me) == (5, 3)                             # 146–154, 154 included
+    lo, hi = ref_hr_band(other)                                  # smaller reserve → narrower band
+    assert ref_hr(other) == 144 and (lo, hi) == (4, 2)          # 140–146
