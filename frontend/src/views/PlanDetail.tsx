@@ -29,7 +29,7 @@ export function readyLines(a: Ambient): { ok: boolean; title: string; lines: str
   const ss = a.sweet_spot
   const h = a.health_latest
   const lines: string[] = []
-  if (r) lines.push(`Garmin readiness ${r.score} (${READINESS_LEVEL[r.level ?? ''] ?? r.level})${r.feedback ? ` — ${feedbackText(r.feedback)?.toLowerCase()}` : ''}`)
+  if (r) lines.push(`${r.source === 'fitvio' ? 'Readiness (estimated)' : 'Garmin readiness'} ${r.score} (${READINESS_LEVEL[r.level ?? ''] ?? r.level})${r.feedback ? ` — ${feedbackText(r.feedback)?.toLowerCase()}` : ''}`)
   if (form != null) lines.push(`Form ${form > 0 ? '+' : ''}${Math.round(form)} — ${form > 5 ? 'fresh' : form > -10 ? 'neutral' : form > -30 ? 'productive fatigue' : 'very tired'}`)
   if (h.hrv_last_night != null && h.hrv_baseline_low != null && h.hrv_baseline_high != null) {
     lines.push(`HRV ${h.hrv_last_night} ms — ${h.hrv_last_night < h.hrv_baseline_low ? 'below' : h.hrv_last_night > h.hrv_baseline_high ? 'above' : 'inside'} your normal range`)

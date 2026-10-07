@@ -195,16 +195,40 @@ def check_once(conn: sqlite3.Connection, cfg: AppConfig, now: datetime | None = 
     return out
 
 
-def full_sync_all(conn: sqlite3.Connection, cfg: AppConfig, sync=sync_user) -> None:
+def full_sync_all(conn: sqlite3.Connection, cfg: AppConfig, sync=None) -> None:
+    """The hourly sync for everyone (Garmin and Intervals.icu). `sync` replaces it in tests."""
+    from .sources import sync_user as any_source
     for user in cfg.users:
-        if not user.garmindb_config_dir:
+        if not user.source:
             continue
         try:
-            sync(conn, user)
+            (sync or any_source)(conn, user)
         except SyncBusy:
             log.info("hourly sync %s skipped: another sync is running", user.id)
         except Exception:
             log.exception("hourly sync %s failed", user.id)
+
+
+def check_intervals(conn: sqlite3.Connection, cfg: AppConfig, now: datetime | None = None, sync=None) -> dict[str, str]:
+    """Intervals.icu has no "newest activity" shortcut, but a sync is only a few small requests: in
+    daytime, sync each Intervals.icu person every 10 min (intervals_runner.CHECK_INTERVAL_S)."""
+    from .intervals_runner import due, sync_user as intervals_sync
+    now = now or datetime.now()
+    if not is_enabled(conn) or not in_active_hours(now):
+        return {}
+    out = {}
+    for user in cfg.users:
+        if user.source != "intervals" or not due(conn, user, now):
+            continue
+        try:
+            ok, _ = (sync or intervals_sync)(conn, user)
+            out[user.id] = "synced" if ok else "failed"
+        except SyncBusy:
+            out[user.id] = "busy"
+        except Exception:
+            log.exception("intervals check %s crashed", user.id)
+            out[user.id] = "failed"
+    return out
 
 
 def status(conn: sqlite3.Connection, cfg: AppConfig) -> dict:
@@ -233,7 +257,7 @@ def watch_loop(conn: sqlite3.Connection) -> None:
             full_sync_all(conn, cfg)
             next_full = time.monotonic() + FULL_SYNC_INTERVAL_S
         else:
-            result = check_once(conn, cfg)
-            if any(v not in ("none", "night", "disabled", "backoff", "paused") for v in result.values()):
+            result = {**check_once(conn, cfg), **check_intervals(conn, cfg)}
+            if any(v not in ("none", "night", "disabled", "backoff", "paused", "synced") for v in result.values()):
                 log.info("activity check: %s", result)
         time.sleep(CHECK_INTERVAL_S)

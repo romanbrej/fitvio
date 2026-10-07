@@ -1,6 +1,6 @@
-"""Everything about a person comes from Garmin — nothing has to be configured by hand.
+"""Everything about a person comes from their data source — nothing has to be configured by hand.
 
-Sources, in order of preference per value:
+For Garmin, in order of preference per value (Intervals.icu: see IntervalsReader.profile):
   name     Garmin profile (social-profile.json, saved by GarminDB at login)
   sex      Garmin user settings (user-settings.json) → watch user profile in the FIT files
   max_hr   the max HR your watch uses for its zones (FIT zones_target) → watch user profile
@@ -28,6 +28,7 @@ log = logging.getLogger(__name__)
 
 FIELDS = ("name", "sex", "max_hr", "rest_hr", "lthr", "ftp", "weight_kg")
 DEFAULTS = {"max_hr": 190.0, "rest_hr": 55.0, "sex": "male"}
+DEFAULT_SOURCE = "default — no data yet"
 # Changing these changes zones, session types and training load → reprocess history.
 THRESHOLD_TOLERANCE = {"max_hr": 2.0, "rest_hr": 3.0, "ftp": 5.0}
 
@@ -58,11 +59,11 @@ def describe(conn: sqlite3.Connection, user: UserConfig) -> dict[str, dict]:
     out = {}
     for f in FIELDS:
         if getattr(user, f) is not None:
-            out[f] = {"value": getattr(user, f), "source": "set in config/users.json"}
+            out[f] = {"value": getattr(user, f), "source": "set by you"}
         elif f in p and p[f]["value"] is not None:
             out[f] = {"value": p[f]["value"], "source": p[f]["source"]}
         elif f in DEFAULTS:
-            out[f] = {"value": DEFAULTS[f], "source": "default (no Garmin data yet)"}
+            out[f] = {"value": DEFAULTS[f], "source": DEFAULT_SOURCE}
         else:
             out[f] = {"value": None, "source": "not available"}
     return out
@@ -188,16 +189,18 @@ def derive(base_dir: Path, fit_limit: int = 20) -> dict[str, tuple[object, str]]
     return found
 
 
-def refresh(conn: sqlite3.Connection, user: UserConfig, base_dir: Path) -> bool:
-    """Re-derive the profile. Returns True when zone-relevant values changed (→ reprocess history)."""
+def refresh(conn: sqlite3.Connection, user: UserConfig, source) -> bool:
+    """Re-derive the profile from `source` (a GarminDB data dir, or a reader with `.profile()`).
+    Returns True when zone-relevant values changed (→ reprocess history)."""
+    found = source.profile() if hasattr(source, "profile") else derive(source)
     before = resolve(conn, user)
     had_profile = bool(stored(conn, user.id))
     now = datetime.now().isoformat(timespec="seconds")
-    for field, (value, source) in derive(base_dir).items():
+    for field, (value, source_text) in found.items():
         if isinstance(value, (int, float)):
             value = float(value)
         conn.execute("INSERT OR REPLACE INTO profiles (user_id, field, value, source, updated_at) VALUES (?,?,?,?,?)",
-                     (user.id, field, json.dumps(value), source, now))
+                     (user.id, field, json.dumps(value), source_text, now))
     conn.commit()
     after = resolve(conn, user)
     if not had_profile:

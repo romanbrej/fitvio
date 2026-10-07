@@ -1,9 +1,9 @@
-"""Connecting Garmin accounts and running syncs as background jobs.
+"""Connecting Garmin and Intervals.icu accounts and running syncs as background jobs.
 
 Used by the web UI (Accounts screen) and the `add-person` CLI. A connect job walks through:
     logging_in → (mfa_required → logging_in) → downloading → importing → done | error
-The password is written once to the person's chmod-600 password file and never kept, logged or
-returned by the API.
+The password (Garmin) or API key (Intervals.icu) is written once to the person's chmod-600 file and
+never kept, logged or returned by the API.
 """
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from typing import Callable
 
 from . import db, pipeline
 from .config import UserConfig, add_user, load_config
+from .ingest import intervals_reader as icu
 from .sync.garmindb_runner import (SyncBusy, changed_since, init_user_config, login_interactive, run_sync,
                                    timed_ingest)
 
@@ -67,6 +68,18 @@ def is_connected(email: str) -> str | None:
                 if json.loads(f.read_text())["credentials"]["user"].lower() == email.lower():
                     return u.id
             except (ValueError, KeyError):
+                pass
+    return None
+
+
+def intervals_connected(athlete_id: str) -> str | None:
+    """User id already connected with this Intervals.icu athlete, if any."""
+    for u in load_config().users:
+        if u.intervals_path and (u.intervals_path / "credentials.json").exists():
+            try:
+                if icu.load_credentials(u.intervals_path)[0] == athlete_id:
+                    return u.id
+            except (OSError, ValueError, KeyError):
                 pass
     return None
 
@@ -173,34 +186,47 @@ def result_message(result: dict, full: bool) -> str:
     return " · ".join(parts) or "Up to date"
 
 
+def _download(job: Job, conn, user: UserConfig, full: bool, quick: bool) -> bool:
+    """The source's download step; on failure the job carries the error."""
+    if user.source == "intervals":
+        from .sync import intervals_runner
+        job.message = ("Downloading your history from Intervals.icu — the first time this takes a few minutes"
+                       if full else "Fetching new data from Intervals.icu")
+        ok = intervals_runner.run_sync(conn, user, full=full, on_line=job.line)
+    else:
+        job.message = ("Downloading your complete Garmin history — the first time this can take a long while"
+                       if full else "Fetching last night's data from Garmin" if quick else "Fetching new data from Garmin")
+        ok = run_sync(conn, user, full=full, timeout_s=FULL_SYNC_TIMEOUT_S if full else 1800,
+                      on_line=job.line, on_step=job.on_step, quick=quick)
+    if not ok:
+        err = conn.execute("SELECT last_error FROM sync_status WHERE user_id = ?", (user.id,)).fetchone()[0]
+        job.phase, job.error = "error", f"Download failed: {err}"
+        return False
+    if full and user.source == "garmin":
+        # Garmin's weather + heat acclimation for the whole history (what Garmin Connect shows)
+        from .cli import backfill_extras
+        job.message = "Loading weather and heat acclimation for your activities"
+        job.on_step(10, 11, "extras", "Weather & heat acclimation")
+        try:
+            backfill_extras(user, on_progress=lambda i, n: job.line(f"{i}/{n} activities"))
+        except Exception as e:  # nice-to-have: never fail the first import because of it
+            log.warning("extras backfill failed for %s: %s", user.id, e)
+    return True
+
+
 def _download_and_import(job: Job, user: UserConfig, db_path: Path, full: bool, quick: bool = False) -> None:
     conn = db.connect(db_path)
     try:
         job.phase = "downloading"
-        job.message = ("Downloading your complete Garmin history — the first time this can take a long while"
-                       if full else "Fetching last night's data from Garmin" if quick else "Fetching new data from Garmin")
         # read before the sync: a successful run moves this marker forward (a quick one only fetches
         # health data, so it has no edited activities to look for)
         since = None if full or quick else changed_since(conn, user.id)
         try:
-            ok = run_sync(conn, user, full=full, timeout_s=FULL_SYNC_TIMEOUT_S if full else 1800,
-                          on_line=job.line, on_step=job.on_step, quick=quick)
+            if not _download(job, conn, user, full, quick):
+                return
         except SyncBusy as e:
             job.phase, job.error = "error", str(e)
             return
-        if not ok:
-            err = conn.execute("SELECT last_error FROM sync_status WHERE user_id = ?", (user.id,)).fetchone()[0]
-            job.phase, job.error = "error", f"Download failed: {err}"
-            return
-        if full:
-            # Garmin's weather + heat acclimation for the whole history (what Garmin Connect shows)
-            from .cli import backfill_extras
-            job.message = "Loading weather and heat acclimation for your activities"
-            job.on_step(10, 11, "extras", "Weather & heat acclimation")
-            try:
-                backfill_extras(user, on_progress=lambda i, n: job.line(f"{i}/{n} activities"))
-            except Exception as e:  # nice-to-have: never fail the first import because of it
-                log.warning("extras backfill failed for %s: %s", user.id, e)
         job.phase = "importing"
         job.message = "Analysing your activities and working out every verdict"
         job.result = timed_ingest(conn, user, full=full, changed_since=since)
@@ -245,6 +271,42 @@ def start_connect(email: str, password: str, db_path: Path, on_registered: Calla
                 log.exception("connect job %s: %s", job.id, stage)
             if user and not registered:
                 discard(user)
+            _fail(job, f"{stage}: {e}")
+            return
+        job.user_id = user.id
+        on_registered()
+        _download_and_import(job, user, db_path, full=True)
+
+    threading.Thread(target=run, name=f"connect-{job.id}", daemon=True).start()
+    return job
+
+
+def start_connect_intervals(athlete_id: str, api_key: str, db_path: Path,
+                            on_registered: Callable[[], None] = lambda: None) -> Job:
+    """Check the API key, register the person and download their history in the background."""
+    with _lock:
+        if _connect_active():
+            raise ConnectBusy("another account is being connected — wait for it to finish")
+        job = _add_locked(Job(kind="connect", message="Checking your Intervals.icu API key"))
+
+    def run():
+        user, stage, registered = None, "Login failed", False
+        try:
+            athlete = icu.Client(athlete_id, api_key).athlete()
+            name = athlete.get("name") or " ".join(filter(None, (athlete.get("firstname"), athlete.get("lastname"))))
+            job.name = name or None
+            stage = "Saving the account failed"
+            user_id = new_user_id(name or athlete_id)
+            user = UserConfig(id=user_id, intervals_dir=f"data/intervals/{user_id}")
+            icu.save_credentials(user.intervals_path, athlete_id, api_key)
+            add_user(user.id, intervals_dir=user.intervals_dir)
+            registered = True
+            user = load_config().user(user.id)
+        except Exception as e:
+            if stage != "Login failed":
+                log.exception("connect job %s: %s", job.id, stage)
+            if user and not registered:
+                shutil.rmtree(user.intervals_path, ignore_errors=True)
             _fail(job, f"{stage}: {e}")
             return
         job.user_id = user.id

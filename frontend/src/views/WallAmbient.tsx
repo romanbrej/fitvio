@@ -8,7 +8,7 @@ import { SportIcon, TrendPill } from '../components/icons'
 import { Sparkline } from '../components/Sparkline'
 import { WeekStrip } from '../components/WeekStrip'
 import { formState, hoursMinutes, num, signed, SPORT_LABEL } from '../format'
-import { READINESS_LEVEL, feedbackText, headline, paceStr } from '../mission'
+import { READINESS_LEVEL, feedbackText, headline, paceStr, readinessTitle } from '../mission'
 import './Wall.css'
 
 const SPORTS: Sport[] = ['running', 'cycling', 'swimming', 'strength']
@@ -113,13 +113,16 @@ function ReadinessCard({ a }: { a: Ambient }) {
     },
     { label: 'Sleep', value: hoursMinutes(h.sleep_total_min).replace('h ', ':').replace('m', ''), unit: 'h', metric: 'sleep',
       delta: h.sleep_score != null ? { t: `Score ${num(h.sleep_score)}`, c: 'muted' } : null },
-    { label: 'Body Battery', value: num(h.bb_max), unit: '', metric: 'body_battery',
-      delta: h.bb_max != null ? { t: h.bb_max >= 85 ? 'Full' : h.bb_max >= 60 ? 'Good' : 'Low', c: h.bb_max >= 60 ? 'better' : 'worse' } : null },
+    // Intervals.icu has no Body Battery (Garmin keeps it to itself): steps instead
+    a.source === 'intervals'
+      ? { label: 'Steps', value: num(h.steps), unit: '', metric: 'steps', delta: null }
+      : { label: 'Body Battery', value: num(h.bb_max), unit: '', metric: 'body_battery',
+          delta: h.bb_max != null ? { t: h.bb_max >= 85 ? 'Full' : h.bb_max >= 60 ? 'Good' : 'Low', c: h.bb_max >= 60 ? 'better' : 'worse' } : null },
   ]
   return (
     <section className="card readiness">
       <div className="readiness-head">
-        <div className="ring" aria-label={r ? `Garmin training readiness ${r.score}` : 'No readiness from Garmin today'}>
+        <div className="ring" aria-label={r ? `${readinessTitle(r)} ${r.score}` : 'No readiness today'}>
           <svg width="104" height="104" viewBox="0 0 104 104">
             <circle cx="52" cy="52" r="44" fill="none" stroke="var(--border)" strokeWidth="10" strokeDasharray={r ? undefined : '6 8'} />
             {r && <circle cx="52" cy="52" r="44" fill="none" stroke="var(--volt)" strokeWidth="10" strokeLinecap="round"
@@ -131,7 +134,7 @@ function ReadinessCard({ a }: { a: Ambient }) {
           </div>
         </div>
         <div style={{ minWidth: 0 }}>
-          <div className="label">Training readiness</div>
+          <div className="label">{readinessTitle(r)}</div>
           {r ? (
             <>
               <div className="display readiness-level">{READINESS_LEVEL[r.level ?? ''] ?? r.level ?? '—'}</div>
@@ -139,7 +142,7 @@ function ReadinessCard({ a }: { a: Ambient }) {
             </>
           ) : (
             <>
-              <div className="readiness-none">No readiness from Garmin today</div>
+              <div className="readiness-none">{a.source === 'intervals' ? 'No readiness today — waiting for last night' : 'No readiness from Garmin today'}</div>
             </>
           )}
           {vo2 != null && (

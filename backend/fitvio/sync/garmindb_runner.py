@@ -195,8 +195,9 @@ class SyncBusy(RuntimeError):
 
 @contextmanager
 def sync_lock(user: UserConfig):
-    """One GarminDB run per person at a time: two runs on the same data dir corrupt its databases."""
-    path = user.garmindb_dir.parent / ".sync.lock"
+    """One sync per person at a time: two GarminDB runs on the same data dir corrupt its databases
+    (and two Intervals.icu downloads would race on the same files)."""
+    path = user.data_dir / ".sync.lock"
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as fh:
         try:
@@ -317,11 +318,11 @@ def sync_user(conn: sqlite3.Connection, user: UserConfig, full: bool = False) ->
 
 
 def timed_ingest(conn: sqlite3.Connection, user: UserConfig, **kw) -> dict:
-    """pipeline.ingest_from_garmindb, with its duration in the log (next to the GarminDB step times)."""
+    """pipeline.ingest, with its duration in the log (next to the GarminDB step times)."""
     from .. import pipeline
 
     started = time.monotonic()
-    result = pipeline.ingest_from_garmindb(conn, user, **kw)
+    result = pipeline.ingest(conn, user, **kw)
     log.info("sync %s: ingest %.0fs", user.id, time.monotonic() - started)
     return result
 

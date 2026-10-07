@@ -5,13 +5,14 @@ import { api } from '../../api'
 import type { Account, ActivityCheck, BuddySettings } from '../../api'
 import { ANIMALS, Buddy } from '../../components/Buddy'
 import type { Animal } from '../../components/Buddy'
+import { HrSettings } from '../../components/HrSettings'
 import { ago } from '../../format'
 import { usePhone } from '../ctx'
 import { Avatar, Card } from '../parts'
 
 const errorText = (e: unknown) => String(e).replace(/^Error: /, '')
 
-/** Who uses this phone, their buddy, the Garmin accounts and auto-sync. */
+/** Who uses this phone, their heart-rate values, their buddy, the accounts and auto-sync. */
 export function Me() {
   const { config, me, setMe, refresh } = usePhone()
   const [accounts, setAccounts] = useState<Account[] | null>(null)
@@ -44,6 +45,7 @@ export function Me() {
     try { setCheck(await api.setActivityCheck(!check.enabled)) } catch (e) { setProblem(errorText(e)) }
   }
   const mine = buddies?.users[me.id]
+  const myAccount = accounts?.find(a => a.id === me.id)
 
   return (
     <div className="ph-stack">
@@ -68,6 +70,13 @@ export function Me() {
         </Card>
       )}
 
+      {myAccount && (
+        <Card>
+          <span className="ph-label">Heart rate</span>
+          <HrSettings account={myAccount} onSaved={load} />
+        </Card>
+      )}
+
       {buddies && (
         <Card>
           <div className="ph-row" style={{ gap: 12 }}>
@@ -86,7 +95,7 @@ export function Me() {
       )}
 
       <Card>
-        <span className="ph-label">Garmin accounts</span>
+        <span className="ph-label">Accounts</span>
         {accounts?.map(a => (
           <div key={a.id} className="ph-list-row">
             <Avatar user={a} size="sm" />
@@ -94,7 +103,7 @@ export function Me() {
               <span className="ph-strong">{a.name}</span>
               {a.job ? <span className="ph-foot">Syncing…</span>
                 : a.sync.login_expired ? <span className="ph-foot tone-warn">Garmin login expired — Sync logs in again</span>
-                : a.sync.last_error ? <span className="ph-foot tone-warn">Last sync failed</span>
+                : a.sync.last_error ? <span className="ph-foot tone-warn">Last sync failed{a.source === 'intervals' && /API key/.test(a.sync.last_error) ? ' — check the API key' : ''}</span>
                 : <span className={`ph-foot ${a.sync.stale ? 'tone-warn' : 'tone-better'}`}>Synced {ago(a.sync.last_success)}</span>}
             </div>
             <button className={`ph-btn sm${a.sync.login_expired ? ' warn' : ''}`} onClick={() => syncNow(a.id)} disabled={!!a.job}
@@ -108,7 +117,7 @@ export function Me() {
             <div className="ph-grow">
               <span className="ph-strong">Auto-sync on new activity</span>
               <span className="ph-foot">{check.backoff_until ? `Paused until ${check.backoff_until.slice(11, 16)} (Garmin rate limit)`
-                : `Checks Garmin every ${Math.round(check.interval_s / 60)} min, ${check.active_hours}`}</span>
+                : `Checks for new activities every ${Math.round(check.interval_s / 60)}–10 min, ${check.active_hours}`}</span>
             </div>
             <button role="switch" aria-checked={check.enabled} className={`switch ${check.enabled ? 'on' : ''}`}
                     onClick={toggleCheck} aria-label="Auto-sync on new activity"><span /></button>
@@ -117,7 +126,7 @@ export function Me() {
         <Link to="/me/connect" className="ph-list-row ph-add"><Plus size={22} aria-hidden />Add a person</Link>
       </Card>
 
-      <p className="ph-note"><Wifi size={18} aria-hidden />Fitvio runs on your home server and only works on your home Wi-Fi. Your Garmin login and health data never leave your house.</p>
+      <p className="ph-note"><Wifi size={18} aria-hidden />Fitvio runs on your home server and only works on your home Wi-Fi. Your logins and health data never leave your house.</p>
     </div>
   )
 }

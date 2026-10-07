@@ -22,12 +22,14 @@ def env(name: str, default: str | None = None) -> str | None:
 
 @dataclass
 class UserConfig:
-    """One person. Only `id` and `garmindb_config_dir` are needed: name, sex, max/resting HR and
-    FTP are read from Garmin automatically (see profile.py). Values set here override Garmin."""
+    """One person. Only `id` and one data source are needed: `garmindb_config_dir` (Garmin) or
+    `intervals_dir` (Intervals.icu). Name, sex, max/resting HR and FTP are read from the source
+    automatically (see profile.py). Values set here override the source."""
     id: str
     name: str | None = None
     color: str = "#3B82F6"
     garmindb_config_dir: str | None = None
+    intervals_dir: str | None = None  # Intervals.icu: credentials + downloaded files (data/intervals/<id>)
     max_hr: float | None = None
     rest_hr: float | None = None
     sex: str | None = None  # used for the TRIMP weighting factor
@@ -48,8 +50,26 @@ class UserConfig:
     def garmindb_dir(self) -> Path | None:
         if not self.garmindb_config_dir:
             return None
-        p = Path(self.garmindb_config_dir).expanduser()
-        return p if p.is_absolute() else PROJECT_ROOT / p
+        return _project_path(self.garmindb_config_dir)
+
+    @property
+    def intervals_path(self) -> Path | None:
+        return _project_path(self.intervals_dir) if self.intervals_dir else None
+
+    @property
+    def source(self) -> str | None:
+        """Where this person's data comes from: "garmin", "intervals" or None (demo / not connected)."""
+        return "garmin" if self.garmindb_config_dir else "intervals" if self.intervals_dir else None
+
+    @property
+    def data_dir(self) -> Path | None:
+        """The person's private data folder (sync lock, logs)."""
+        return self.garmindb_dir.parent if self.garmindb_dir else self.intervals_path
+
+
+def _project_path(value: str) -> Path:
+    p = Path(value).expanduser()
+    return p if p.is_absolute() else PROJECT_ROOT / p
 
 
 @dataclass
@@ -91,9 +111,9 @@ def config_path() -> Path:
     return Path(env("CONFIG") or PROJECT_ROOT / "config" / "users.json")
 
 
-def add_user(user_id: str, garmindb_config_dir: str) -> UserConfig:
-    """Append a person to config/users.json (created if missing). Only id, colour and the GarminDB
-    dir are stored; everything else comes from Garmin."""
+def add_user(user_id: str, garmindb_config_dir: str | None = None, intervals_dir: str | None = None) -> UserConfig:
+    """Append a person to config/users.json (created if missing). Only id, colour and the data source
+    dir are stored; everything else comes from the source."""
     path = config_path()
     if path.name.endswith(".example.json"):
         # The example file is committed to git — a real account must never end up in it.
@@ -102,9 +122,35 @@ def add_user(user_id: str, garmindb_config_dir: str) -> UserConfig:
     raw = json.loads(path.read_text()) if path.exists() else {"users": []}
     if any(u["id"] == user_id for u in raw["users"]):
         raise ValueError(f"user {user_id!r} already exists")
-    entry = {"id": user_id, "color": COLORS[len(raw["users"]) % len(COLORS)], "garmindb_config_dir": garmindb_config_dir}
+    if bool(garmindb_config_dir) == bool(intervals_dir):
+        raise ValueError("a person needs exactly one data source")
+    source = {"garmindb_config_dir": garmindb_config_dir} if garmindb_config_dir else {"intervals_dir": intervals_dir}
+    entry = {"id": user_id, "color": COLORS[len(raw["users"]) % len(COLORS)], **source}
     raw["users"].append(entry)
+    _write(path, raw)
+    return UserConfig(**entry)
+
+
+PROFILE_OVERRIDES = ("max_hr", "rest_hr")
+
+
+def set_overrides(user_id: str, values: dict[str, float | None]) -> None:
+    """Set (or with None: remove) a person's own max/resting HR in config/users.json. These win over
+    what the data source says (see profile.resolve)."""
+    path = config_path()
+    raw = json.loads(path.read_text())
+    entry = next(u for u in raw["users"] if u["id"] == user_id)
+    for k, v in values.items():
+        if k not in PROFILE_OVERRIDES:
+            raise ValueError(k)
+        if v is None:
+            entry.pop(k, None)
+        else:
+            entry[k] = float(v)
+    _write(path, raw)
+
+
+def _write(path: Path, raw: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(raw, indent=2) + "\n")
     os.chmod(path, 0o600)
-    return UserConfig(**entry)
