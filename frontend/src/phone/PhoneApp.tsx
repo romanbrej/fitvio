@@ -108,7 +108,7 @@ export function PhoneApp() {
     return (
       <div className="ph ph-page ph-solo">
         <h1 className="ph-title">Welcome to Fitvio</h1>
-        <p className="ph-sub">Connect your Garmin account. Your history is downloaded and every activity gets a verdict.</p>
+        <p className="ph-sub">Connect your Garmin or Intervals.icu account. Your history is downloaded and every activity gets a verdict.</p>
         <ConnectForm onDone={reloadConfig} />
       </div>
     )

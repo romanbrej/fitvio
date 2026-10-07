@@ -278,11 +278,18 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
         "SELECT day, vo2max FROM health_days WHERE user_id = ? AND day >= ? AND vo2max > 0 ORDER BY day",
         (user_id, (today - timedelta(days=365)).isoformat()))]
     today_workout, upcoming = coach.planned(conn, user_id, sessions, today)
-    readiness = coach.readiness(conn, user_id, today)
-    streak = coach.week_streak(sessions, today)
     form_now = pmc_42[-1] if pmc_42 else None
+    try:
+        source = cfg.user(user_id).source
+    except KeyError:
+        source = None
+    readiness = coach.readiness(conn, user_id, today)
+    if readiness is None and source == "intervals":  # no Garmin readiness from Intervals.icu: Fitvio's estimate
+        readiness = coach.estimate_readiness(latest, base, form_now["form"] if form_now else None, today)
+    streak = coach.week_streak(sessions, today)
     return {
         "user_id": user_id,
+        "source": source,
         "pmc": series[-182:],
         "form": form_now,
         # since this morning (all of today's training): today's row minus yesterday's

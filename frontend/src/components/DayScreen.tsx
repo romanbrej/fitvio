@@ -35,7 +35,7 @@ export function DayScreen({ ambient: a, onWake }: { ambient: Ambient; onWake: ()
     const day = new Date(`${next.day}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long' })
     facts.push({ k: 'Next', v: next.title, sub: `${day}${next.est_duration_s ? ` · ${minutes(next.est_duration_s)}` : ''}`, c: 'var(--volt)' })
   }
-  if (r) facts.push({ k: 'Readiness', v: `${r.score} · ${READINESS_LEVEL[r.level ?? ''] ?? r.level ?? ''}`, sub: feedbackText(r.feedback) ?? '', c: 'var(--better)' })
+  if (r) facts.push({ k: r.source === 'fitvio' ? 'Readiness · est.' : 'Readiness', v: `${r.score} · ${READINESS_LEVEL[r.level ?? ''] ?? r.level ?? ''}`, sub: feedbackText(r.feedback) ?? '', c: 'var(--better)' })
   if (s) facts.push({ k: 'Week streak', v: `${s.weeks} week${s.weeks === 1 ? '' : 's'}`,
                       sub: `${Math.min(s.this_week, s.min_sessions)} of ${s.min_sessions} workouts`, c: 'var(--accent-2)' })
   if (ss) facts.push({ k: 'This week', v: `${ss.load} TRIMP`, sub: `sweet spot ${ss.low}–${ss.high}`, c: 'var(--fitness)' })

@@ -63,6 +63,10 @@ class GarminDbReader:
     def available(self) -> bool:
         return (self.db_dir / "garmin_activities.db").exists()
 
+    def profile(self) -> dict[str, tuple[object, str]]:
+        from ..profile import derive
+        return derive(self.base)
+
     def activity_ids(self, since: datetime | None = None) -> list[tuple[str, str]]:
         with _ro(self.db_dir / "garmin_activities.db") as c:
             q = "SELECT activity_id, start_time FROM activities WHERE start_time IS NOT NULL"

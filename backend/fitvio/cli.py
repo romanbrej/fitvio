@@ -41,7 +41,8 @@ def main(argv=None) -> int:
         s = sub.add_parser(name)
         s.add_argument("--user")
         s.add_argument("--full", action="store_true", help="full history instead of latest")
-    sub.add_parser("watch", help="auto-sync: check Garmin for new activities every 2 min, full sync hourly")
+    sub.add_parser("watch", help="auto-sync: check Garmin every 2 min and Intervals.icu every 10 min for new "
+                                 "activities, full sync hourly")
     s = sub.add_parser("backfill-extras", help="download Garmin's weather + heat acclimation for past activities")
     s.add_argument("--user")
     s = sub.add_parser("backtest")
@@ -83,7 +84,8 @@ def main(argv=None) -> int:
         return 0
 
     if a.cmd == "sync":
-        from .sync.garmindb_runner import SyncBusy, sync_user
+        from .sync.garmindb_runner import SyncBusy
+        from .sync.sources import sync_user
         rc = 0
         for u in _users(cfg, a.user):
             try:
@@ -112,7 +114,7 @@ def main(argv=None) -> int:
 
     if a.cmd == "ingest":
         for u in _users(cfg, a.user):
-            print(u.id, pipeline.ingest_from_garmindb(conn, u, full=a.full))
+            print(u.id, pipeline.ingest(conn, u, full=a.full))
         return 0
 
     if a.cmd == "backfill-extras":
@@ -223,13 +225,15 @@ def add_person(conn, a) -> int:
     print("Downloading your complete Garmin history. The first time this can take a long while "
           "(years of daily data); later syncs only fetch what is new.")
     user = load_config().user(user_id)
+    accounts.shorten_first_download(user, datetime.fromisoformat(a.since) if a.since else None,
+                                    lambda line: print("  " + line))
     ok = run_sync(conn, user, full=True, timeout_s=accounts.FULL_SYNC_TIMEOUT_S, on_line=lambda ln: print("  " + ln),
                   on_step=lambda i, n, key, label: print(f"\nStep {i + 1} of {n}: {label}"))
     if not ok:
         err = conn.execute("SELECT last_error FROM sync_status WHERE user_id = ?", (user_id,)).fetchone()[0]
         print(f"Download failed: {err}\nRetry with: fitvio sync --user {user_id} --full", file=sys.stderr)
         return 1
-    result = pipeline.ingest_from_garmindb(conn, user, full=True)
+    result = pipeline.ingest(conn, user, full=True)
     print(f"Imported {result['activities']} activities.")
     print_profile(user, describe(conn, user))
     print("\nAll values above come from Garmin and update themselves on every sync.")

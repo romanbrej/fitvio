@@ -80,6 +80,48 @@ def readiness(conn: sqlite3.Connection, user_id: str, today: date) -> dict | Non
     return r["data"] if r else None
 
 
+# Fitvio's own estimate, for people whose watch data comes without Garmin's readiness (Intervals.icu).
+# Each part scores 0–100 against the person's own normal; the weights follow what Garmin's readiness
+# leans on most (HRV, sleep, recent load) — a heuristic, labelled "estimated" wherever it's shown.
+READINESS_WEIGHTS = {"hrv": 0.3, "sleep": 0.25, "form": 0.25, "rhr": 0.2}
+READINESS_LEVELS = ((95, "PRIME"), (75, "HIGH"), (50, "MODERATE"), (25, "LOW"), (0, "POOR"))  # Garmin's bands
+READINESS_FEEDBACK = {"hrv": "FITVIO_HRV_LOW", "rhr": "FITVIO_RHR_HIGH", "sleep": "FITVIO_SLEEP_POOR",
+                      "form": "FITVIO_FATIGUE"}
+
+
+def _clamp(v: float) -> float:
+    return max(0.0, min(100.0, v))
+
+
+def estimate_readiness(latest: dict, baseline: dict, form: float | None, today: date) -> dict | None:
+    """Readiness 0–100 from last night's HRV and resting HR (vs your 4-week median), sleep and form.
+    None without last night's data, or with fewer than two of HRV / resting HR / sleep."""
+    if (latest or {}).get("day") != today.isoformat():
+        return None
+    parts: dict[str, float] = {}
+    hrv, hrv0 = latest.get("hrv_last_night"), baseline.get("hrv_last_night")
+    if hrv and hrv0:
+        parts["hrv"] = _clamp(60 + (hrv / hrv0 - 1) * 250)        # −20 % → 10, as usual → 60, +16 % → 100
+    rhr, rhr0 = latest.get("rhr"), baseline.get("rhr")
+    if rhr and rhr0:
+        parts["rhr"] = _clamp(70 - (rhr - rhr0) * 10)             # as usual → 70, +3 bpm → 40, −3 → 100
+    if latest.get("sleep_score") is not None:
+        parts["sleep"] = _clamp(latest["sleep_score"])
+    elif latest.get("sleep_total_min"):
+        parts["sleep"] = _clamp(latest["sleep_total_min"] / 480 * 85)  # 8 h ≈ 85
+    if len(parts) < 2:
+        return None
+    if form is not None:
+        parts["form"] = _clamp(65 + form * 2)                      # fresh +15 → 95, tired −20 → 25
+    total = sum(READINESS_WEIGHTS[k] for k in parts)
+    score = round(sum(v * READINESS_WEIGHTS[k] for k, v in parts.items()) / total)
+    level = next(name for floor, name in READINESS_LEVELS if score >= floor)
+    weakest = min(parts, key=parts.get)
+    feedback = READINESS_FEEDBACK[weakest] if parts[weakest] < 50 else "FITVIO_NORMAL"
+    return {"day": today.isoformat(), "score": score, "level": level, "feedback": feedback, "time": None,
+            "recovery_min": None, "factors": {k: round(v) for k, v in parts.items()}, "source": "fitvio"}
+
+
 # --- today's workout -----------------------------------------------------------------------
 
 def _session_type(workout: dict) -> str:

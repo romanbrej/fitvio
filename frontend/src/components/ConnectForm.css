@@ -71,3 +71,11 @@
 .substep-head { font-size: 17px; }
 .substep-bar { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
 .substep-bar i { display: block; height: 100%; background: var(--primary); transition: width 300ms ease; }
+
+.connect-source { display: inline-flex; align-self: flex-start; padding: 4px; gap: 4px; border-radius: 12px; background: var(--surface-2); }
+.connect-source button {
+  min-height: 44px; padding: 0 18px; border: 0; border-radius: 9px; background: transparent;
+  color: var(--muted); font: inherit; font-size: 17px; font-weight: 600; cursor: pointer;
+}
+.connect-source button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); }
+.connect-note b { color: var(--text); font-weight: 600; }

@@ -7,14 +7,16 @@ import type { Account, ActivityCheck, BuddySettings } from '../api'
 import { ANIMALS, Buddy } from '../components/Buddy'
 import type { Animal } from '../components/Buddy'
 import { ConnectForm } from '../components/ConnectForm'
+import { HrSettings } from '../components/HrSettings'
 import { ago } from '../format'
 import { uiScale } from '../uiScale'
 import './Detail.css'
 
 const PHASE_LABEL: Record<string, string> = {
-  logging_in: 'Logging in…', mfa_required: 'Waiting for security code', downloading: 'Downloading from Garmin…',
+  logging_in: 'Logging in…', mfa_required: 'Waiting for security code', downloading: 'Downloading…',
   importing: 'Analysing activities…',
 }
+const SOURCE_LABEL = { garmin: 'Garmin', intervals: 'Intervals.icu' } as const
 
 export function Accounts() {
   const { reload } = useApp()
@@ -73,7 +75,7 @@ export function Accounts() {
 
   return (
     <div className="detail">
-      <h1 className="display hero-title" style={{ fontSize: 'clamp(40px, calc(var(--vw) * 5), 64px)', marginTop: 4 }}>The team <span className="hl">· Garmin accounts</span></h1>
+      <h1 className="display hero-title" style={{ fontSize: 'clamp(40px, calc(var(--vw) * 5), 64px)', marginTop: 4 }}>The team <span className="hl">· accounts</span></h1>
       {err && <div className="card tone-worse"><AlertTriangle size={18} /> {err}</div>}
 
       <div className="detail-grid">
@@ -83,8 +85,8 @@ export function Accounts() {
               <div className="stack" style={{ gap: 2 }}>
                 <b style={{ fontSize: 20 }}><Zap size={18} /> Auto-sync on new activity</b>
                 <span className="muted" style={{ fontSize: 15 }}>
-                  Checks Garmin every {Math.round(check.interval_s / 60)} min for a new activity ({check.active_hours}) and syncs
-                  right away. Health data (sleep, HRV …) syncs every hour.
+                  Checks Garmin every {Math.round(check.interval_s / 60)} min and Intervals.icu every 10 min for a new activity
+                  ({check.active_hours}) and syncs right away. Health data (sleep, HRV …) syncs every hour.
                 </span>
               </div>
               <button role="switch" aria-checked={check.enabled} className={`switch ${check.enabled ? 'on' : ''}`}
@@ -108,7 +110,7 @@ export function Accounts() {
                   <span className="avatar active" style={{ '--c': a.color, cursor: 'default' } as React.CSSProperties}><span>{a.initials}</span></span>
                   <div className="stack" style={{ gap: 0 }}>
                     <b style={{ fontSize: 22 }}>{a.name}</b>
-                    <span className="muted" style={{ fontSize: 15 }}>{a.activities} activities</span>
+                    <span className="muted" style={{ fontSize: 15 }}>{a.source ? `${SOURCE_LABEL[a.source]} · ` : ''}{a.activities} activities</span>
                   </div>
                 </div>
                 <button className="btn primary" onClick={() => syncNow(a.id)} disabled={!!job}>
@@ -118,7 +120,7 @@ export function Accounts() {
               <div style={{ marginTop: 12, fontSize: 16 }}>
                 {job ? (
                   <>
-                    <div>{PHASE_LABEL[job.phase] ?? job.message}
+                    <div>{job.phase === 'downloading' && a.source ? `Downloading from ${SOURCE_LABEL[a.source]}…` : PHASE_LABEL[job.phase] ?? job.message}
                       {job.step && job.step_index != null && <span className="muted"> — step {job.step_index + 1} of {job.step_total}: {job.step}</span>}
                     </div>
                     {job.log.length > 0 && <code className="log" style={{ display: 'block', fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--faint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.log[job.log.length - 1]}</code>}
@@ -132,14 +134,10 @@ export function Accounts() {
                   <span className={a.sync.stale ? 'tone-warn' : 'muted'}>Last synced {ago(a.sync.last_success)}</span>
                 )}
               </div>
-              <div className="kv" style={{ marginTop: 14 }}>
-                {([['max_hr', 'Max HR'], ['rest_hr', 'Resting HR'], ['ftp', 'FTP']] as const).map(([k, label]) => (
-                  <div key={k}>
-                    <div className="k">{label}</div>
-                    <div className="v num" style={{ fontSize: 20 }}>{a.profile[k].value == null ? '—' : Math.round(Number(a.profile[k].value))}</div>
-                  </div>
-                ))}
-              </div>
+              <div style={{ marginTop: 14 }}><HrSettings account={a} onSaved={load} /></div>
+              {a.profile.ftp.value != null && (
+                <div className="muted" style={{ marginTop: 8, fontSize: 15 }}>FTP <b className="num" style={{ color: 'var(--text)' }}>{Math.round(Number(a.profile.ftp.value))} W</b></div>
+              )}
               {buddies && (
                 <div style={{ marginTop: 14 }}>
                   <div className="label" style={{ marginBottom: 6 }}>Training buddy</div>
@@ -175,7 +173,7 @@ export function Accounts() {
         </div>
 
         <div className="card span-12">
-          <div className="card-title"><UserPlus size={18} /> {accounts?.length ? 'Connect another Garmin account' : 'Connect your Garmin account'}</div>
+          <div className="card-title"><UserPlus size={18} /> {accounts?.length ? 'Connect another account' : 'Connect your account'}</div>
           {adding || !accounts?.length
             ? <ConnectForm onDone={connected} />
             : <button className="btn" onClick={() => setAdding(true)}><UserPlus size={18} /> Add a person</button>}

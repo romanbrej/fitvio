@@ -7,7 +7,7 @@ import { improvedCount } from '../../components/Improvements'
 import { StatusMark, shortDuration, weekday } from '../../components/WeekStrip'
 import { WorkoutShape } from '../../components/WorkoutShape'
 import { ago, distance, duration, hoursMinutes, num, SPORT_LABEL, VERDICT_LABEL, when } from '../../format'
-import { feedbackText, headline, isEasy, minutes, READINESS_LEVEL, workoutSummary } from '../../mission'
+import { feedbackText, headline, isEasy, minutes, READINESS_LEVEL, readinessTitle, workoutSummary } from '../../mission'
 import { planName, SPORT_COLOR, tileContent } from '../../views/WallAmbient'
 import { usePhone, seenStore } from '../ctx'
 import { Avatar, Card, FormNumbers, SweetBar } from '../parts'
@@ -162,12 +162,15 @@ function Recovery({ a }: { a: Ambient }) {
     { label: 'Resting HR', v: num(h.rhr), unit: 'bpm', metric: 'rhr', note: rhrNote(h.rhr, a.health_baseline.rhr) },
     { label: 'Sleep', v: hoursMinutes(h.sleep_total_min).replace('h ', ':').replace('m', ''), unit: 'h', metric: 'sleep',
       note: h.sleep_score != null ? { text: `Score ${num(h.sleep_score)}`, tone: 'muted' } : null },
-    { label: 'Body Battery', v: num(h.bb_max), unit: '', metric: 'body_battery', note: bodyBatteryNote(h.bb_max) },
+    // Intervals.icu has no Body Battery (Garmin keeps it to itself): steps instead
+    a.source === 'intervals'
+      ? { label: 'Steps', v: num(h.steps), unit: '', metric: 'steps', note: null }
+      : { label: 'Body Battery', v: num(h.bb_max), unit: '', metric: 'body_battery', note: bodyBatteryNote(h.bb_max) },
   ]
   return (
     <Card>
       <div className="ph-row" style={{ gap: 14 }}>
-        <div className="ph-ring" aria-label={r ? `Garmin training readiness ${r.score}` : 'No readiness from Garmin today'}>
+        <div className="ph-ring" aria-label={r ? `${readinessTitle(r)} ${r.score}` : 'No readiness today'}>
           <svg width="72" height="72" viewBox="0 0 100 100" aria-hidden>
             <circle cx="50" cy="50" r="42" fill="none" stroke="var(--border)" strokeWidth="10" strokeDasharray={r ? undefined : '6 8'} />
             {r && <circle cx="50" cy="50" r="42" fill="none" stroke="var(--volt)" strokeWidth="10" strokeLinecap="round"
@@ -176,7 +179,7 @@ function Recovery({ a }: { a: Ambient }) {
           <b className="num">{r ? r.score : '–'}</b>
         </div>
         <div className="ph-grow">
-          <span className="ph-label">Training readiness</span>
+          <span className="ph-label">{readinessTitle(r)}</span>
           <span className="ph-h3">{r ? READINESS_LEVEL[r.level ?? ''] ?? r.level ?? '—' : 'No score today'}</span>
           <span className="ph-foot">
             {[r ? feedbackText(r.feedback) : null, vo2 != null ? `VO₂max ${vo2.toFixed(1)}` : null].filter(Boolean).join(' · ')}

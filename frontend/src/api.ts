@@ -86,6 +86,8 @@ export interface SportTrend {
 export interface Readiness {
   day: string; score: number; level: string | null; feedback: string | null; time: string | null
   recovery_min: number | null; factors: Record<string, number | null>
+  /** 'fitvio': Fitvio's own estimate (no Garmin readiness, e.g. Intervals.icu); absent: Garmin's */
+  source?: 'fitvio'
 }
 
 export interface WorkoutStep {
@@ -154,6 +156,8 @@ export interface ActivityCheck {
 }
 
 export interface Ambient {
+  /** where this person's data comes from; Intervals.icu has no Body Battery */
+  source: Source | null
   user_id: string; pmc: PmcDay[]; form: PmcDay | null
   /** since this morning: today's pmc row minus yesterday's */
   today_change: { fitness: number; fatigue: number; form: number } | null
@@ -195,9 +199,13 @@ export interface Job {
   step: string | null; step_index: number | null; step_total: number | null
 }
 
+export type Source = 'garmin' | 'intervals'
+
 export interface Account {
   id: string; name: string; color: string; initials: string; sync: SyncInfo; job: Job | null
   activities: number; profile: Profile
+  /** where the data comes from; null for demo people */
+  source: Source | null
 }
 
 export type Profile = Record<'name' | 'sex' | 'max_hr' | 'rest_hr' | 'lthr' | 'ftp' | 'weight_kg', { value: string | number | null; source: string }>
@@ -209,10 +217,18 @@ async function get<T>(path: string): Promise<T> {
 }
 
 async function post<T = void>(path: string, body: unknown): Promise<T> {
-  const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  return send<T>('POST', path, body)
+}
+
+async function send<T>(method: 'POST' | 'PUT', path: string, body: unknown): Promise<T> {
+  const r = await fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   if (!r.ok) {
     let detail = `${r.status}`
-    try { detail = (await r.json()).detail ?? detail } catch { /* not JSON */ }
+    try {
+      const d = (await r.json()).detail
+      // FastAPI validation errors are a list: show the first message
+      detail = Array.isArray(d) ? String(d[0]?.msg ?? detail) : d ?? detail
+    } catch { /* not JSON */ }
     throw new Error(detail)
   }
   return r.json()
@@ -242,6 +258,10 @@ export const api = {
   profile: (user: string) => get<Profile>(`/api/users/${seg(user)}/profile`),
   accounts: () => get<Account[]>('/api/accounts'),
   connect: (email: string, password: string) => post<Job>('/api/accounts', { email, password }),
+  connectIntervals: (athlete_id: string, api_key: string) => post<Job>('/api/accounts/intervals', { athlete_id, api_key }),
+  /** your own max/resting HR; null = use the data source's value again */
+  setProfile: (user: string, v: { max_hr: number | null; rest_hr: number | null }) =>
+    send<{ profile: Profile; job: Job | null }>('PUT', `/api/users/${seg(user)}/profile`, v),
   job: (id: string) => get<Job>(`/api/jobs/${seg(id)}`),
   mfa: (id: string, code: string) => post<{ ok: boolean }>(`/api/jobs/${seg(id)}/mfa`, { code }),
   syncNow: (user: string) => post<Job>(`/api/users/${seg(user)}/sync`, {}),

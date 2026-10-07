@@ -16,7 +16,7 @@ import sys
 import threading
 import time
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
@@ -61,16 +61,68 @@ def init_user_config(user: UserConfig, email: str, data_root: Path | None = None
     if not pw_file.exists():
         pw_file.write_text("")
     os.chmod(pw_file, 0o600)
-    start = (since or datetime.now().replace(year=datetime.now().year - 5)).strftime("%m/%d/%Y")
+    start = (since or datetime.now().replace(year=datetime.now().year - HISTORY_YEARS)).strftime("%m/%d/%Y")
     cfg["credentials"].update({"user": email, "password": "", "password_file": f"{cfg_dir.name}/password.txt"})
     cfg["directories"].update({"relative_to_home": False, "base_dir": str(data_dir)})
     cfg["settings"]["metric"] = True
-    for k in ("weight_start_date", "sleep_start_date", "rhr_start_date", "hrv_start_date", "monitoring_start_date"):
+    for k in START_KEYS:
         cfg["data"][k] = start
     cfg["data"]["download_all_activities"] = 10000  # i.e. every activity you ever recorded
     (cfg_dir / "GarminConnectConfig.json").write_text(json.dumps(cfg, indent=4))
     os.chmod(cfg_dir / "GarminConnectConfig.json", 0o600)
     return cfg_dir
+
+
+START_KEYS = ("weight_start_date", "sleep_start_date", "rhr_start_date", "hrv_start_date", "monitoring_start_date")
+HISTORY_YEARS = 5
+# Health data from wearing the watch before the first recorded workout (sleep, HRV, resting HR).
+FIRST_ACTIVITY_MARGIN = timedelta(days=60)
+ACTIVITY_PAGE = 100
+MAX_ACTIVITY_PAGES = 60  # more than 6000 activities: years of history anyway, keep the full range
+
+
+def first_activity_day(user: UserConfig, connectapi: Callable | None = None) -> date | None:
+    """Date of the oldest activity on Garmin Connect (cached login tokens), or None when there are
+    none, too many to page through, or Garmin can't be asked."""
+    try:
+        if connectapi is None:
+            from .activity_watch import cached_client
+            connectapi = cached_client(user).connectapi
+        from .activity_watch import ACTIVITY_LIST_URL
+        oldest = None
+        for page in range(MAX_ACTIVITY_PAGES):
+            rows = connectapi(ACTIVITY_LIST_URL, params={"start": str(page * ACTIVITY_PAGE), "limit": str(ACTIVITY_PAGE)})
+            days = [str(r.get("startTimeLocal") or "")[:10] for r in rows or [] if isinstance(r, dict)]
+            days = [d for d in days if re.fullmatch(r"\d{4}-\d{2}-\d{2}", d)]
+            if days:
+                oldest = min([oldest, *days]) if oldest else min(days)
+            if len(rows or []) < ACTIVITY_PAGE:
+                return date.fromisoformat(oldest) if oldest else None
+        return None
+    except Exception as e:  # only an optimisation: the full range always works
+        log.info("first activity of %s unknown (%s) — downloading %d years", user.id, e, HISTORY_YEARS)
+        return None
+
+
+def first_download_start(user: UserConfig, today: date | None = None, connectapi: Callable | None = None) -> date | None:
+    """Where the first download should start when it can start later than HISTORY_YEARS ago: shortly
+    before the first activity. A watch worn for 4 months then syncs in minutes, not hours."""
+    today = today or date.today()
+    first = first_activity_day(user, connectapi)
+    if first is None:
+        return None
+    start = first - FIRST_ACTIVITY_MARGIN
+    return start if start > today - timedelta(days=round(365.25 * HISTORY_YEARS)) else None
+
+
+def set_start_date(cfg_dir: Path, day: date) -> None:
+    """Make GarminDB's first download begin on `day` (health data; activities are always all)."""
+    path = cfg_dir / "GarminConnectConfig.json"
+    cfg = json.loads(path.read_text())
+    for k in START_KEYS:
+        cfg["data"][k] = day.strftime("%m/%d/%Y")
+    path.write_text(json.dumps(cfg, indent=4))
+    os.chmod(path, 0o600)
 
 
 # GarminDB works through these in order, each over the whole date range (its progress bar restarts
@@ -195,8 +247,9 @@ class SyncBusy(RuntimeError):
 
 @contextmanager
 def sync_lock(user: UserConfig):
-    """One GarminDB run per person at a time: two runs on the same data dir corrupt its databases."""
-    path = user.garmindb_dir.parent / ".sync.lock"
+    """One sync per person at a time: two GarminDB runs on the same data dir corrupt its databases
+    (and two Intervals.icu downloads would race on the same files)."""
+    path = user.data_dir / ".sync.lock"
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as fh:
         try:
@@ -317,11 +370,11 @@ def sync_user(conn: sqlite3.Connection, user: UserConfig, full: bool = False) ->
 
 
 def timed_ingest(conn: sqlite3.Connection, user: UserConfig, **kw) -> dict:
-    """pipeline.ingest_from_garmindb, with its duration in the log (next to the GarminDB step times)."""
+    """pipeline.ingest, with its duration in the log (next to the GarminDB step times)."""
     from .. import pipeline
 
     started = time.monotonic()
-    result = pipeline.ingest_from_garmindb(conn, user, **kw)
+    result = pipeline.ingest(conn, user, **kw)
     log.info("sync %s: ingest %.0fs", user.id, time.monotonic() - started)
     return result
 

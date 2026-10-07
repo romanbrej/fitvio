@@ -83,10 +83,16 @@ export function Health() {
               </div>
             ) : <Sparkline values={series(days, 'sleep_total_min')} height={90} color="#818cf8" />}
           </Metric>
-          <Metric id="body_battery" focus={focus} label="Body Battery" value={num(h.bb_max)}
-                  note={bb?.text} tone={bb?.tone}>
-            <Sparkline values={series(days, 'bb_max')} height={90} color="var(--volt)" />
-          </Metric>
+          {a.source === 'intervals' ? (
+            <Metric id="steps" focus={focus} label="Steps" value={num(h.steps)}>
+              <Sparkline values={series(days, 'steps')} height={90} color="var(--fitness)" />
+            </Metric>
+          ) : (
+            <Metric id="body_battery" focus={focus} label="Body Battery" value={num(h.bb_max)}
+                    note={bb?.text} tone={bb?.tone}>
+              <Sparkline values={series(days, 'bb_max')} height={90} color="var(--volt)" />
+            </Metric>
+          )}
           {vo2.length > 1 && (
             <Metric id="vo2max" focus={focus} label="VO₂max" value={vo2.at(-1)!.value.toFixed(1)}>
               <Sparkline values={vo2.map(v => v.value)} height={90} color="var(--fitness)" />

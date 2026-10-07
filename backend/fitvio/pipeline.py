@@ -99,23 +99,33 @@ def store_health(conn: sqlite3.Connection, user_id: str, days: list[dict]) -> No
 ANALYSIS_VERSION = "6"
 
 
-def ingest_from_garmindb(conn: sqlite3.Connection, user: UserConfig, full: bool = False,
-                         changed_since: datetime | None = None) -> dict:
-    """Pull new activities + recent health days from this user's GarminDB into app.db.
-
-    With `changed_since` (start of the last successful sync), activities that were edited in
-    Garmin Connect since then (name, RPE/feel, …) are re-read too."""
-    from .ingest.garmindb_reader import GarminDbReader, base_dir_from_config, default_since
-
-    if not user.garmindb_dir:
-        raise RuntimeError(f"user {user.id} has no garmindb_config_dir")
-    reader = GarminDbReader(base_dir_from_config(user.garmindb_dir))
+def reader_for(user: UserConfig):
+    """The reader for this person's downloaded data (GarminDB or Intervals.icu)."""
+    if user.source == "intervals":
+        from .ingest.intervals_reader import IntervalsReader
+        reader = IntervalsReader(user.intervals_path)
+    elif user.source == "garmin":
+        from .ingest.garmindb_reader import GarminDbReader, base_dir_from_config
+        reader = GarminDbReader(base_dir_from_config(user.garmindb_dir))
+    else:
+        raise RuntimeError(f"user {user.id} has no data source (garmindb_config_dir or intervals_dir)")
     if not reader.available:
-        raise RuntimeError(f"no GarminDB databases in {reader.db_dir} — run the sync first")
+        raise RuntimeError(f"no downloaded data for {user.id} yet — run the sync first")
+    return reader
 
-    # Name, sex, max/resting HR, FTP: straight from Garmin. If they moved, zones and load of the
+
+def ingest(conn: sqlite3.Connection, user: UserConfig, full: bool = False,
+           changed_since: datetime | None = None) -> dict:
+    """Pull new activities + recent health days from this user's downloaded data into app.db.
+
+    With `changed_since` (start of the last successful sync), activities that were edited since then
+    (name, RPE/feel, …) are re-read too."""
+    from .ingest.garmindb_reader import default_since
+
+    reader = reader_for(user)
+    # Name, sex, max/resting HR, FTP: straight from the source. If they moved, zones and load of the
     # whole history change, so everything is reprocessed with the new values.
-    thresholds_changed = profile.refresh(conn, user, reader.base)
+    thresholds_changed = profile.refresh(conn, user, reader)
     known = {r["activity_id"] for r in conn.execute("SELECT activity_id FROM sessions WHERE user_id = ?", (user.id,))}
     version_key = f"analysis_version:{user.id}"
     outdated = db.get_state(conn, version_key) != ANALYSIS_VERSION
@@ -161,3 +171,6 @@ def ingest_from_garmindb(conn: sqlite3.Connection, user: UserConfig, full: bool 
     conn.commit()
     return {"activities": n_new, "updated": n_updated, "reprocessed": reprocess,
             "profile": {k: v["value"] for k, v in profile.describe(conn, user).items()}}
+
+
+ingest_from_garmindb = ingest  # the name before Intervals.icu existed

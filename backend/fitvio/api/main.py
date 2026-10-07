@@ -280,13 +280,24 @@ class Mfa(BaseModel):
     code: str = Field(pattern=r"^[0-9]{4,10}$")
 
 
+class ConnectIntervals(BaseModel):
+    athlete_id: str = Field(min_length=1, max_length=120)
+    api_key: str = Field(min_length=8, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+class ProfileOverride(BaseModel):
+    model_config = {"extra": "forbid"}
+    max_hr: float | None = Field(default=None, ge=140, le=230)
+    rest_hr: float | None = Field(default=None, ge=30, le=100)
+
+
 @app.get("/api/accounts")
 def list_accounts(c: AppConfig = Depends(cfg), cn=Depends(conn)):
     out = []
     for u in c.users:
         r = profile.resolve(cn, u)
         job = accounts.active_for(u.id)
-        out.append({"id": u.id, "name": r.display_name, "color": u.color, "initials": r.initials,
+        out.append({"id": u.id, "name": r.display_name, "color": u.color, "initials": r.initials, "source": u.source,
                     "sync": wall.sync_info(cn, c, u.id), "job": job.public() if job else None,
                     "activities": cn.execute("SELECT COUNT(*) FROM sessions WHERE user_id = ?", (u.id,)).fetchone()[0],
                     "profile": profile.describe(cn, u)})
@@ -305,6 +316,36 @@ def connect_account(body: Connect, c: AppConfig = Depends(cfg)):
     except accounts.ConnectBusy as e:
         raise HTTPException(429, str(e)) from None
     return job.public()
+
+
+@app.post("/api/accounts/intervals", dependencies=[Depends(local_network_only)])
+def connect_intervals(body: ConnectIntervals, c: AppConfig = Depends(cfg)):
+    from ..ingest.intervals_reader import normalize_athlete_id
+    try:
+        athlete_id = normalize_athlete_id(body.athlete_id)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    if (existing := accounts.intervals_connected(athlete_id)):
+        raise HTTPException(409, f"this Intervals.icu athlete is already connected (as '{existing}')")
+    try:
+        job = accounts.start_connect_intervals(athlete_id, body.api_key, c.db_path, on_registered=reset_config)
+    except accounts.ConnectBusy as e:
+        raise HTTPException(429, str(e)) from None
+    return job.public()
+
+
+@app.put("/api/users/{user_id}/profile", dependencies=[Depends(local_network_only)])
+def set_profile(user_id: str, body: ProfileOverride, c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    """Your own max/resting HR (null = use the data source again). Zones, load and the reference HR of
+    the whole history follow on the next sync, which starts right away."""
+    from ..config import set_overrides
+    user = _user_or_404(c, user_id)
+    set_overrides(user.id, {"max_hr": body.max_hr, "rest_hr": body.rest_hr})
+    reset_config()
+    db.set_state(cn, f"analysis_version:{user.id}", "")  # → the next ingest reprocesses everything
+    user = load_config().user(user.id)
+    job = accounts.active_for(user.id) or (accounts.start_sync(user, c.db_path) if user.source else None)
+    return {"profile": profile.describe(cn, user), "job": job.public() if job else None}
 
 
 @app.get("/api/jobs/{job_id}")

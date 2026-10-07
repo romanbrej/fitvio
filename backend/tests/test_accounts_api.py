@@ -42,7 +42,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(accounts, "run_sync", fake_sync)
     import fitvio.cli as cli_mod
     monkeypatch.setattr(cli_mod, "backfill_extras", lambda user, on_progress=None: on_progress(1, 1))
-    monkeypatch.setattr(accounts.pipeline, "ingest_from_garmindb", lambda conn, user, full=False, **kw: {"activities": 42})
+    monkeypatch.setattr(accounts.pipeline, "ingest", lambda conn, user, full=False, **kw: {"activities": 42})
     c = TestClient(main.app)
     yield c
     main.app.dependency_overrides.clear()
@@ -101,7 +101,7 @@ def test_sync_now_reports_what_arrived(client, tmp_path, monkeypatch, new, messa
     conn.execute("INSERT INTO sessions (id, user_id, activity_id, sport, start_time) VALUES ('alex:1','alex','1','running','2026-09-01T07:00:00')")
     conn.commit()
     fulls = []
-    monkeypatch.setattr(accounts.pipeline, "ingest_from_garmindb",
+    monkeypatch.setattr(accounts.pipeline, "ingest",
                         lambda conn, user, full=False, **kw: (fulls.append(full), {"activities": new})[1])
     job = client.post("/api/users/alex/sync").json()
     done = wait_for(client, job["id"], {"done", "error"})

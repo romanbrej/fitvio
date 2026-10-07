@@ -128,3 +128,62 @@ def test_quick_sync_fetches_health_data_only_and_keeps_the_last_full_sync(tmp_pa
     row = conn.execute("SELECT last_success, last_attempt FROM sync_status").fetchone()
     assert row["last_success"] == full_success      # the next normal sync still imports everything since then
     assert row["last_attempt"] != "2000-01-01T00:00:00"  # but the wall / cooldown see that it ran
+
+
+# --- first download: from shortly before the first activity, not 5 years -------------------
+
+def activity_pages(days):
+    """A fake Garmin activity list: newest first, 100 per page."""
+    rows = [{"activityId": i, "startTimeLocal": f"{d} 07:00:00"} for i, d in enumerate(sorted(days, reverse=True))]
+    calls = []
+
+    def connectapi(url, params):
+        calls.append(params)
+        start, limit = int(params["start"]), int(params["limit"])
+        return rows[start:start + limit]
+    return connectapi, calls
+
+
+def test_first_activity_is_found_across_pages():
+    from datetime import date, timedelta
+    days = [(date(2026, 6, 1) + timedelta(days=i)).isoformat() for i in range(130)]   # 130 runs in 4 months
+    connectapi, calls = activity_pages(days)
+    user = UserConfig(id="sam")
+    assert garmindb_runner.first_activity_day(user, connectapi) == date(2026, 6, 1)
+    assert [c["start"] for c in calls] == ["0", "100"]
+    assert garmindb_runner.first_activity_day(user, activity_pages([])[0]) is None          # no activities
+
+    def broken(url, params):
+        raise RuntimeError("429 Too Many Requests")
+    assert garmindb_runner.first_activity_day(user, broken) is None                          # never fatal
+
+
+def test_first_download_starts_two_months_before_the_first_activity(tmp_path, monkeypatch):
+    from datetime import date
+    from fitvio import accounts
+    today = date(2026, 10, 7)
+    user = UserConfig(id="sam")
+    new_watch = activity_pages(["2026-06-01", "2026-09-30"])[0]
+    assert garmindb_runner.first_download_start(user, today, new_watch) == date(2026, 4, 2)
+    veteran = activity_pages(["2019-03-01", "2026-09-30"])[0]
+    assert garmindb_runner.first_download_start(user, today, veteran) is None               # keep 5 years
+
+    monkeypatch.setattr(garmindb_runner, "PROJECT_ROOT", tmp_path)
+    user = UserConfig(id="sam", garmindb_config_dir=str(tmp_path / "data/garmindb/sam/config"))
+    cfg_dir = garmindb_runner.init_user_config(user, "sam@example.com")
+    before = json.loads((cfg_dir / "GarminConnectConfig.json").read_text())
+    lines = []
+    monkeypatch.setattr(accounts, "first_download_start", lambda u: date(2026, 4, 2))
+    accounts.shorten_first_download(user, None, lines.append)
+    after = json.loads((cfg_dir / "GarminConnectConfig.json").read_text())
+    assert {after["data"][k] for k in garmindb_runner.START_KEYS} == {"04/02/2026"}
+    assert {k: v for k, v in after["data"].items() if k not in garmindb_runner.START_KEYS} == \
+        {k: v for k, v in before["data"].items() if k not in garmindb_runner.START_KEYS}
+    assert (cfg_dir / "GarminConnectConfig.json").stat().st_mode & 0o077 == 0
+    assert lines == ["Your first activity is from June 2026 — downloading from April 2026"]
+
+    # an explicit start date (fitvio add-person --since) always wins
+    from datetime import datetime
+    garmindb_runner.set_start_date(cfg_dir, date(2021, 10, 7))
+    accounts.shorten_first_download(user, datetime(2021, 10, 7), lines.append)
+    assert json.loads((cfg_dir / "GarminConnectConfig.json").read_text())["data"]["sleep_start_date"] == "10/07/2021"

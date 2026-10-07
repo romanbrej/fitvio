@@ -1,38 +1,51 @@
 import { AlertTriangle, Check, KeyRound, Loader2, LogIn, ShieldCheck } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import type { Job } from '../api'
+import type { Job, Source } from '../api'
 import './ConnectForm.css'
 
 const JOB_KEY = 'fitvio.connectJob'
+/** The running connect job, as "<source>:<job id>" (older pages stored the bare id: Garmin). */
 const store = {
-  get: () => { try { return localStorage.getItem(JOB_KEY) } catch { return null } },
-  set: (v: string | null) => {
+  get: (): { source: Source; id: string } | null => {
     try {
-      if (v) localStorage.setItem(JOB_KEY, v)
+      const v = localStorage.getItem(JOB_KEY)
+      if (!v) return null
+      const [source, id] = v.includes(':') ? v.split(':', 2) : ['garmin', v]
+      return { source: source === 'intervals' ? 'intervals' : 'garmin', id }
+    } catch { return null }
+  },
+  set: (v: { source: Source; id: string } | null) => {
+    try {
+      if (v) localStorage.setItem(JOB_KEY, `${v.source}:${v.id}`)
       else localStorage.removeItem(JOB_KEY)
     } catch { /* private mode */ }
   },
 }
 
-const STEPS: { phase: Job['phase']; label: string }[] = [
-  { phase: 'logging_in', label: 'Log in to Garmin Connect' },
+const steps = (source: Source): { phase: Job['phase']; label: string }[] => [
+  { phase: 'logging_in', label: source === 'intervals' ? 'Check your Intervals.icu key' : 'Log in to Garmin Connect' },
   { phase: 'mfa_required', label: 'Security code' },
   { phase: 'downloading', label: 'Download your history' },
   { phase: 'importing', label: 'Analyse every activity' },
   { phase: 'done', label: 'Ready' },
 ]
-const ORDER = STEPS.map(s => s.phase)
+const ORDER = steps('garmin').map(s => s.phase)
+const errorText = (e: unknown) => String(e).replace(/^Error: /, '')
 
 function elapsed(from: string): string {
   const s = Math.max(0, Math.round((Date.now() - new Date(from).getTime()) / 1000))
   return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`
 }
 
-/** Connect a Garmin account: email + password (+ MFA code), then live progress of the first download. */
+/** Connect a Garmin account (email + password + MFA code) or an Intervals.icu account (athlete id +
+ *  API key), then live progress of the first download. */
 export function ConnectForm({ onDone, resume }: { onDone: () => void; resume?: Job | null }) {
+  const [source, setSource] = useState<Source>('garmin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [athlete, setAthlete] = useState('')
+  const [apiKey, setApiKey] = useState('')
   const [code, setCode] = useState('')
   const [job, setJob] = useState<Job | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -42,8 +55,11 @@ export function ConnectForm({ onDone, resume }: { onDone: () => void; resume?: J
   // Resume a running connect after a page reload.
   useEffect(() => {
     if (resume) { setJob(resume); return }
-    const id = store.get()
-    if (id) api.job(id).then(setJob).catch(() => store.set(null))
+    const saved = store.get()
+    if (saved) {
+      setSource(saved.source)
+      api.job(saved.id).then(setJob).catch(() => store.set(null))
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -64,12 +80,14 @@ export function ConnectForm({ onDone, resume }: { onDone: () => void; resume?: J
     e.preventDefault()
     setBusy(true); setError(null)
     try {
-      const j = await api.connect(email.trim(), password)
-      setPassword('')  // never keep it around in the page
-      store.set(j.id)
+      const j = source === 'intervals'
+        ? await api.connectIntervals(athlete.trim(), apiKey.trim())
+        : await api.connect(email.trim(), password)
+      setPassword(''); setApiKey('')  // never keep secrets around in the page
+      store.set({ source, id: j.id })
       setJob(j)
     } catch (err) {
-      setError(String(err).replace(/^Error: /, ''))
+      setError(errorText(err))
     } finally {
       setBusy(false)
     }
@@ -84,7 +102,7 @@ export function ConnectForm({ onDone, resume }: { onDone: () => void; resume?: J
       setCode('')
       setJob({ ...job, phase: 'logging_in', message: 'Checking the code' })
     } catch (err) {
-      setError(String(err).replace(/^Error: /, ''))
+      setError(errorText(err))
     } finally {
       setBusy(false)
     }
@@ -97,34 +115,66 @@ export function ConnectForm({ onDone, resume }: { onDone: () => void; resume?: J
     setError(null)
     try {
       const j = await api.syncNow(job.user_id)
-      store.set(j.id)
+      store.set({ source, id: j.id })
       setJob(j)
     } catch (err) {
-      setError(String(err).replace(/^Error: /, ''))
+      setError(errorText(err))
     }
   }
 
   if (!job) {
+    const ready = source === 'intervals' ? athlete && apiKey : email && password
     return (
       <form className="connect" onSubmit={submit}>
-        <label>
-          <span>Garmin email</span>
-          <input type="email" autoComplete="username" inputMode="email" required value={email}
-                 onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
-        </label>
-        <label>
-          <span>Garmin password</span>
-          <input type="password" autoComplete="current-password" required value={password}
-                 onChange={e => setPassword(e.target.value)} />
-        </label>
+        <div className="connect-source" role="radiogroup" aria-label="Where your data comes from">
+          {(['garmin', 'intervals'] as const).map(s => (
+            <button key={s} type="button" role="radio" aria-checked={source === s} className={source === s ? 'on' : ''}
+                    onClick={() => { setSource(s); setError(null) }}>
+              {s === 'garmin' ? 'Garmin' : 'Intervals.icu'}
+            </button>
+          ))}
+        </div>
+        {source === 'garmin' ? <>
+          <label>
+            <span>Garmin email</span>
+            <input type="email" autoComplete="username" inputMode="email" required value={email}
+                   onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
+          </label>
+          <label>
+            <span>Garmin password</span>
+            <input type="password" autoComplete="current-password" required value={password}
+                   onChange={e => setPassword(e.target.value)} />
+          </label>
+        </> : <>
+          <label>
+            <span>Athlete ID</span>
+            <input autoComplete="off" autoCapitalize="none" spellCheck={false} required value={athlete}
+                   onChange={e => setAthlete(e.target.value)} placeholder="i123456" />
+          </label>
+          <label>
+            <span>API key</span>
+            <input type="password" autoComplete="off" required value={apiKey} onChange={e => setApiKey(e.target.value)} />
+          </label>
+        </>}
         {error && <div className="connect-error" role="alert"><AlertTriangle size={18} /> {error}</div>}
-        <button className="btn btn-primary" type="submit" disabled={busy || !email || !password}>
-          {busy ? <Loader2 size={20} className="spin" /> : <LogIn size={20} />} Connect Garmin
+        <button className="btn btn-primary" type="submit" disabled={busy || !ready}>
+          {busy ? <Loader2 size={20} className="spin" /> : <LogIn size={20} />} {source === 'garmin' ? 'Connect Garmin' : 'Connect Intervals.icu'}
         </button>
-        <p className="connect-note">
-          <ShieldCheck size={16} /> Name, heart-rate zones, FTP and your whole history are read from Garmin — nothing else to fill in.
-          The password is stored only on the dashboard server in your home network.
-        </p>
+        {source === 'garmin' ? (
+          <p className="connect-note">
+            <ShieldCheck size={16} /> Name, heart-rate zones, FTP and your whole history are read from Garmin — nothing else to fill in.
+            The password is stored only on the dashboard server in your home network.
+          </p>
+        ) : <>
+          <p className="connect-note">
+            <KeyRound size={16} /><span>Both are in Intervals.icu under <b>Settings → Developer settings</b>. Works with any watch that
+            syncs to Intervals.icu: Garmin, Polar, Coros, Suunto, Wahoo — Apple Watch through the HealthFit app, Fitbit through Health Sync.</span>
+          </p>
+          <p className="connect-note">
+            <ShieldCheck size={16} /> The key is stored only on the dashboard server in your home network. Activities that reach
+            Intervals.icu only through Strava can't be read (Strava doesn't allow it).
+          </p>
+        </>}
       </form>
     )
   }
@@ -134,7 +184,7 @@ export function ConnectForm({ onDone, resume }: { onDone: () => void; resume?: J
   return (
     <div className="connect">
       <ol className="steps">
-        {STEPS.filter(s => s.phase !== 'mfa_required' || showMfaStep).map(s => {
+        {steps(source).filter(s => s.phase !== 'mfa_required' || showMfaStep).map(s => {
           const i = ORDER.indexOf(s.phase)
           const state = job.phase === 'error' ? 'todo' : i < current || job.phase === 'done' ? 'done' : i === current ? 'now' : 'todo'
           return (

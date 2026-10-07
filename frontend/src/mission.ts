@@ -26,9 +26,21 @@ const FEEDBACK: Record<string, string> = {
   HIGH_TRAINING_LOAD: 'High training load', REST_RECOMMENDED: 'Rest recommended', LET_YOUR_BODY_RECOVER: 'Let your body recover',
 }
 
+// Fitvio's own readiness estimate (coach.estimate_readiness): its weakest part
+const FITVIO_FEEDBACK: Record<string, string> = {
+  FITVIO_HRV_LOW: 'HRV below your normal', FITVIO_RHR_HIGH: 'Resting HR above your normal',
+  FITVIO_SLEEP_POOR: 'Short or restless sleep', FITVIO_FATIGUE: 'Tired from recent training',
+  FITVIO_NORMAL: 'Recovery looks normal',
+}
+
+/** "Training readiness", or with Fitvio's estimate "Readiness · estimated". */
+export function readinessTitle(r: Readiness | null): string {
+  return r?.source === 'fitvio' ? 'Readiness · estimated' : 'Training readiness'
+}
+
 export function feedbackText(key: string | null | undefined): string | null {
   if (!key) return null
-  return FEEDBACK[key] ?? key.toLowerCase().replace(/_/g, ' ').replace(/^./, c => c.toUpperCase())
+  return FITVIO_FEEDBACK[key] ?? FEEDBACK[key] ?? key.toLowerCase().replace(/_/g, ' ').replace(/^./, c => c.toUpperCase())
 }
 
 /** Garmin's workout purpose (LACTATE_THRESHOLD …) → a short label. */

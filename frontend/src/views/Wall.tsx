@@ -10,7 +10,7 @@ export function Wall() {
       <div className="card" style={{ maxWidth: 640, margin: 'calc(var(--vh) * 6) auto' }}>
         <h1 style={{ marginTop: 0, fontSize: 30 }}>Welcome to Fitvio</h1>
         <p className="muted" style={{ marginTop: 0 }}>
-          Connect your Garmin account. Your whole history is downloaded and every activity gets a verdict —
+          Connect your Garmin or Intervals.icu account. Your whole history is downloaded and every activity gets a verdict —
           did it make you better?
         </p>
         <ConnectForm onDone={reload} resume={wall?.mode === 'setup' ? wall.job : null} />
