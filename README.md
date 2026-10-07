@@ -9,6 +9,8 @@
 
 A self-hosted dashboard for a tablet on your wall. It pulls your activities and health data from Garmin Connect, compares every new workout with your own similar sessions, and shows today's plan, your recovery and how each sport is trending — with a little training buddy that reacts to how you're doing.
 
+I built it for my own hallway: a Raspberry Pi in the cupboard and a Samsung Galaxy Tab A8 on the wall. It's free, open source and runs entirely on your own network — no cloud, no account with me, no tracking.
+
 ![The wall: today's mission with the week of your Garmin plan, readiness, training load, week streak and sport trends](docs/screenshots/wall.png)
 
 ![After a workout: the verdict — better, in line or worse than your similar sessions, and why](docs/screenshots/verdict.png)
@@ -17,13 +19,14 @@ A self-hosted dashboard for a tablet on your wall. It pulls your activities and 
 
 ## On your phone
 
-Open the same address on your phone (home Wi-Fi) and Fitvio becomes your personal training companion: pick yourself once, then four tabs — **Today, Plan, Trends, Me**. A fresh workout shows up as a verdict card on top of Today instead of taking over the screen, and nothing you do on the phone changes what the wall shows.
+Open the same address on your phone (home Wi-Fi) and Fitvio becomes your personal training companion: pick yourself once, then four tabs — **Today, Plan, Trends, Me**. A fresh workout shows up as a verdict card on top of Today instead of taking over the screen, and nothing you do on the phone changes what the wall shows. Tap a sport for its whole history, month by month, filtered by type (easy, long, intervals …).
 
 <p>
-  <img src="docs/screenshots/phone-today.png" width="24%" alt="Phone: Today — the fresh verdict card, today's mission, the week and readiness">
-  <img src="docs/screenshots/phone-verdict.png" width="24%" alt="Phone: the verdict — better than your recent easy runs, 4 of 5 improved">
-  <img src="docs/screenshots/phone-plan.png" width="24%" alt="Phone: the Garmin plan — the week as cards and the workout step by step">
-  <img src="docs/screenshots/phone-trends.png" width="24%" alt="Phone: Trends — fitness, fatigue and form, and this week's load against the sweet spot">
+  <img src="docs/screenshots/phone-today.png" width="19%" alt="Phone: Today — the fresh verdict card, today's mission, the week and readiness">
+  <img src="docs/screenshots/phone-verdict.png" width="19%" alt="Phone: the verdict — better than your recent easy runs, 4 of 5 improved">
+  <img src="docs/screenshots/phone-plan.png" width="19%" alt="Phone: the Garmin plan — the week as cards and the workout step by step">
+  <img src="docs/screenshots/phone-trends.png" width="19%" alt="Phone: Trends — fitness, fatigue and form, and this week's load against the sweet spot">
+  <img src="docs/screenshots/phone-history.png" width="19%" alt="Phone: a sport's whole history — trend on top, type filters, every session by month with its verdict">
 </p>
 
 ## Quick start
@@ -58,7 +61,7 @@ docker run --rm -p 8765:8765 -e FITVIO_CONFIG=/tmp/demo/users.json -e FITVIO_DB=
 - **A training buddy** — pick one of 8 animals; it cheers after a good session, gets hungry when you skip, sleeps at night.
 - **Made for the wall** — big type, day and night screens, the newest activity takes over the screen, auto-scales to big tablets.
 - **For the whole household** — one Garmin login per person; tap an avatar to switch.
-- **On your phone too** — a personal app with Today, Plan, Trends and Me (home Wi-Fi only).
+- **On your phone too** — a personal app with Today, Plan, Trends and Me, plus every workout you ever did per sport (home Wi-Fi only).
 - **Private by design** — runs on your server, LAN only; your Garmin login and health data never leave your home.
 
 ## How it works
@@ -68,6 +71,24 @@ Garmin watch → Garmin Connect → GarminDB (on your server) → fitvio: ingest
 ```
 
 New activities show up on the wall about 2–3 minutes after your watch syncs: the app checks Garmin for a new activity every 2 minutes and runs a quick differential sync; health data syncs hourly. More in [How it works](docs/how-it-works.md).
+
+## FAQ
+
+**Which watches work?** Any Garmin that syncs to Garmin Connect. Sport-specific numbers depend on your watch and sensors (power for cycling, SWOLF for swimming, reps and weight for gym).
+
+**Do I need Garmin Coach?** No. Without a plan in your Garmin calendar the week strip just doesn't show; everything else works.
+
+**Does it work with two-factor login?** Yes — Fitvio asks for the code when you connect.
+
+**What hardware do I need?** Any always-on amd64 or arm64 machine with Docker: a Raspberry Pi, NAS, mini PC or home server. Prefer an SSD over an SD card. For the wall, any tablet with a browser in kiosk mode (I use Fully Kiosk Browser).
+
+**Can I see it outside my home?** No, by design — it's built for your home network only. Don't expose it to the internet.
+
+**Where does my data go?** Nowhere. Your Garmin login and data stay in the `data/` folder on your server. Details in [Security and privacy](docs/security.md).
+
+## Feedback and contributing
+
+This is a young project and I'd love to hear how it works for you. Found a bug, a watch that behaves differently, or have an idea? [Open an issue](https://github.com/romanbrej/fitvio/issues). Pull requests are welcome — [Development](docs/development.md) gets you running with demo data in a few minutes.
 
 ## Documentation
 
