@@ -2,7 +2,7 @@ import { ChevronRight, Flame, Loader2, RefreshCw, Zap } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { Ambient, Streak as StreakData } from '../../api'
 import { Buddy } from '../../components/Buddy'
-import { SportIcon, VerdictIcon, VerdictPill } from '../../components/icons'
+import { SportIcon, TrendPill, VerdictIcon } from '../../components/icons'
 import { improvedCount } from '../../components/Improvements'
 import { StatusMark, shortDuration, weekday } from '../../components/WeekStrip'
 import { WorkoutShape } from '../../components/WorkoutShape'
@@ -257,7 +257,7 @@ function Sports({ a }: { a: Ambient }) {
               {c ? <>
                 <span><b className="ph-sport-big">{c.big}</b>{c.unit && <span className="ph-unit"> {c.unit}</span>}</span>
                 <span className="ph-caption">{c.caption}</span>
-                <VerdictPill verdict={t!.last_verdict} />
+                <TrendPill trend={c.trend} stale={c.stale} />
               </> : <span className="ph-caption">No sessions yet</span>}
             </>
           )

@@ -129,3 +129,26 @@ def test_sport_status_running_pace_and_cycling_wkg():
     # no rides with power: FTP W/kg still shows
     st = wall.sport_status([], "cycling", 230, improvements.Weights([], 85), today)
     assert st["w_per_beat"] is None and st["ftp_wkg"] == 2.71
+
+
+def test_sport_status_strength_consistency_and_e1rm():
+    from datetime import date as d, timedelta
+    from fitvio import improvements, wall
+    today = d(2026, 10, 2)
+
+    def gym(days_ago, e1rm=None):
+        ex = {"squat": {"e1rm": e1rm}} if e1rm else {"10.30": {"e1rm": None, "sets": 3}}
+        return {"sport": "strength", "start_time": f"{(today - timedelta(days=days_ago)).isoformat()}T18:00:00",
+                "duration_s": 1200, "features": {"exercises": ex}}
+
+    # circuits without weights: only how often — 4 in the last 6 weeks, 1 in the 6 before
+    st = wall.sport_status([gym(3), gym(10), gym(20), gym(30), gym(60)], "strength", None,
+                           improvements.Weights([], 85), today)
+    assert (st["sessions_6w"], st["sessions_prev_6w"], st["minutes_6w"]) == (4, 1, 80)
+    assert st["e1rm_change_pct"] is None
+    assert len(st["points"]) == 12 and sum(p["value"] for p in st["points"]) == 5
+
+    # squats logged with weight, going up 100 → 110 kg in 6 weeks
+    st = wall.sport_status([gym(35, 100), gym(21, 105), gym(7, 110)], "strength", None,
+                           improvements.Weights([], 85), today)
+    assert st["e1rm_change_pct"] > 5

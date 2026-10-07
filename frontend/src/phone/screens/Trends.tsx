@@ -1,7 +1,7 @@
 import { Activity, ChevronRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { Ambient } from '../../api'
-import { SportIcon, VerdictPill } from '../../components/icons'
+import { SportIcon, TrendPill } from '../../components/icons'
 import { Sparkline } from '../../components/Sparkline'
 import { SPORT_LABEL } from '../../format'
 import { MiniPmc, SPORT_COLOR, tileContent } from '../../views/WallAmbient'
@@ -85,7 +85,7 @@ export function Trends() {
               {c && (
                 <div className="ph-trend-side">
                   <Sparkline values={c.spark} height={40} color={SPORT_COLOR[sp]} />
-                  <VerdictPill verdict={t!.last_verdict} />
+                  <TrendPill trend={c.trend} stale={c.stale} />
                 </div>
               )}
             </>
