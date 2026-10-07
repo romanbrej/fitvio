@@ -20,8 +20,8 @@ from typing import Callable
 from . import db, pipeline
 from .config import UserConfig, add_user, load_config
 from .ingest import intervals_reader as icu
-from .sync.garmindb_runner import (SyncBusy, changed_since, init_user_config, login_interactive, run_sync,
-                                   timed_ingest)
+from .sync.garmindb_runner import (FIRST_ACTIVITY_MARGIN, SyncBusy, changed_since, first_download_start, init_user_config,
+                                   login_interactive, run_sync, set_start_date, timed_ingest)
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +46,18 @@ def prepare(email: str, password: str, user_id: str, since: datetime | None = No
     cfg_dir = init_user_config(user, email, since=since)
     (cfg_dir / "password.txt").write_text(password)  # chmod 600, set by init_user_config
     return user
+
+
+def shorten_first_download(user: UserConfig, since: datetime | None, on_line: Callable[[str], None]) -> None:
+    """New watch, little history: start the first download shortly before the first activity instead
+    of years back (GarminDB walks every day of the range). An explicit `since` always wins."""
+    if since is not None:
+        return
+    start = first_download_start(user)
+    if start:
+        set_start_date(user.garmindb_dir, start)
+        on_line(f"Your first activity is from {start + FIRST_ACTIVITY_MARGIN:%B %Y} — downloading from {start:%B %Y}")
+        log.info("%s: first download from %s (first activity + margin)", user.id, start)
 
 
 def discard(user: UserConfig) -> None:
@@ -275,6 +287,7 @@ def start_connect(email: str, password: str, db_path: Path, on_registered: Calla
             return
         job.user_id = user.id
         on_registered()
+        shorten_first_download(user, since, job.line)
         _download_and_import(job, user, db_path, full=True)
 
     threading.Thread(target=run, name=f"connect-{job.id}", daemon=True).start()

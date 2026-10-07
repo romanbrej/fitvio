@@ -112,6 +112,27 @@ def test_first_download_can_be_limited_for_a_quick_test(tmp_path, monkeypatch):
     assert dict(api.calls[1][1])["oldest"] == "2026-09-07"
 
 
+def test_after_downtime_sync_catches_up_since_last_success(tmp_path, monkeypatch):
+    api = FakeIntervals([activity("i1", "2026-09-10")])
+    user = make_user(tmp_path, monkeypatch, api)
+    conn = db.connect(tmp_path / "app.db")
+    oldest = lambda: [dict(q)["oldest"] for p, q in api.calls if p.endswith(("/activities", "/wellness"))]  # noqa: E731
+    assert icu.download(user.intervals_path, api.client(), today=TODAY)["listed"] == 1   # no last sync: 14 days
+    assert oldest() == ["2026-09-23", "2026-09-23"]
+    # the server was off: last success 30 days ago → read back to the day before it
+    db.upsert(conn, "sync_status", {"user_id": "sam", "last_success": "2026-09-07T08:00:00"})
+    api.calls.clear()
+    monkeypatch.setattr(icu, "date", type("D", (date,), {"today": staticmethod(lambda: TODAY)}))
+    assert intervals_runner.run_sync(conn, user)
+    assert oldest() == ["2026-09-06", "2026-09-06"]                                       # the day before it
+    # synced yesterday: the normal 14-day window, nothing downloaded twice
+    api.calls.clear()
+    db.upsert(conn, "sync_status", {"user_id": "sam", "last_success": "2026-10-06T08:00:00"})
+    assert intervals_runner.run_sync(conn, user)
+    assert oldest() == ["2026-09-23", "2026-09-23"]
+    assert not [p for p, _ in api.calls if "/activity/" in p]
+
+
 def test_original_file_falls_back_to_intervals_fit(tmp_path):
     api = FakeIntervals([activity("i1", "2026-10-01", file_type="gpx")])
     icu.download(tmp_path, api.client(), today=TODAY)

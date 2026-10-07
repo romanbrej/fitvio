@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 API = "https://intervals.icu/api/v1"
 TIMEOUT_S = 60
 FULL_HISTORY_DAYS = 5 * 365  # first download; FITVIO_INTERVALS_HISTORY_DAYS=30 for a quick test
-RECENT_DAYS = 14  # a normal sync re-reads this window: late uploads and edits (name, RPE) show up
+RECENT_DAYS = 14  # a normal sync re-reads at least this window: late uploads and edits (name, RPE) show up
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 
 # Intervals.icu activity types → the Garmin sport names normalize_sport() knows
@@ -150,11 +150,18 @@ def _write_if_changed(path: Path, text: str) -> bool:
 
 
 def download(base: Path, client: Client, full: bool = False, today: date | None = None,
-             on_line: Callable[[str], None] = lambda s: None) -> dict:
-    """Fetch new/changed activities, wellness and the athlete profile into `base`."""
+             since: date | None = None, on_line: Callable[[str], None] = lambda s: None) -> dict:
+    """Fetch new/changed activities, wellness and the athlete profile into `base`.
+
+    A normal sync reads the last RECENT_DAYS, or back to `since` (the last successful sync) when that
+    is longer ago — after the server was off for weeks, nothing in between is missed."""
     today = today or date.today()
-    history = int(env("INTERVALS_HISTORY_DAYS") or FULL_HISTORY_DAYS)
-    oldest = today - timedelta(days=history if full else RECENT_DAYS)
+    if full:
+        oldest = today - timedelta(days=int(env("INTERVALS_HISTORY_DAYS") or FULL_HISTORY_DAYS))
+    else:
+        oldest = today - timedelta(days=RECENT_DAYS)
+        if since and since - timedelta(days=1) < oldest:
+            oldest = since - timedelta(days=1)
     newest = today + timedelta(days=1)
     acts_dir = base / "activities"
     acts_dir.mkdir(parents=True, exist_ok=True)
@@ -187,8 +194,7 @@ def download(base: Path, client: Client, full: bool = False, today: date | None 
 
     w_path = base / "wellness.json"
     wellness = json.loads(w_path.read_text()) if w_path.exists() else {}
-    w_oldest = oldest if full or not wellness else today - timedelta(days=RECENT_DAYS)
-    for w in client.wellness(w_oldest, newest):
+    for w in client.wellness(oldest, newest):
         if w.get("id"):
             wellness[str(w["id"])[:10]] = w
     _write_if_changed(w_path, json.dumps(wellness, sort_keys=True))

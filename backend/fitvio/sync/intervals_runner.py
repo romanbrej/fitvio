@@ -29,11 +29,12 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False,
     now = datetime.now().isoformat(timespec="seconds")
     started = time.monotonic()
     row = db.row_to_dict(conn.execute("SELECT * FROM sync_status WHERE user_id = ?", (user.id,)).fetchone()) or {}
+    last_ok = changed_since(conn, user.id)  # before this sync moves it
     error = None
     with sync_lock(user):
         try:
             stats = icu.download(user.intervals_path, client or client_for(user), full=full,
-                                 on_line=on_line or (lambda s: None))
+                                 since=last_ok.date() if last_ok else None, on_line=on_line or (lambda s: None))
             log.info("sync %s (intervals.icu)%s: %.0fs — %s", user.id, " full" if full else "",
                      time.monotonic() - started, stats)
             if stats["strava_only"]:
