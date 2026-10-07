@@ -95,7 +95,8 @@ def store_health(conn: sqlite3.Connection, user_id: str, days: list[dict]) -> No
 # 3: "Erholung" (easy) and "Anaerob" (intervals) workout names
 # 4: form includes the day's own training (stored verdict trends carry form_before/form_after)
 # 5: intervals only compared with the same rep length (±30 %) from the last 6 months
-ANALYSIS_VERSION = "5"
+# 6: pace at the reference HR measured from steady seconds near it (every run type), smooth heat curve
+ANALYSIS_VERSION = "6"
 
 
 def ingest_from_garmindb(conn: sqlite3.Connection, user: UserConfig, full: bool = False,

@@ -89,13 +89,15 @@ def compute_features(act: ParsedActivity, user: UserConfig) -> dict:
         w = act.weather or {}
         heat_pct = 0.0 if act.indoor else physio.heat_adjustment(w.get("temp_c"), w.get("dew_point_c"),
                                                                  act.heat_acclimation)
-        v_ref = physio.speed_at_hr(steady, gap, ref_hr(user))
+        # pace you actually held at the reference HR (any kind of run), not a fit extrapolated to it
+        v_ref, ref_secs = physio.steady_speed_at_hr(recs, gap_all, ref_hr(user)) or (None, None)
         f.update({
             "speed_at_ref_hr_adj": v_ref * (1 + heat_pct / 100) if v_ref else None,  # wall progress: pace at same HR
             "ef": ef,                                      # grade-adjusted m/min per beat
             "ef_adj": ef * (1 + heat_pct / 100) if ef else None,  # also heat/humidity-normalised
             "decoupling": physio.decoupling(steady, gap),
             "speed_at_ref_hr": v_ref,
+            "ref_hr_secs": round(ref_secs) if ref_secs else None,
             "ref_hr": ref_hr(user),
             "avg_speed": act.distance_m / act.duration_s if act.distance_m and act.duration_s else None,
             "gap_speed": (sum(s for s in gap if s) / max(1, sum(1 for s in gap if s))) if gap else None,

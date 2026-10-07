@@ -349,12 +349,19 @@ function tileBody(sport: Sport, t: SportTrend): { big: string; unit?: string; ca
     const c = st.change_s_per_km
     const tone = toneOf(c, STEADY.run_s_per_km)
     const cad = t.cadence
-    const trend = c == null ? 'not enough runs for a trend' : tone === 'inline' ? 'steady over 6 wks'
+    // the pill is heat-adjusted; when the pace as run moved but the weather explains it, say so
+    const raw = st.change_s_per_km_raw ?? null
+    const weather = tone === 'inline' && raw != null && toneOf(raw, STEADY.run_s_per_km) !== 'inline'
+    const trend = c == null ? 'not enough runs for a trend'
+      : weather ? `${raw! > 0 ? '▲' : '▼'} ${Math.abs(raw!).toFixed(0)} s/km, ${raw! > 0 ? 'cooler' : 'hotter'} weather`
+      : tone === 'inline' ? 'steady over 6 wks'
       : `${c > 0 ? '▲' : '▼'} ${Math.abs(c).toFixed(0)} s/km ${c > 0 ? 'faster' : 'slower'} in 6 wks`
+    const runs = st.runs != null ? `${st.runs} of ${st.runs_total} runs` : null
+    const cadence = cad ? `Cadence ${cad.spm} spm${cad.change ? ` ${cad.change > 0 ? '▲' : '▼'}${Math.abs(cad.change)}` : ''}` : null
     return {
       big: paceStr(st.pace_s_per_km), unit: '/km',
       caption: `at ${num(st.ref_hr)} bpm · ${trend}`,
-      extra: cad ? `Cadence ${cad.spm} spm${cad.change ? ` ${cad.change > 0 ? '▲' : '▼'}${Math.abs(cad.change)}` : ''}` : undefined,
+      extra: [runs, cadence].filter(Boolean).join(' · ') || undefined,
       spark: st.points.map(p => -p.value), tone,
     }
   }

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+from collections import deque
 from statistics import median
 
 from ..activity import Lap, Record
@@ -63,6 +64,16 @@ def f_to_c(f: float) -> float:
     return (f - 32) * 5 / 9
 
 
+def _interpolate(table: list[tuple[float, float]], x: float) -> float:
+    """Linear between the table's points, flat beyond its ends — no steps, so one degree never jumps."""
+    if x <= table[0][0]:
+        return table[0][1]
+    for (x0, y0), (x1, y1) in zip(table, table[1:]):
+        if x <= x1:
+            return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+    return table[-1][1]
+
+
 def heat_adjustment(temp_c: float | None, dew_point_c: float | None, acclimation_pct: float | None = None) -> float:
     """% by which heat and humidity made the same effort harder (0 when unknown or cool).
 
@@ -73,7 +84,7 @@ def heat_adjustment(temp_c: float | None, dew_point_c: float | None, acclimation
         return 0.0
     dew_c = dew_point_c if dew_point_c is not None else temp_c - 10  # rough mid-humidity fallback
     total = c_to_f(temp_c) + c_to_f(dew_c)
-    pct = next((p for limit, p in HEAT_TABLE if total <= limit), HEAT_MAX_PCT)
+    pct = _interpolate(HEAT_TABLE + [(HEAT_TABLE[-1][0] + 10, HEAT_MAX_PCT)], total)
     if acclimation_pct:
         pct *= 1 - 0.5 * max(0.0, min(100.0, acclimation_pct)) / 100
     return round(pct, 2)
@@ -137,6 +148,70 @@ def speed_at_hr(records: list[Record], speeds: list[float | None], target_hr: fl
         return median(p[1] for p in near)
     slope = sum((p[0] - mx) * (p[1] - my) for p in pts) / sxx
     return my + slope * (target_hr - mx)
+
+
+STEADY_HR_BAND = 3.0     # bpm around the target HR that count as "at" it
+STEADY_SPEED_S = 60.0    # pace must have been steady (±10 %) this long…
+STEADY_HR_S = 30.0       # …and HR settled (moved ≤ 4 bpm) this long
+COOL_OFF_S = 180.0       # after HR was 10+ bpm above the target, it sits at the target while you jog slowly
+MIN_STEADY_S = 60.0
+
+
+class _Window:
+    """Min and max of the values in a trailing time window, O(1) per step."""
+
+    def __init__(self, span_s: float):
+        self.span, self.lo, self.hi = span_s, deque(), deque()
+
+    def push(self, t: float, v: float) -> tuple[float, float]:
+        for q, worse in ((self.lo, lambda a, b: a >= b), (self.hi, lambda a, b: a <= b)):
+            while q and worse(q[-1][1], v):
+                q.pop()
+            q.append((t, v))
+            while q[0][0] < t - self.span:
+                q.popleft()
+        return self.lo[0][1], self.hi[0][1]
+
+
+def steady_speed_at_hr(records: list[Record], speeds: list[float | None], target_hr: float,
+                       skip_s: float = 300.0) -> tuple[float, float] | None:
+    """Median speed of the seconds a run actually spent steady at target_hr: (m/s, seconds).
+
+    Measured, never extrapolated — every kind of run counts, but only for its steady seconds near the
+    target: after the warm-up, pace steady for a minute, HR settled, and not in the cool-off after a hard
+    effort (HR lags pace in intervals). None when that adds up to under a minute.
+    """
+    if not records:
+        return None
+    warm = min(skip_s, (records[-1].t - records[0].t) * 0.1)
+    speed_w, hr_w = _Window(STEADY_SPEED_S), _Window(STEADY_HR_S)
+    last_hard = -math.inf
+    pts: list[tuple[float, float]] = []
+    for r, v, dt in zip(records, speeds, _dt(records)):
+        if r.hr and r.hr > target_hr + 10:
+            last_hard = r.t
+        s_lo, s_hi = speed_w.push(r.t, r.speed or 0.0)  # a stop (no speed) breaks the steady stretch
+        if not r.hr:
+            continue
+        h_lo, h_hi = hr_w.push(r.t, r.hr)
+        if (r.t - records[0].t < max(warm, STEADY_SPEED_S) or not dt or not v or v <= 0.5
+                or abs(r.hr - target_hr) > STEADY_HR_BAND or r.t - last_hard <= COOL_OFF_S
+                or s_lo <= 0.5 or s_hi > s_lo * 1.10 or h_hi - h_lo > 4):
+            continue
+        pts.append((v, dt))
+    secs = sum(dt for _, dt in pts)
+    return (weighted_median(pts), secs) if secs >= MIN_STEADY_S else None
+
+
+def weighted_median(pairs: list[tuple[float, float]]) -> float:
+    """Median of (value, weight) pairs, e.g. speeds weighted by the seconds they lasted."""
+    pairs = sorted(pairs)
+    half, acc = sum(w for _, w in pairs) / 2, 0.0
+    for v, w in pairs:
+        acc += w
+        if acc >= half:
+            return v
+    return pairs[-1][0]
 
 
 # --- Cycling ---------------------------------------------------------------
@@ -289,6 +364,19 @@ def mad(values: list[float]) -> float:
         return 0.0
     m = median(values)
     return median(abs(v - m) for v in values)
+
+
+def weighted_linear_slope(xs: list[float], ys: list[float], ws: list[float]) -> float | None:
+    """Least-squares slope where each point counts by its weight (e.g. seconds measured)."""
+    if len(xs) < 3 or sum(ws) <= 0:
+        return None
+    sw = sum(ws)
+    mx = sum(w * x for x, w in zip(xs, ws)) / sw
+    my = sum(w * y for y, w in zip(ys, ws)) / sw
+    sxx = sum(w * (x - mx) ** 2 for x, w in zip(xs, ws))
+    if sxx == 0:
+        return None
+    return sum(w * (x - mx) * (y - my) for x, y, w in zip(xs, ys, ws)) / sxx
 
 
 def linear_slope(xs: list[float], ys: list[float]) -> float | None:

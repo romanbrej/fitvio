@@ -31,11 +31,16 @@ def test_heat_table_uses_temperature_plus_dew_point():
     assert physio.heat_adjustment(None, None) == 0.0                        # no weather → no adjustment
     assert physio.heat_adjustment(12, 5) == 0.0                             # 53.6 + 41 °F: cool
     t, dp = physio.f_to_c(75), physio.f_to_c(59)                            # 75 + 59 = 134 °F
-    assert physio.heat_adjustment(t, dp) == 3.0
-    assert physio.heat_adjustment(t, dp, acclimation_pct=100) == 1.5       # fully acclimated: half
-    assert physio.heat_adjustment(t, dp, acclimation_pct=8) == pytest.approx(2.88)
-    assert physio.heat_adjustment(35, 28) == 10.0                           # 95 + 82 = 177 °F
-    assert physio.heat_adjustment(37, 30) == physio.HEAT_MAX_PCT            # 99 + 86 °F: very hot & humid
+    assert physio.heat_adjustment(t, dp) == pytest.approx(2.4)             # Hadley's 131–140 range: 2–3 %
+    assert physio.heat_adjustment(t, dp, acclimation_pct=100) == pytest.approx(1.2)  # fully acclimated: half
+    assert physio.heat_adjustment(t, dp, acclimation_pct=8) == pytest.approx(2.3, abs=0.01)
+    assert physio.heat_adjustment(physio.f_to_c(90), physio.f_to_c(90)) == pytest.approx(10.0)  # 180 °F
+    assert physio.heat_adjustment(40, 32) == physio.HEAT_MAX_PCT            # 104 + 90 °F: very hot & humid
+
+
+def test_heat_curve_has_no_steps():
+    pcts = [physio.heat_adjustment(physio.f_to_c(f / 2), physio.f_to_c(f / 2)) for f in range(100, 190)]
+    assert all(b >= a and b - a < 0.25 for a, b in zip(pcts, pcts[1:]))   # 1 °F never jumps a whole %
 
 
 def test_weather_is_read_in_metric(tmp_path):
@@ -111,8 +116,8 @@ def test_efficiency_is_adjusted_by_weather_not_wrist_sensor():
     w = {"temp_c": 23.9, "dew_point_c": 15.0, "station": "Town"}
     cool, warm = run(), run(w, 8)
     assert cool["heat_adj_pct"] == 0 and cool["ef_adj"] == cool["ef"]
-    assert warm["heat_adj_pct"] == pytest.approx(2.88)
-    assert warm["ef_adj"] == pytest.approx(warm["ef"] * 1.0288, rel=1e-3)
+    assert warm["heat_adj_pct"] == pytest.approx(2.31)
+    assert warm["ef_adj"] == pytest.approx(warm["ef"] * 1.0231, rel=1e-3)
     assert warm["weather"]["station"] == "Town" and warm["heat_acclimation"] == 8
     assert run(w, 8, indoor=True)["heat_adj_pct"] == 0                      # treadmill: no outdoor heat
 
@@ -124,7 +129,7 @@ def test_heat_note_only_with_real_weather():
     notes = model.context_notes({**base, "features": run({"temp_c": 23.9, "dew_point_c": 15.0, "station": "Town"}, 8)},
                                 None, None, {})
     heat = [n["text"] for n in notes if n["kind"] == "heat"]
-    assert heat == ["Warm & humid: 24 °C, dew point 15 °C (Town) — efficiency adjusted +2.9 %; heat acclimation 8 %"]
+    assert heat == ["Warm & humid: 24 °C, dew point 15 °C (Town) — efficiency adjusted +2.3 %; heat acclimation 8 %"]
 
 
 def test_multisport_legs_share_the_parent_weather(tmp_path):

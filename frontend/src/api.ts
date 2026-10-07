@@ -68,7 +68,10 @@ export interface SportTrend {
   pct_per_week: number | null; points: { day: string; value: number }[]
   /** running/cycling headline in real units, computed live */
   status?: {
-    pace_s_per_km?: number; change_s_per_km?: number | null
+    /** running: pace held at ref_hr over the last 3 weeks (6 when too few minutes); change over 6 weeks,
+     *  heat-adjusted (and as run); runs that had steady time at ref_hr of all outdoor runs in 6 weeks */
+    pace_s_per_km?: number; change_s_per_km?: number | null; change_s_per_km_raw?: number | null
+    runs?: number; runs_total?: number; window_days?: number
     w_per_beat?: number | null; w_per_beat_change_pct?: number | null; ftp_wkg?: number | null; hr_wkg?: number | null
     ref_hr?: number | null
     /** strength: sessions in the last 6 weeks and the 6 before, minutes, e1RM trend when weights are logged */
