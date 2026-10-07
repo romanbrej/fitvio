@@ -52,6 +52,39 @@ def test_speed_at_hr_needs_coverage():
     assert physio.speed_at_hr(recs, [r.speed for r in recs], 175) is None  # never extrapolate
 
 
+def _run(segments):
+    """Records at 1 Hz from (seconds, speed m/s, hr start, hr end) segments."""
+    recs, t = [], 0.0
+    for secs, speed, hr0, hr1 in segments:
+        for i in range(secs):
+            recs.append(Record(t=t, hr=hr0 + (hr1 - hr0) * i / max(1, secs - 1), speed=speed))
+            t += 1
+    return recs
+
+
+def test_steady_speed_at_hr_measures_instead_of_extrapolating():
+    # HR drifts 140 → 165 at a constant 2.4 m/s: a fit would make 151 bpm look faster; measured it is 2.4
+    recs = _run([(300, 2.0, 120, 140), (2400, 2.4, 140, 165)])
+    v, secs = physio.steady_speed_at_hr(recs, [r.speed for r in recs], 151)
+    assert v == pytest.approx(2.4)
+    assert 600 < secs < 900                                  # only the stretch at 146–154 bpm
+
+
+def test_steady_speed_at_hr_skips_interval_recoveries():
+    # reps at 175 bpm, then 4 min jogging slowly while HR sits at 151: that's not your pace at 151
+    reps = []
+    for _ in range(4):
+        reps += [(180, 4.0, 160, 175), (240, 1.8, 151, 151)]
+    recs = _run([(600, 2.4, 130, 151)] + [(600, 2.4, 151, 151)] + reps)
+    v, _ = physio.steady_speed_at_hr(recs, [r.speed for r in recs], 151)
+    assert v == pytest.approx(2.4)
+
+
+def test_steady_speed_at_hr_needs_a_minute():
+    recs = _run([(600, 2.4, 130, 140), (40, 2.6, 151, 151), (600, 2.4, 140, 140)])
+    assert physio.steady_speed_at_hr(recs, [r.speed for r in recs], 151) is None
+
+
 def test_normalized_power_constant():
     p = [200.0] * 600
     assert physio.normalized_power(p) == pytest.approx(200.0)
@@ -228,3 +261,13 @@ def test_intervals_older_than_six_months_dont_count():
     today = interval_session(99, "2026-10-02T11:00:00", reps=8, rep_s=60, rest_s=120)
     old = [interval_session(i, f"2025-0{2 + i}-10T07:00:00", reps=7, rep_s=60, rest_s=120) for i in range(3)]
     assert model_for("running").evaluate(today, old, None, None)["verdict"] == "not_comparable"
+
+
+def test_ref_hr_band_is_personal():
+    from fitvio.analytics.features import ref_hr, ref_hr_band
+    me = UserConfig(id="a", name="A", max_hr=194, rest_hr=50)
+    other = UserConfig(id="b", name="B", max_hr=180, rest_hr=60)
+    assert ref_hr(me) == 151
+    assert ref_hr_band(me) == (5, 3)                             # 146–154, 154 included
+    lo, hi = ref_hr_band(other)                                  # smaller reserve → narrower band
+    assert ref_hr(other) == 144 and (lo, hi) == (4, 2)          # 140–146

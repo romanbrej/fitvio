@@ -108,15 +108,17 @@ def _is_today(start_time: str, now: datetime | None = None) -> bool:
     return start_time[:10] == (now or _now()).date().isoformat()
 
 
-REF_HR_BAND = 12.0  # bpm around the reference HR, the same band physio.speed_at_hr reads from
+HEADLINE_DAYS = 21       # the pace headline: recent enough to show fitness changes soon
+HEADLINE_MIN_S = 600.0   # under 10 min at the reference HR in that time → use the whole 6 weeks
+RUN_WEIGHT_CAP_S = 1200.0  # one long run counts at most 20 min, so it can't outvote the rest
 
 
 def sport_status(sessions: list[dict], sport: str, ftp: float | None, weights: improvements.Weights,
                  today: date) -> dict | None:
     """The sport card's headline in real units, computed live from the sessions.
 
-    running: pace at the fixed reference HR (heat & grade adjusted) of the steady outdoor runs in 6 weeks,
-             and how many s/km it changed over that time (+ = faster).
+    running: pace actually held at the reference HR (grade adjusted) over every outdoor run of the last
+             3 weeks, and how many s/km it changed over 6 weeks (+ = faster, heat adjusted).
     cycling: power per heartbeat of the rides with power in 3 months, plus W/kg of FTP and of the
              power at the reference HR.
     strength: sessions per 6 weeks vs the 6 before, and the e1RM trend when weights are logged.
@@ -127,26 +129,38 @@ def sport_status(sessions: list[dict], sport: str, ftp: float | None, weights: i
                       key=lambda s: s["start_time"])
 
     if sport == "running":
-        # easy and long runs only, and only when the run's average HR was near the reference HR: tempo
-        # runs barely touch it, so their value would come from warm-up/cool-down and extrapolation
-        runs = recent(42, lambda s: s["session_type"] in {"easy", "long"} and not s.get("indoor"))
-        pts = []
+        # every outdoor run counts, for the steady seconds it spent at the reference HR (features.py)
+        runs = recent(42, lambda s: not s.get("indoor"))
+        pts = []  # (start, pace s/km, heat-adjusted pace, seconds, ref HR)
         for s in runs:
             f = s.get("features") or {}
-            v = f.get("speed_at_ref_hr_adj") or f.get("speed_at_ref_hr")
-            ref, avg = f.get("ref_hr"), s.get("avg_hr")
-            if v and (not ref or not avg or abs(avg - ref) <= REF_HR_BAND):
-                pts.append((s["start_time"], 1000 / v, f.get("ref_hr")))
+            v, secs = f.get("speed_at_ref_hr"), f.get("ref_hr_secs")
+            if v and secs:
+                pts.append((s["start_time"], 1000 / v, 1000 / (f.get("speed_at_ref_hr_adj") or v),
+                            min(secs, RUN_WEIGHT_CAP_S), f.get("ref_hr")))
         if not pts:
             return None
-        change = None
-        if len(pts) >= 4:
+        lo = (today - timedelta(days=HEADLINE_DAYS)).isoformat()
+        head = [p for p in pts if p[0][:10] >= lo]
+        if sum(p[3] for p in head) < HEADLINE_MIN_S:
+            head = pts
+
+        def change(i):  # s/km faster over 6 weeks (+ = faster), from a slope weighted by seconds measured
+            if len(pts) < 4:
+                return None
             x0 = datetime.fromisoformat(pts[0][0])
-            xs = [(datetime.fromisoformat(t) - x0).total_seconds() / 86400 for t, _, _ in pts]
-            slope = physio.linear_slope(xs, [p for _, p, _ in pts])
-            change = round(-slope * 42, 1) if slope is not None else None  # s/km faster over 6 weeks
-        return {"pace_s_per_km": round(median(p for _, p, _ in pts[-3:]), 1), "ref_hr": pts[-1][2],
-                "change_s_per_km": change, "points": [{"day": t[:10], "value": round(p, 1)} for t, p, _ in pts]}
+            xs = [(datetime.fromisoformat(p[0]) - x0).total_seconds() / 86400 for p in pts]
+            slope = physio.weighted_linear_slope(xs, [p[i] for p in pts], [p[3] for p in pts])
+            return round(-slope * 42, 1) if slope is not None else None
+
+        # all runs combined: their paces averaged by the time each spent at the reference HR
+        pace = sum(p[1] * p[3] for p in head) / sum(p[3] for p in head)
+        return {"pace_s_per_km": round(pace, 1),
+                "ref_hr": pts[-1][4], "window_days": HEADLINE_DAYS if head is not pts else 42,
+                "change_s_per_km": change(2),       # heat-adjusted: the fair trend
+                "change_s_per_km_raw": change(1),   # as run: tells when weather explains the difference
+                "runs": len(pts), "runs_total": len(runs),
+                "points": [{"day": p[0][:10], "value": round(p[1], 1)} for p in pts]}
 
     if sport == "cycling":
         rides = [s for s in recent(90, lambda s: s.get("has_power")) if (s.get("features") or {}).get("ef")]

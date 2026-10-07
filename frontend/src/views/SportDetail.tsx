@@ -9,8 +9,8 @@ import { useFetch } from '../useFetch'
 import './Detail.css'
 
 const PRIMARY: Record<string, { label: string; get: (f: Record<string, any>) => number | null | undefined; fmt: (v: number) => string }> = {
-  // pace at the reference HR in s/km (heat & grade adjusted) — lower is faster, like on the wall card
-  running: { label: 'Pace at fixed HR (/km, grade & heat adjusted) — easy & long runs only, lower is faster',
+  // pace held at the reference HR in s/km (grade & heat adjusted, so runs compare fairly) — lower is faster
+  running: { label: 'Pace at fixed HR (/km, grade & heat adjusted) — steady time at that HR in any run, lower is faster',
              get: f => { const v = f.speed_at_ref_hr_adj ?? f.speed_at_ref_hr; return v ? 1000 / v : null }, fmt: v => duration(v) },
   cycling: { label: 'Power per heartbeat (W/beat)', get: f => f.ef, fmt: v => v.toFixed(2) },
   swimming: { label: 'Pace per 100 m (s) — lower is better', get: f => f.pace_100m_s, fmt: v => duration(v) },
@@ -28,10 +28,8 @@ export function SportDetail() {
   const { data } = useFetch(() => api.sessions(user!, sport, 200), [user, sport])
   const p = PRIMARY[sport ?? 'other'] ?? PRIMARY.other
   const [all, setAll] = useState(false)
-  // running: like the wall card, only easy/long runs with avg HR near the reference HR (measured, not extrapolated)
-  const usable = (s: { session_type: string; avg_hr: number | null; features?: Record<string, any> | null }) =>
-    sport !== 'running' || (['easy', 'long'].includes(s.session_type) &&
-      (!s.avg_hr || !s.features?.ref_hr || Math.abs(s.avg_hr - s.features.ref_hr) <= 12))
+  // running: like the wall card, every outdoor run with steady time at the reference HR (others have no value)
+  const usable = (s: { indoor?: boolean | number; features?: Record<string, any> | null }) => sport !== 'running' || !s.indoor
   const pts = (data ?? []).filter(usable).slice().reverse()
     .map(s => ({ t: new Date(s.start_time).getTime(), v: p.get(s.features ?? {}), verdict: s.verdict, id: s.id, type: s.session_type }))
     .filter(x => x.v != null)

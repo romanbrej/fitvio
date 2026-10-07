@@ -110,17 +110,32 @@ def test_sport_status_running_pace_and_cycling_wkg():
     from fitvio import improvements, wall
     today = d(2026, 10, 2)
 
-    def run(day, speed, typ="easy", avg_hr=152):
-        return {"sport": "running", "session_type": typ, "indoor": 0, "start_time": f"2026-09-{day:02d}T07:00:00",
-                "avg_hr": avg_hr, "features": {"speed_at_ref_hr_adj": speed, "ref_hr": 151}}
+    def run(day, pace, typ="easy", secs=900, heat_pct=0.0, indoor=0):
+        v = 1000 / pace
+        return {"sport": "running", "session_type": typ, "indoor": indoor, "start_time": f"2026-09-{day:02d}T07:00:00",
+                "features": {"speed_at_ref_hr": v, "speed_at_ref_hr_adj": v * (1 + heat_pct / 100),
+                             "ref_hr_secs": secs, "ref_hr": 151}}
 
-    # 5 easy runs getting faster at 151 bpm (6:40 → 6:20 /km). Ignored: intervals, a tempo run (its pace at
-    # 151 is extrapolated from warm-up/cool-down) and an easy run far below 151 bpm (extrapolated up)
-    runs = [run(1 + 7 * i, 1000 / (400 - 5 * i)) for i in range(5)] + [
-        run(30, 1000 / 240, "intervals"), run(30, 1000 / 434, "tempo", 167), run(30, 1000 / 488, "easy", 134)]
+    # every outdoor run counts for its steady time at 151 bpm, tempo and intervals included
+    runs = [run(1, 420), run(8, 415, "long", secs=3000), run(15, 410, "tempo", secs=200), run(22, 405),
+            run(29, 400, "intervals", secs=120), run(30, 300, indoor=1),     # treadmill: out
+            {"sport": "running", "session_type": "easy", "indoor": 0, "start_time": "2026-09-25T07:00:00",
+             "features": {"speed_at_ref_hr": None, "ref_hr_secs": None, "ref_hr": 151}}]  # never at 151
     st = wall.sport_status(runs, "running", None, improvements.Weights([], 85), today)
-    assert st["pace_s_per_km"] == pytest.approx(385, abs=1)   # median of the last 3 steady runs
-    assert st["change_s_per_km"] > 15 and st["ref_hr"] == 151
+    assert (st["runs"], st["runs_total"]) == (5, 6) and st["ref_hr"] == 151
+    assert st["window_days"] == 21                                    # last 3 weeks, weighted by seconds:
+    assert st["pace_s_per_km"] == pytest.approx((410 * 200 + 405 * 900 + 400 * 120) / 1220, abs=0.1)
+    assert st["change_s_per_km"] > 15 and st["change_s_per_km_raw"] == st["change_s_per_km"]
+
+    # a long run counts at most 20 min: it can't outvote the others
+    st = wall.sport_status([run(20, 400, secs=600), run(22, 400, secs=600), run(24, 440, "long", secs=7200)],
+                           "running", None, improvements.Weights([], 85), today)
+    assert st["pace_s_per_km"] == pytest.approx((400 * 1200 + 440 * 1200) / 2400)   # 2 h counted as 20 min
+
+    # cooler weeks: faster as run, but the heat-adjusted trend stays steady
+    hot = [run(1 + 7 * i, 420 - 3 * i, heat_pct=3.0 - 0.75 * i) for i in range(5)]
+    st = wall.sport_status(hot, "running", None, improvements.Weights([], 85), today)
+    assert st["change_s_per_km_raw"] > 10 and abs(st["change_s_per_km"]) < 4
 
     ride = {"sport": "cycling", "session_type": "easy", "has_power": 1, "start_time": "2026-09-20T07:00:00",
             "features": {"ef": 1.14, "power_at_ref_hr": 170.0, "ref_hr": 151}}
