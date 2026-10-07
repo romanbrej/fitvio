@@ -26,3 +26,16 @@ export function VerdictPill({ verdict }: { verdict: VerdictKind | null }) {
     </span>
   )
 }
+
+const TREND_LABEL: Partial<Record<VerdictKind, string>> = { better: 'Improving', in_line: 'Steady', worse: 'Declining' }
+
+/** Where a sport's trend is heading over its window — not how the last session went. */
+export function TrendPill({ trend, stale = false }: { trend: VerdictKind | null; stale?: boolean }) {
+  if (!trend) return <span className="pill faint">{stale ? 'No recent sessions' : 'No trend yet'}</span>
+  return (
+    <span className={`pill tone-${trend}`}>
+      <VerdictIcon verdict={trend} size={16} />
+      {TREND_LABEL[trend]}
+    </span>
+  )
+}

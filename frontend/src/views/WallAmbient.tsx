@@ -1,10 +1,10 @@
 import { ChevronRight, Flame, Zap } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { Ambient, Sport, SportTrend } from '../api'
+import type { Ambient, Sport, SportTrend, VerdictKind } from '../api'
 import { Buddy } from '../components/Buddy'
 import { CardButton } from '../components/CardButton'
-import { SportIcon, VerdictPill } from '../components/icons'
+import { SportIcon, TrendPill } from '../components/icons'
 import { Sparkline } from '../components/Sparkline'
 import { WeekStrip } from '../components/WeekStrip'
 import { formState, hoursMinutes, num, signed, SPORT_LABEL } from '../format'
@@ -321,49 +321,73 @@ function weekNo(iso: string): number {
   return Math.ceil(((t.getTime() - y.getTime()) / 86400000 + 1) / 7)
 }
 
-/* Sport tiles: one big number in real units, its trend, and the last verdict. */
-export function tileContent(sport: Sport, t: SportTrend): { big: string; unit?: string; caption: string; extra?: string; spark: number[]; tone: string } {
+/* Sport tiles: one big number in real units and where its trend is heading. A move smaller than the
+ * steady band is noise (GPS, wind, heat), so the pill doesn't flip from one session to the next. */
+const STEADY = { run_s_per_km: 4, pct: 1.5 }
+const STALE_DAYS = 42
+
+type Tone = 'better' | 'inline' | 'worse' | 'muted'
+const TREND_OF: Record<Tone, VerdictKind | null> = { better: 'better', inline: 'in_line', worse: 'worse', muted: null }
+
+function toneOf(change: number | null | undefined, band: number): Tone {
+  return change == null ? 'muted' : change >= band ? 'better' : change <= -band ? 'worse' : 'inline'
+}
+
+export function tileContent(sport: Sport, t: SportTrend, now = Date.now()): {
+  big: string; unit?: string; caption: string; extra?: string; spark: number[]; tone: Tone
+  /** the trend as better / in line / worse; null with too few sessions or none in 6 weeks (`stale`) */
+  trend: VerdictKind | null; stale: boolean
+} {
+  const stale = now - new Date(t.last_time).getTime() > STALE_DAYS * 86400000
+  const c = tileBody(sport, t)
+  return { ...c, trend: stale ? null : TREND_OF[c.tone], stale }
+}
+
+function tileBody(sport: Sport, t: SportTrend): { big: string; unit?: string; caption: string; extra?: string; spark: number[]; tone: Tone } {
   const st = t.status
   if (sport === 'running' && st?.pace_s_per_km) {
     const c = st.change_s_per_km
+    const tone = toneOf(c, STEADY.run_s_per_km)
     const cad = t.cadence
-    const trend = c == null ? 'not enough runs for a trend' : Math.abs(c) < 2 ? 'steady over 6 wks'
+    const trend = c == null ? 'not enough runs for a trend' : tone === 'inline' ? 'steady over 6 wks'
       : `${c > 0 ? '▲' : '▼'} ${Math.abs(c).toFixed(0)} s/km ${c > 0 ? 'faster' : 'slower'} in 6 wks`
     return {
       big: paceStr(st.pace_s_per_km), unit: '/km',
       caption: `at ${num(st.ref_hr)} bpm · ${trend}`,
       extra: cad ? `Cadence ${cad.spm} spm${cad.change ? ` ${cad.change > 0 ? '▲' : '▼'}${Math.abs(cad.change)}` : ''}` : undefined,
-      spark: st.points.map(p => -p.value), tone: c == null ? 'muted' : c >= 2 ? 'better' : c <= -2 ? 'worse' : 'inline',
+      spark: st.points.map(p => -p.value), tone,
     }
   }
   if (sport === 'cycling' && st && st.w_per_beat != null) {
     const c = st.w_per_beat_change_pct
-    const trend = c == null ? 'too few power rides for a trend' : Math.abs(c) < 1 ? 'steady over 3 months'
+    const tone = toneOf(c, STEADY.pct)
+    const trend = c == null ? 'too few power rides for a trend' : tone === 'inline' ? 'steady over 3 months'
       : `${c > 0 ? '▲' : '▼'} ${Math.abs(c).toFixed(1)} % in 3 months`
     return {
       big: st.w_per_beat.toFixed(2), unit: 'W/beat',
       caption: trend,
       extra: st.ftp_wkg ? `FTP ${st.ftp_wkg.toFixed(1)} W/kg` : undefined,
-      spark: st.points.map(p => p.value), tone: c == null ? 'muted' : c >= 1 ? 'better' : c <= -1 ? 'worse' : 'inline',
+      spark: st.points.map(p => p.value), tone,
     }
   }
   // a trend this steep comes from too few sessions: don't show it on the wall
   const raw6 = t.pct_per_week == null ? null : t.pct_per_week * 6
   const pct6 = raw6 != null && Math.abs(raw6) <= 30 ? raw6 : null
+  const tone = toneOf(pct6, STEADY.pct)
   if (sport === 'swimming' && t.points.length) {
     // pace per 100 m (seconds): the big number is the typical pace of the last swims; + % = faster
     const last = t.points.slice(-3).map(p => p.value).sort((x, y) => x - y)
-    const trend = pct6 == null ? 'not enough swims for a trend' : Math.abs(pct6) < 1.2 ? 'steady over 6 wks'
+    const trend = pct6 == null ? 'not enough swims for a trend' : tone === 'inline' ? 'steady over 6 wks'
       : `${pct6 > 0 ? '▲' : '▼'} ${Math.abs(pct6).toFixed(1)} % ${pct6 > 0 ? 'faster' : 'slower'} in 6 wks`
     return {
       big: paceStr(last[Math.floor(last.length / 2)]), unit: '/100 m', caption: trend,
-      spark: t.points.map(p => -p.value), tone: pct6 == null ? 'muted' : pct6 >= 1.2 ? 'better' : pct6 <= -1.2 ? 'worse' : 'inline',
+      spark: t.points.map(p => -p.value), tone,
     }
   }
   return {
     big: pct6 == null ? '—' : signed(pct6, 1, '%'),
     caption: pct6 == null ? 'Not enough sessions for a trend yet' : `${t.metric ?? (sport === 'strength' ? 'e1RM' : 'trend')} · 6 wks`,
-    spark: t.points.map(p => p.value), tone: pct6 == null ? 'muted' : pct6 >= 1.2 ? 'better' : pct6 <= -1.2 ? 'worse' : 'inline',
+    spark: t.points.map(p => p.value), tone,
   }
 }
 
@@ -386,7 +410,7 @@ function SportTile({ a, sport }: { a: Ambient; sport: Sport }) {
           <div className="muted small ellipsis">{c.caption}</div>
           {c.extra && <div className="small ellipsis cadence">{c.extra}</div>}
           <div className="sport-spark"><Sparkline values={c.spark} height={24} color={SPORT_COLOR[sport]} /></div>
-          <div className="sport-foot"><VerdictPill verdict={t!.last_verdict} /></div>
+          <div className="sport-foot"><TrendPill trend={c.trend} stale={c.stale} /></div>
         </>
       ) : <div className="muted" style={{ marginTop: 8 }}>No sessions yet</div>}
     </CardButton>
