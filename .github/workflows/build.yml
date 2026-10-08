@@ -1,4 +1,5 @@
-# Test, then build the multi-arch image (amd64 + arm64) and push it to GHCR.
+# Pull requests: test (pytest + lint). main: build the multi-arch image (amd64 + arm64) and push it to GHCR;
+# it was tested in its pull request, so it isn't tested again.
 # Servers update themselves: deploy/install-updater.sh pulls a newer image every few minutes.
 # (No self-hosted runner on purpose: on a public repo it would let pull requests run code on your server.)
 name: build
@@ -6,6 +7,8 @@ name: build
 on:
   push:
     branches: [main]
+    paths-ignore: ['**.md', 'docs/**', 'design-system/**', 'LICENSE']
+  pull_request:
     paths-ignore: ['**.md', 'docs/**', 'design-system/**', 'LICENSE']
   workflow_dispatch:
 
@@ -22,6 +25,7 @@ permissions:
 
 jobs:
   test:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -47,7 +51,7 @@ jobs:
         working-directory: frontend
 
   image:
-    needs: test
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
