@@ -68,10 +68,11 @@ export interface SportTrend {
   pct_per_week: number | null; points: { day: string; value: number }[]
   /** running/cycling headline in real units, computed live */
   status?: {
-    /** running: pace held at ref_hr over the last 3 weeks (6 when too few minutes); change over 6 weeks,
-     *  heat-adjusted (and as run); runs that had steady time at ref_hr of all outdoor runs in 6 weeks */
+    /** running: pace held at ref_hr over the newest runs (older ones fading out), change over the 6 weeks up
+     *  to the newest run, heat-adjusted (and as run); runs with steady time at ref_hr of all outdoor runs then.
+     *  Counted from the newest run, so it changes only when a run comes in. */
     pace_s_per_km?: number; change_s_per_km?: number | null; change_s_per_km_raw?: number | null
-    runs?: number; runs_total?: number; window_days?: number
+    runs?: number; runs_total?: number; headline_runs?: number
     w_per_beat?: number | null; w_per_beat_change_pct?: number | null; ftp_wkg?: number | null; hr_wkg?: number | null
     ref_hr?: number | null
     /** strength: sessions in the last 6 weeks and the 6 before, minutes, e1RM trend when weights are logged */
@@ -208,7 +209,11 @@ export interface Account {
   source: Source | null
 }
 
-export type Profile = Record<'name' | 'sex' | 'max_hr' | 'rest_hr' | 'lthr' | 'ftp' | 'weight_kg', { value: string | number | null; source: string }>
+export type Profile = Record<'name' | 'sex' | 'max_hr' | 'rest_hr' | 'lthr' | 'ftp' | 'weight_kg', {
+  value: string | number | null; source: string
+  /** your own value counts; the data source now says this — offered, never applied by a sync */
+  suggested?: { value: number; source: string }
+}>
 
 async function get<T>(path: string): Promise<T> {
   const r = await fetch(path)
@@ -262,6 +267,9 @@ export const api = {
   /** your own max/resting HR; null = use the data source's value again */
   setProfile: (user: string, v: { max_hr: number | null; rest_hr: number | null }) =>
     send<{ profile: Profile; job: Job | null }>('PUT', `/api/users/${seg(user)}/profile`, v),
+  /** "Keep mine": the data source's current value isn't offered again */
+  dismissProfile: (user: string, field: 'max_hr') =>
+    send<{ profile: Profile }>('POST', `/api/users/${seg(user)}/profile/dismiss`, { field }),
   job: (id: string) => get<Job>(`/api/jobs/${seg(id)}`),
   mfa: (id: string, code: string) => post<{ ok: boolean }>(`/api/jobs/${seg(id)}/mfa`, { code }),
   syncNow: (user: string) => post<Job>(`/api/users/${seg(user)}/sync`, {}),

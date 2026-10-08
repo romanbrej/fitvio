@@ -7,6 +7,7 @@ import json
 import os
 import re
 from datetime import date, datetime
+from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -357,12 +358,27 @@ def set_profile(user_id: str, body: ProfileOverride, c: AppConfig = Depends(cfg)
     from ..config import set_overrides
     user = _user_or_404(c, user_id)
     set_overrides(user.id, {"max_hr": body.max_hr, "rest_hr": body.rest_hr})
+    if body.max_hr is not None:  # you saw the source's value when you typed yours: only a newer one is offered
+        profile.dismiss(cn, user, "max_hr")
     reset_config()
     db.set_state(cn, f"analysis_version:{user.id}", "")  # → the next ingest reprocesses everything
     user = load_config().user(user.id)
     # re-analyse what's downloaded; no new download, so this asks Garmin/Intervals.icu nothing
     job = accounts.active_for(user.id) or (accounts.start_reprocess(user, c.db_path) if user.source else None)
     return {"profile": profile.describe(cn, user), "job": job.public() if job else None}
+
+
+class Dismiss(BaseModel):
+    model_config = {"extra": "forbid"}
+    field: Literal["max_hr"]
+
+
+@app.post("/api/users/{user_id}/profile/dismiss", dependencies=[Depends(local_network_only)])
+def dismiss_suggestion(user_id: str, body: Dismiss, c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    """"Keep mine": your own value stays, and the data source's current value isn't offered again."""
+    user = _user_or_404(c, user_id)
+    profile.dismiss(cn, user, body.field)
+    return {"profile": profile.describe(cn, user)}
 
 
 @app.get("/api/jobs/{job_id}")

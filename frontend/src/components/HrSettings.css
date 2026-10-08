@@ -19,3 +19,5 @@
 .hr-fields input:focus { outline: 3px solid var(--primary); outline-offset: 1px; }
 .hr-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .hr-error { display: flex; gap: 6px; align-items: center; color: var(--worse); font-size: 15px; }
+.hr-suggest { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: var(--surface-2); }
+.hr-suggest .btn { min-height: 44px; }

@@ -61,6 +61,8 @@ def describe(conn: sqlite3.Connection, user: UserConfig) -> dict[str, dict]:
     for f in FIELDS:
         if getattr(user, f) is not None:
             out[f] = {"value": getattr(user, f), "source": "set by you"}
+            if f in SUGGEST and (s := suggestion(conn, user, f, p)):
+                out[f]["suggested"] = s
         elif f in p and p[f]["value"] is not None:
             out[f] = {"value": p[f]["value"], "source": p[f]["source"]}
         elif f in DEFAULTS:
@@ -71,6 +73,41 @@ def describe(conn: sqlite3.Connection, user: UserConfig) -> dict[str, dict]:
 
 
 # --- deriving from Garmin data -------------------------------------------------
+
+# Your own value stays until you accept a new one; the data source's newer value is only offered.
+# Resting HR moves a bit every month, so asking about it would nag.
+SUGGEST = ("max_hr",)
+
+
+def _dismissed_key(user_id: str, field: str) -> str:
+    return f"{field}_dismissed:{user_id}"
+
+
+def suggestion(conn: sqlite3.Connection, user: UserConfig, field: str,
+               p: dict[str, dict] | None = None) -> dict | None:
+    """The data source's value when it differs from your own one by a zone-relevant amount and you
+    haven't said "keep mine" to exactly that value."""
+    src = (p if p is not None else stored(conn, user.id)).get(field)
+    own = getattr(user, field)
+    if own is None or not src or not isinstance(src["value"], (int, float)):
+        return None
+    if abs(src["value"] - own) < THRESHOLD_TOLERANCE[field]:
+        return None
+    dismissed = conn.execute("SELECT value FROM wall_state WHERE key = ?",
+                             (_dismissed_key(user.id, field),)).fetchone()
+    if dismissed and float(dismissed[0]) == float(src["value"]):
+        return None
+    return {"value": src["value"], "source": src["source"]}
+
+
+def dismiss(conn: sqlite3.Connection, user: UserConfig, field: str) -> None:
+    """"Keep mine": don't offer the data source's current value again (a different one is offered)."""
+    src = stored(conn, user.id).get(field)
+    if src and src["value"] is not None:
+        conn.execute("INSERT OR REPLACE INTO wall_state (key, value) VALUES (?, ?)",
+                     (_dismissed_key(user.id, field), str(src["value"])))
+        conn.commit()
+
 
 def _find(obj, keys: tuple[str, ...]):
     """First non-empty value for any of `keys`, searching nested dicts/lists (Garmin JSON shapes vary)."""

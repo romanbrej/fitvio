@@ -123,14 +123,17 @@ def test_sport_status_running_pace_and_cycling_wkg():
              "features": {"speed_at_ref_hr": None, "ref_hr_secs": None, "ref_hr": 151}}]  # never at 151
     st = wall.sport_status(runs, "running", None, improvements.Weights([], 85), today)
     assert (st["runs"], st["runs_total"]) == (5, 6) and st["ref_hr"] == 151
-    assert st["window_days"] == 21                                    # last 3 weeks, weighted by seconds:
-    assert st["pace_s_per_km"] == pytest.approx((410 * 200 + 405 * 900 + 400 * 120) / 1220, abs=0.1)
+    # the newest runs, weighted by seconds (long run capped at 20 min) and faded by position: newest 6/6 … 2/6
+    assert st["headline_runs"] == 5
+    w = [(400, 120, 6), (405, 900, 5), (410, 200, 4), (415, 1200, 3), (420, 900, 2)]
+    assert st["pace_s_per_km"] == pytest.approx(sum(p * s * k for p, s, k in w) / sum(s * k for _, s, k in w), abs=0.1)
     assert st["change_s_per_km"] > 15 and st["change_s_per_km_raw"] == st["change_s_per_km"]
 
     # a long run counts at most 20 min: it can't outvote the others
     st = wall.sport_status([run(20, 400, secs=600), run(22, 400, secs=600), run(24, 440, "long", secs=7200)],
                            "running", None, improvements.Weights([], 85), today)
-    assert st["pace_s_per_km"] == pytest.approx((400 * 1200 + 440 * 1200) / 2400)   # 2 h counted as 20 min
+    assert st["pace_s_per_km"] == pytest.approx(                                   # 2 h counted as 20 min
+        (440 * 1200 * 6 + 400 * 600 * 5 + 400 * 600 * 4) / (1200 * 6 + 600 * 5 + 600 * 4), abs=0.1)
 
     # cooler weeks: faster as run, but the heat-adjusted trend stays steady
     hot = [run(1 + 7 * i, 420 - 3 * i, heat_pct=3.0 - 0.75 * i) for i in range(5)]
@@ -145,6 +148,39 @@ def test_sport_status_running_pace_and_cycling_wkg():
     st = wall.sport_status([], "cycling", 230, improvements.Weights([], 85), today)
     assert st["w_per_beat"] is None and st["ftp_wkg"] == 2.71
 
+
+
+def test_running_headline_moves_only_when_a_run_comes_in():
+    """Waking up to a different pace with no new run was confusing: the numbers are counted from the
+    newest run, so days passing change nothing, and a new run replaces exactly the oldest one."""
+    from datetime import date as d, timedelta
+    from fitvio import improvements, wall
+    w = improvements.Weights([], 85)
+
+    def run(day, pace, secs=900):
+        v = 1000 / pace
+        return {"sport": "running", "session_type": "easy", "indoor": 0,
+                "start_time": (d(2026, 9, 1) + timedelta(days=day)).isoformat() + "T07:00:00",
+                "features": {"speed_at_ref_hr": v, "speed_at_ref_hr_adj": v, "ref_hr_secs": secs, "ref_hr": 151}}
+
+    runs = [run(3 * i, 420 - 2 * i) for i in range(8)]       # one every 3 days, getting faster
+    keys = ("pace_s_per_km", "change_s_per_km", "points", "headline_runs")
+    base = wall.sport_status(runs, "running", None, w, d(2026, 9, 22))
+    for later in (1, 10, 30, 60):
+        st = wall.sport_status(runs, "running", None, w, d(2026, 9, 22) + timedelta(days=later))
+        assert {k: st[k] for k in keys} == {k: base[k] for k in keys}
+
+    # 6 runs make the headline; a new one pushes out only the oldest of them
+    assert base["headline_runs"] == 6
+    newer = wall.sport_status(runs + [run(24, 404)], "running", None, w, d(2026, 9, 25))
+    assert newer["headline_runs"] == 6
+    without_oldest = wall.sport_status(runs[3:] + [run(24, 404)], "running", None, w, d(2026, 9, 25))
+    assert newer["pace_s_per_km"] == without_oldest["pace_s_per_km"]
+
+    # too little time at the reference HR in the newest 6 → older runs are added until 10 min
+    short = [run(i, 400, secs=60) for i in range(12)]
+    st = wall.sport_status(short, "running", None, w, d(2026, 9, 20))
+    assert st["headline_runs"] == 10
 
 def test_sport_status_strength_consistency_and_e1rm():
     from datetime import date as d, timedelta
