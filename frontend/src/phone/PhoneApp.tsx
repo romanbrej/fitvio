@@ -2,6 +2,7 @@ import { CalendarDays, TrendingUp, User as UserIcon, Zap } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, Outlet, ScrollRestoration, useLocation } from 'react-router-dom'
 import { api } from '../api'
+import { DEMO } from '../demo/demo'
 import type { Ambient, AppConfig, Job } from '../api'
 import { ConnectForm } from '../components/ConnectForm'
 import { meStore, PhoneContext } from './ctx'
@@ -73,12 +74,12 @@ export function PhoneApp() {
     if (!myId) return
     refresh()
     const poll = setInterval(refresh, POLL_MS)
-    const es = new EventSource('/api/events')  // a new verdict lands → refresh right away
-    es.addEventListener('refresh', () => refresh())
+    const es = DEMO ? null : new EventSource('/api/events')  // a new verdict lands → refresh right away
+    es?.addEventListener('refresh', () => refresh())
     // a phone sleeps a lot: catch up when it comes back
     const onVisible = () => { if (document.visibilityState === 'visible') refresh() }
     document.addEventListener('visibilitychange', onVisible)
-    return () => { clearInterval(poll); es.close(); document.removeEventListener('visibilitychange', onVisible) }
+    return () => { clearInterval(poll); es?.close(); document.removeEventListener('visibilitychange', onVisible) }
   }, [myId, refresh])
 
   const setMe = useCallback((id: string | null) => {

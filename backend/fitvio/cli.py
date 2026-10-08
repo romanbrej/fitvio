@@ -7,6 +7,7 @@
   fitvio evaluate [--user ID]                 recompute all verdicts
   fitvio backtest [--user ID] [--sport S]     print verdicts over history
   fitvio demo [--days N]                      fill the DB with synthetic data
+  fitvio demo-export <out_dir>                made-up people + data as static JSON (the GitHub Pages demo)
   fitvio serve [--host H] [--port P]          run the API + wall UI
 """
 from __future__ import annotations
@@ -50,12 +51,25 @@ def main(argv=None) -> int:
     s.add_argument("--sport")
     s = sub.add_parser("demo")
     s.add_argument("--days", type=int, default=150)
+    s = sub.add_parser("demo-export", help="made-up people and data as static JSON for the try-it demo")
+    s.add_argument("out_dir")
+    s.add_argument("--days", type=int, default=150)
+    s.add_argument("--deny", default="", help="comma-separated words that must not appear in the output "
+                                              "(also FITVIO_DEMO_DENY), e.g. real names")
     s = sub.add_parser("serve")
     s.add_argument("--host", default="0.0.0.0")
     s.add_argument("--port", type=int, default=8765)
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    if a.cmd == "demo-export":  # before load_config: the demo never touches the real config or database
+        from pathlib import Path
+
+        from .config import env
+        from .demo_export import export
+        deny = f"{a.deny},{env('DEMO_DENY', '')}".split(",")
+        print(json.dumps(export(Path(a.out_dir), days=a.days, deny=deny)))
+        return 0
     cfg = load_config()
 
     if a.cmd == "serve":

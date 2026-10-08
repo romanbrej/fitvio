@@ -2,6 +2,7 @@ import { AlertTriangle, Loader2, Plus, RefreshCw, Wifi } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../../api'
+import { DEMO, DEMO_LOCKED } from '../../demo/demo'
 import type { Account, ActivityCheck, BuddySettings } from '../../api'
 import { ANIMALS, Buddy } from '../../components/Buddy'
 import type { Animal } from '../../components/Buddy'
@@ -106,7 +107,7 @@ export function Me() {
                 : a.sync.last_error ? <span className="ph-foot tone-warn">Last sync failed{a.source === 'intervals' && /API key/.test(a.sync.last_error) ? ' — check the API key' : ''}</span>
                 : <span className={`ph-foot ${a.sync.stale ? 'tone-warn' : 'tone-better'}`}>Synced {ago(a.sync.last_success)}</span>}
             </div>
-            <button className={`ph-btn sm${a.sync.login_expired ? ' warn' : ''}`} onClick={() => syncNow(a.id)} disabled={!!a.job}
+            <button className={`ph-btn sm${a.sync.login_expired ? ' warn' : ''}`} onClick={() => syncNow(a.id)} disabled={!!a.job || DEMO} title={DEMO ? DEMO_LOCKED : undefined}
                     aria-label={`Sync ${a.name} now`}>
               {a.job ? <Loader2 size={16} className="spin" aria-hidden /> : <RefreshCw size={16} aria-hidden />}{a.sync.login_expired ? 'Fix' : 'Sync'}
             </button>

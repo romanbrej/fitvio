@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../App'
 import { api } from '../api'
+import { DEMO, DEMO_LOCKED } from '../demo/demo'
 import type { Account, ActivityCheck, BuddySettings } from '../api'
 import { ANIMALS, Buddy } from '../components/Buddy'
 import type { Animal } from '../components/Buddy'
@@ -113,7 +114,7 @@ export function Accounts() {
                     <span className="muted" style={{ fontSize: 15 }}>{a.source ? `${SOURCE_LABEL[a.source]} · ` : ''}{a.activities} activities</span>
                   </div>
                 </div>
-                <button className="btn primary" onClick={() => syncNow(a.id)} disabled={!!job}>
+                <button className="btn primary" onClick={() => syncNow(a.id)} disabled={!!job || DEMO} title={DEMO ? DEMO_LOCKED : undefined}>
                   {job ? <Loader2 size={18} className="spin" /> : <RefreshCw size={18} />} {job ? 'Syncing' : 'Sync now'}
                 </button>
               </div>

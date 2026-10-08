@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api } from './api'
+import { DEMO, DEMO_LOCKED } from './demo/demo'
 import type { Ambient, AppConfig, Job, WallState } from './api'
 import { DayScreen } from './components/DayScreen'
 import { NightScreen } from './components/NightScreen'
@@ -76,9 +77,9 @@ export default function App() {
     refresh()
     const poll = setInterval(refresh, POLL_MS)
     // Server-sent events: the backend pushes 'refresh' as soon as a new verdict lands.
-    const es = new EventSource('/api/events')
-    es.addEventListener('refresh', () => refresh())
-    return () => { clearInterval(poll); es.close() }
+    const es = DEMO ? null : new EventSource('/api/events')
+    es?.addEventListener('refresh', () => refresh())
+    return () => { clearInterval(poll); es?.close() }
   }, [refresh])
 
   // What this screen shows: the server's wall, or the paused-for person's overview.
@@ -204,7 +205,7 @@ export default function App() {
     try {
       job = await api.syncNow(user)
     } catch (e) {
-      setSyncOutcome({ ok: false, text: `Sync failed: ${String(e).replace(/^Error: /, '')}` })
+      setSyncOutcome({ ok: false, text: DEMO ? DEMO_LOCKED : `Sync failed: ${String(e).replace(/^Error: /, '')}` })
       return
     }
     await follow(job)

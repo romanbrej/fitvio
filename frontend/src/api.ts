@@ -1,3 +1,6 @@
+import { DEMO } from './demo/demo'
+import { demoGet, demoSend } from './demo/demoApi'
+
 export type Sport = 'running' | 'cycling' | 'swimming' | 'strength' | 'other'
 export type VerdictKind = 'better' | 'in_line' | 'worse' | 'not_comparable' | 'load_only'
 
@@ -216,6 +219,7 @@ export type Profile = Record<'name' | 'sex' | 'max_hr' | 'rest_hr' | 'lthr' | 'f
 }>
 
 async function get<T>(path: string): Promise<T> {
+  if (DEMO) return demoGet<T>(path)
   const r = await fetch(path)
   if (!r.ok) throw new Error(`${r.status} ${path}`)
   return r.json()
@@ -226,6 +230,7 @@ async function post<T = void>(path: string, body: unknown): Promise<T> {
 }
 
 async function send<T>(method: 'POST' | 'PUT', path: string, body: unknown): Promise<T> {
+  if (DEMO) return demoSend<T>(path, body)
   const r = await fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   if (!r.ok) {
     let detail = `${r.status}`

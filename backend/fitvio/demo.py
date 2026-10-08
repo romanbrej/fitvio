@@ -16,7 +16,7 @@ STEP = 2.0  # seconds between synthetic records
 
 
 def _run(rng: random.Random, uid: str, start: datetime, fitness: float, kind: str, user: UserConfig,
-         temp: float) -> ParsedActivity:
+         temp: float, showcase: bool = False) -> ParsedActivity:
     # fitness ~ aerobic efficiency in m/min per beat (grows over the season)
     minutes = {"easy": rng.uniform(35, 55), "long": rng.uniform(80, 110), "tempo": rng.uniform(40, 55),
                "intervals": rng.uniform(45, 60)}[kind]
@@ -26,6 +26,8 @@ def _run(rng: random.Random, uid: str, start: datetime, fitness: float, kind: st
     n = int(minutes * 60 / STEP)
     drift = rng.uniform(0.02, 0.06) if kind != "long" else rng.uniform(0.04, 0.09)
     heat = 1 + 0.004 * max(0, temp - 15)
+    if showcase:  # the run the demo wall opens on: a good day (flat, cool, steady), so the first verdict is "better"
+        hilly, drift, heat, fitness = False, 0.015, 1.0, fitness * 1.06
     lap_start, lap_dist = 0.0, 0.0
     for i in range(n):
         t = i * STEP
@@ -232,7 +234,7 @@ def generate(conn: sqlite3.Connection, cfg: AppConfig, days: int = 150, seed: in
             if not item or (d > 0 and rng.random() < 0.12):
                 continue
             if item.startswith("run"):
-                act = _run(rng, user.id, start, fitness, item.split(":")[1], user, temp)
+                act = _run(rng, user.id, start, fitness, item.split(":")[1], user, temp, showcase=d == 0 and improving)
                 if d == 0 and improving:
                     act.rpe, act.feel = 3, 75
             elif item == "ride":

@@ -1,6 +1,7 @@
-import { AlertTriangle, Check, KeyRound, Loader2, LogIn, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Check, KeyRound, Loader2, Lock, LogIn, ShieldCheck } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { DEMO, DEMO_LOCKED } from '../demo/demo'
 import type { Job, Source } from '../api'
 import './ConnectForm.css'
 
@@ -126,6 +127,8 @@ export function ConnectForm({ onDone, resume }: { onDone: () => void; resume?: J
     const ready = source === 'intervals' ? athlete && apiKey : email && password
     return (
       <form className="connect" onSubmit={submit}>
+        {DEMO && <p className="connect-note demo-locked" role="note"><Lock size={16} aria-hidden /> {DEMO_LOCKED}</p>}
+        <fieldset disabled={DEMO} style={{ display: 'contents' }}>
         <div className="connect-source" role="radiogroup" aria-label="Where your data comes from">
           {(['garmin', 'intervals'] as const).map(s => (
             <button key={s} type="button" role="radio" aria-checked={source === s} className={source === s ? 'on' : ''}
@@ -157,7 +160,7 @@ export function ConnectForm({ onDone, resume }: { onDone: () => void; resume?: J
           </label>
         </>}
         {error && <div className="connect-error" role="alert"><AlertTriangle size={18} /> {error}</div>}
-        <button className="btn btn-primary" type="submit" disabled={busy || !ready}>
+        <button className="btn btn-primary" type="submit" disabled={DEMO || busy || !ready}>
           {busy ? <Loader2 size={20} className="spin" /> : <LogIn size={20} />} {source === 'garmin' ? 'Connect Garmin' : 'Connect Intervals.icu'}
         </button>
         {source === 'garmin' ? (
@@ -175,6 +178,7 @@ export function ConnectForm({ onDone, resume }: { onDone: () => void; resume?: J
             Intervals.icu only through Strava can't be read (Strava doesn't allow it).
           </p>
         </>}
+        </fieldset>
       </form>
     )
   }
