@@ -104,8 +104,10 @@ try {
   const sw = () => p.getByRole('switch', { name: 'Use for comparisons' })
   check('its switch is off', await sw().getAttribute('aria-checked') === 'false')
   await p.goto(`${ROOT}u/alex/sport/running`)
-  await p.locator('table').last().waitFor()
-  check('the sport page lists it as Excluded', /excluded/i.test(await p.locator('table').last().innerText()))
+  // wait for the rows, not just the table: it renders before the sessions have loaded
+  const listed = await p.locator('table').last().getByText(/excluded/i).first().waitFor({ timeout: 10000 })
+    .then(() => true, () => false)
+  check('the sport page lists it as Excluded', listed)
 
   await p.goto(`${ROOT}session/${encodeURIComponent(bad.id)}`)
   await p.getByText('Use for comparisons').waitFor()
