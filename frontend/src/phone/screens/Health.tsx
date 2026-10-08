@@ -2,32 +2,72 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../../api'
 import type { HealthDay } from '../../api'
-import { Sparkline } from '../../components/Sparkline'
 import { hoursMinutes, num } from '../../format'
+import { AxisChart, dateAxis, dayLabel, lastDays, niceTicks } from '../Chart'
+import type { Line, Tick } from '../Chart'
 import { usePhone } from '../ctx'
 import { Card } from '../parts'
 import { bodyBatteryNote, hrvBand } from '../util'
+import type { Note } from '../util'
 import { TrendsNav } from './Trends'
 
 const RANGES = [7, 30, 90, 365] as const
+const SLEEP_GOAL_MIN = 480
 
-function series(days: HealthDay[], k: keyof HealthDay): number[] {
-  return days.map(d => d[k]).filter((v): v is number => typeof v === 'number')
+/** One value per calendar day of the range (null where there's no row), so the x axis is real dates. */
+function column(days: string[], rows: Map<string, HealthDay>, k: keyof HealthDay): (number | null)[] {
+  return days.map(d => { const v = rows.get(d)?.[k]; return typeof v === 'number' ? v : null })
 }
 
-function Metric({ id, focus, label, value, unit, note, tone, children }: {
-  id: string; focus: string | null; label: string; value: string; unit?: string; note?: string | null; tone?: string; children: React.ReactNode
+/** "▼ 3 bpm in 30 days" from the first to the last value in the range, coloured by whether that direction is good. */
+function change(values: (number | null)[], unit: string, dp: number, goodUp: boolean): Note | null {
+  const first = values.findIndex(v => v != null)
+  const last = values.findLastIndex(v => v != null)
+  const days = last - first
+  if (first < 0 || days < 1) return null
+  const diff = values[last]! - values[first]!
+  if (Math.abs(diff) < (dp ? 0.1 : 1)) return { text: `→ steady over ${days} days`, tone: 'muted' }
+  return { text: `${diff > 0 ? '▲' : '▼'} ${Math.abs(diff).toFixed(dp)}${unit} in ${days} days`, tone: diff > 0 === goodUp ? 'better' : 'worse' }
+}
+
+interface Metric {
+  id: string; label: string; unit?: string; latest: string; fmt: (v: number) => string
+  end: string; note?: Note | null
+  values: (number | null)[]; color: string; asBars?: boolean
+  lo: number; hi: number; ticks: Tick[]; band?: [number, number] | null; refColor?: string; height?: number
+}
+
+function MetricCard({ m, days, focus, picked, onPick }: {
+  m: Metric; days: string[]; focus: string | null; picked: number | null; onPick: (i: number | null) => void
 }) {
+  const v = picked == null ? null : m.values[picked]
+  const value = picked == null ? m.latest : v == null ? '—' : m.fmt(v)
+  const when = picked == null || picked === days.length - 1 ? m.end : dayLabel(days[picked], true)
+  const lines: Line[] = m.asBars ? [] : [{ values: m.values, color: m.color }]
   return (
-    <Card id={`m-${id}`} className={focus === id ? 'ph-focus' : ''}>
-      <div className="ph-row">
-        <span className="ph-label">{label}</span>
-        <span className="ph-right"><b className="num ph-v">{value}</b>{unit && <span className="ph-unit"> {unit}</span>}</span>
+    <Card id={`m-${m.id}`} className={focus === m.id ? 'ph-focus' : ''}>
+      <div className="ph-row" style={{ alignItems: 'flex-start' }}>
+        <div aria-live="polite"><span className="ph-label">{m.label}</span><span className={`ph-when${picked != null ? ' on' : ''}`}>{picked != null && v == null ? `${when} · no data` : when}</span></div>
+        <span className="ph-right" aria-live="polite"><b className="num ph-v">{value}</b>{m.unit && (picked == null || v != null) && <span className="ph-unit"> {m.unit}</span>}</span>
       </div>
-      {note && <span className={`ph-foot tone-${tone ?? 'muted'}`}>{note}</span>}
-      {children}
+      {m.note && <span className={`ph-foot tone-${m.note.tone}`}>{m.note.text}</span>}
+      <AxisChart n={days.length} lo={m.lo} hi={m.hi} ticks={m.ticks} band={m.band} refColor={m.refColor}
+                 lines={lines} bars={m.asBars ? m.values : undefined}
+                 barColor={(i, p) => p == null ? m.color : i === p ? '#e0e7ff' : '#5b5fc7'}
+                 axis={dateAxis(days, m.end)} height={m.height ?? 96}
+                 label={`${m.label}, last ${days.length} days`} picked={picked} onPick={onPick} />
     </Card>
   )
+}
+
+function sleepScale(values: (number | null)[], bars: boolean) {
+  const max = Math.max(600, ...values.map(v => v ?? 0))
+  const hi = Math.ceil(max / 120) * 120
+  const lo = bars ? 0 : Math.min(240, Math.floor(Math.min(...values.map(v => v ?? 240)) / 120) * 120)
+  const ticks: Tick[] = bars ? [{ value: 0, label: '0' }, { value: 240, label: '4 h' }]
+    : Array.from({ length: (SLEEP_GOAL_MIN - lo) / 120 }, (_, k) => ({ value: lo + k * 120, label: `${(lo + k * 120) / 60} h` }))
+  ticks.push({ value: SLEEP_GOAL_MIN, label: '8 h', ref: true })
+  return { lo, hi, ticks }
 }
 
 export function Health() {
@@ -36,26 +76,69 @@ export function Health() {
   const [params] = useSearchParams()
   const focus = params.get('metric')
   const [range, setRange] = useState<number>(30)
-  const [days, setDays] = useState<HealthDay[] | null>(null)
+  const [rows, setRows] = useState<HealthDay[] | null>(null)
+  const [picks, setPicks] = useState<Record<string, string | null>>({})  // metric → picked day
   useEffect(() => {
     let alive = true
-    api.health(me.id, range).then(d => alive && setDays(d)).catch(() => alive && setDays([]))
+    api.health(me.id, range).then(d => alive && setRows(d)).catch(() => alive && setRows([]))
     return () => { alive = false }
   }, [me.id, range])
   useEffect(() => {
     // arriving from a tile on Today: show that metric first
-    if (focus && days) document.getElementById(`m-${focus}`)?.scrollIntoView({ block: 'center' })
-  }, [focus, days])
+    if (focus && rows) document.getElementById(`m-${focus}`)?.scrollIntoView({ block: 'center' })
+  }, [focus, rows])
 
   const h = a.health_latest
   const band = hrvBand(h)
   const hrvBelow = h.hrv_last_night != null && band != null && h.hrv_last_night < band[0]
-  const hrvNote = h.hrv_last_night == null || !band ? null
-    : `${hrvBelow ? '▼ below' : h.hrv_last_night > band[1] ? '▲ above' : 'in'} your normal range (${band[0]}–${band[1]} ms)`
+  const hrvNote: Note | null = h.hrv_last_night == null || !band ? null : {
+    text: `${hrvBelow ? '▼ below' : h.hrv_last_night > band[1] ? '▲ above' : 'in'} your normal range (${band[0]}–${band[1]} ms)`,
+    tone: hrvBelow ? 'worse' : 'better',
+  }
   const bb = bodyBatteryNote(h.bb_max)
-  const sleep = days ? days.filter(d => d.sleep_total_min != null) : []
-  const since = new Date(Date.now() - range * 86400000).toISOString().slice(0, 10)
-  const vo2 = a.vo2max.filter(v => v.day >= since)
+
+  const metrics = (): Metric[] => {
+    const byDay = new Map(rows!.map(r => [r.day, r]))
+    const col = (k: keyof HealthDay) => column(days, byDay, k)
+    const int = (v: number) => String(Math.round(v))
+
+    const hrv = col('hrv_last_night')
+    const rhr = col('rhr')
+    const sleep = col('sleep_total_min')
+    const sleepBars = range <= 30
+    const out: Metric[] = [
+      { id: 'hrv', label: 'HRV · overnight', unit: 'ms', latest: num(h.hrv_last_night), fmt: int, end: 'Last night', note: hrvNote,
+        values: hrv, color: 'var(--better)', band, height: 120,
+        ...niceTicks([...hrv, ...(band ?? [])], int, 'ms') },
+      { id: 'rhr', label: 'Resting HR', unit: 'bpm', latest: num(h.rhr), fmt: int, end: 'Today', note: change(rhr, ' bpm', 0, false),
+        values: rhr, color: 'var(--worse)', ...niceTicks(rhr, int, 'bpm') },
+      { id: 'sleep', label: 'Sleep', latest: hoursMinutes(h.sleep_total_min), fmt: hoursMinutes, end: 'Last night',
+        note: h.sleep_score != null ? { text: `Score ${num(h.sleep_score)}`, tone: 'muted' } : null,
+        values: sleep, color: '#818cf8', refColor: '#a5b4fc', asBars: sleepBars, ...sleepScale(sleep, sleepBars) },
+    ]
+    if (a.source === 'intervals') {
+      const steps = col('steps')
+      const k = (v: number) => v >= 1000 ? `${+(v / 1000).toFixed(1)}k` : int(v)
+      out.push({ id: 'steps', label: 'Steps', latest: num(h.steps), fmt: v => Math.round(v).toLocaleString(), end: 'Today',
+        values: steps, color: 'var(--fitness)', ...niceTicks(steps, k) })
+    } else {
+      out.push({ id: 'body_battery', label: 'Body Battery', latest: num(h.bb_max), fmt: int, end: 'Today',
+        note: bb, values: col('bb_max'), color: 'var(--volt)',
+        lo: 0, hi: 100, ticks: [0, 50, 100].map(t => ({ value: t, label: String(t) })) })
+    }
+    // VO₂max changes every few days: carry each value forward until the next one
+    const vo2s = [...a.vo2max].sort((p, q) => p.day.localeCompare(q.day))
+    let at = -1
+    const vo2 = days.map(d => { while (at + 1 < vo2s.length && vo2s[at + 1].day <= d) at++; return at >= 0 ? vo2s[at].value : null })
+    if (vo2s.some(v => v.day >= days[0]) && vo2.filter(v => v != null).length > 1) {
+      out.push({ id: 'vo2max', label: 'VO₂max', unit: 'ml/kg/min', latest: vo2s.at(-1)!.value.toFixed(1), fmt: v => v.toFixed(1), end: 'Today',
+        note: change(vo2, '', 1, true), values: vo2, color: 'var(--fitness)', ...niceTicks(vo2, v => v.toFixed(1), '', 0.5) })
+    }
+    return out
+  }
+
+  const days = lastDays(range)
+  const pickRange = (r: number) => { setRange(r); setPicks({}) }
 
   return (
     <div className="ph-stack">
@@ -63,43 +146,15 @@ export function Health() {
       <TrendsNav on="health" />
       <div className="ph-row" role="group" aria-label="Range" style={{ gap: 8 }}>
         {RANGES.map(r => (
-          <button key={r} className="ph-chip-btn" aria-pressed={range === r} onClick={() => setRange(r)}>{r} d</button>
+          <button key={r} className="ph-chip-btn" aria-pressed={range === r} onClick={() => pickRange(r)}>{r} d</button>
         ))}
       </div>
 
-      {!days ? <div className="ph-boot">Loading…</div> : (
-        <>
-          <Metric id="hrv" focus={focus} label="HRV · overnight" value={num(h.hrv_last_night)} unit="ms" note={hrvNote} tone={hrvBelow ? 'worse' : 'better'}>
-            <Sparkline values={series(days, 'hrv_last_night')} height={120} color="var(--better)" band={band} />
-          </Metric>
-          <Metric id="rhr" focus={focus} label="Resting HR" value={num(h.rhr)} unit="bpm">
-            <Sparkline values={series(days, 'rhr')} height={90} color="var(--worse)" />
-          </Metric>
-          <Metric id="sleep" focus={focus} label="Sleep" value={hoursMinutes(h.sleep_total_min)}
-                  note={h.sleep_score != null ? `Score ${num(h.sleep_score)}` : null}>
-            {range <= 30 ? (
-              <div className="ph-bars sleep" aria-label={`Sleep per night, last ${range} days`}>
-                {sleep.map(d => <div key={d.day}><i style={{ height: `${Math.min(100, d.sleep_total_min! / 600 * 100)}%` }} /></div>)}
-              </div>
-            ) : <Sparkline values={series(days, 'sleep_total_min')} height={90} color="#818cf8" />}
-          </Metric>
-          {a.source === 'intervals' ? (
-            <Metric id="steps" focus={focus} label="Steps" value={num(h.steps)}>
-              <Sparkline values={series(days, 'steps')} height={90} color="var(--fitness)" />
-            </Metric>
-          ) : (
-            <Metric id="body_battery" focus={focus} label="Body Battery" value={num(h.bb_max)}
-                    note={bb?.text} tone={bb?.tone}>
-              <Sparkline values={series(days, 'bb_max')} height={90} color="var(--volt)" />
-            </Metric>
-          )}
-          {vo2.length > 1 && (
-            <Metric id="vo2max" focus={focus} label="VO₂max" value={vo2.at(-1)!.value.toFixed(1)}>
-              <Sparkline values={vo2.map(v => v.value)} height={90} color="var(--fitness)" />
-            </Metric>
-          )}
-        </>
-      )}
+      {!rows ? <div className="ph-boot">Loading…</div> : metrics().map(m => {
+        const at = picks[m.id] ? days.indexOf(picks[m.id]!) : -1
+        return <MetricCard key={m.id} m={m} days={days} focus={focus} picked={at < 0 ? null : at}
+                           onPick={i => setPicks(p => ({ ...p, [m.id]: i == null ? null : days[i] }))} />
+      })}
     </div>
   )
 }

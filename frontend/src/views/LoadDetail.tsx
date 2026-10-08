@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Area, Bar, CartesianGrid, ComposedChart, Line, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api } from '../api'
+import type { Ambient } from '../api'
 import { formState, num, shortDay, signed } from '../format'
 import { useFetch } from '../useFetch'
+import { weekState, weeklyLoads } from '../weeks'
 import './Detail.css'
 
 const RANGES = [42, 90, 180, 365]
@@ -16,11 +18,63 @@ const BANDS = [
   { label: 'Losing fitness', range: 'above +25', lo: 25, hi: Infinity, w: 15, c: '#64748b' },
 ]
 
+const WEEKS = 12
+const SWEET_EDGE = '#a3c25a'
+
+/** TRIMP per week against this week's sweet spot; tap a week to read it (last week until you do). */
+function WeeksCard({ a }: { a: Ambient }) {
+  const [picked, setPicked] = useState<number | null>(null)
+  const ss = a.sweet_spot!
+  const weeks = weeklyLoads(a.pmc, WEEKS)
+  const n = weeks.length
+  if (n < 2) return null
+  const top = Math.ceil(Math.max(ss.high, ...weeks.map(w => w.load)) * 1.08 / 100) * 100
+  const i = picked ?? n - 2
+  const w = weeks[i]
+  const now = i === n - 1
+  const state = weekState(w.load, ss.low, ss.high, now)
+  const title = now ? 'This week' : picked == null ? 'Last week' : `Week of ${shortDay(w.week)}`
+  const data = weeks.map((x, k) => ({ ...x, label: k === n - 1 ? 'Now' : shortDay(x.week) }))
+  const color = (k: number) => k === n - 1
+    ? (picked == null || picked === k ? 'var(--volt)' : '#8aa62a')
+    : picked == null ? 'var(--load)' : picked === k ? '#ddd6fe' : '#6d5bb0'
+  return (
+    <section className="card">
+      <div className="between" style={{ alignItems: 'baseline' }}>
+        <div className="card-title">TRIMP per week · sweet spot {ss.low}–{ss.high}</div>
+        <div aria-live="polite"><span className="label">{title}</span>{' '}
+          <b className="num" style={{ fontSize: 28 }}>{w.load}</b>{' '}
+          <span className={`tone-${state.tone}`}>{state.text}</span></div>
+      </div>
+      <div className="weeks-chart" style={{ height: 220 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barCategoryGap="28%" accessibilityLayer={false}>
+            <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="label" interval={0} tickLine={false} />
+            <YAxis width={44} domain={[0, top]} ticks={[0, ss.low, ss.high]} />
+            <ReferenceArea y1={ss.low} y2={ss.high} fill="var(--volt)" fillOpacity={0.08} />
+            <ReferenceLine y={ss.low} stroke={SWEET_EDGE} strokeDasharray="5 4" />
+            <ReferenceLine y={ss.high} stroke={SWEET_EDGE} strokeDasharray="5 4" />
+            <Bar dataKey="load" radius={[4, 4, 0, 0]} isAnimationActive={false}
+                 onClick={(_, k) => setPicked(k === picked ? null : k)}>
+              {data.map((x, k) => <Cell key={x.week} fill={color(k)} cursor="pointer" />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="muted" style={{ fontSize: 14 }}>
+        Green band = this week’s sweet spot, the weekly load that raises fitness 1–5 points · tap a week to read it
+      </div>
+    </section>
+  )
+}
+
 export function LoadDetail() {
   const { user } = useParams()
   const [days, setDays] = useState(90)
   const { data } = useFetch(() => api.pmc(user!, days), [user, days])
   const { data: prof } = useFetch(() => api.profile(user!), [user])
+  const { data: amb } = useFetch(() => api.ambient(user!), [user])
   const last = data?.at(-1)
   const fs = formState(last?.form)
   const firstDay = data?.[0]
@@ -50,6 +104,8 @@ export function LoadDetail() {
           </div>
         </div>
       </section>
+
+      {amb?.sweet_spot && <WeeksCard a={amb} />}
 
       <section className="card">
         <div className="card-title">Where your form is</div>
