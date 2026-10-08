@@ -29,10 +29,23 @@ fitvio evaluate [--user ID]        recompute all verdicts (e.g. after changing m
 fitvio backfill-extras [--user ID] Garmin weather, heat acclimation + VO₂max history for the past
 fitvio backtest [--user ID] [--sport S]
 fitvio demo [--days N]
+fitvio demo-export <dir> [--deny NAMES]  the GitHub Pages demo's data (made-up people only)
 fitvio serve [--host H] [--port P]
 ```
 
 With Docker, run them inside a container: `docker compose exec web fitvio <command>`.
+
+## The online demo
+
+The [try-it demo](https://romanbrej.github.io/fitvio/) is the frontend built with `VITE_DEMO=1` plus static JSON from
+`fitvio demo-export`: two made-up people (Alex and Sam), never your config or data. `.github/workflows/pages.yml` rebuilds
+it every night and on every release, and publishes it only when the demo check passes. To try it locally:
+
+```bash
+cd frontend && VITE_DEMO=1 npm run build && ../.venv/bin/fitvio demo-export dist/demo-data --deny "<your real names>"
+npm i --no-save playwright && npx playwright install chromium && node scripts/demo-check.mjs dist
+npx vite preview   # http://localhost:4173/
+```
 
 ## Project layout
 

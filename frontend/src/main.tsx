@@ -1,7 +1,9 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, createHashRouter, Navigate, RouterProvider } from 'react-router-dom'
 import App from './App'
+import { DEMO } from './demo/demo'
+import { DemoShell } from './demo/DemoShell'
 import './theme.css'
 import { applyUiScale } from './uiScale'
 import { isPhone, reloadWhenPhoneChanges } from './phone/isPhone'
@@ -33,14 +35,22 @@ const wallRoutes = [
   },
 ]
 
-// A phone gets the personal companion app; everything else (the wall tablet, laptops) the wall.
-const phone = isPhone()
-reloadWhenPhoneChanges(phone)
-if (!phone) applyUiScale()
-const router = createBrowserRouter(phone ? phoneRoutes : wallRoutes)
+const root = createRoot(document.getElementById('root')!)
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <RouterProvider router={router} />
-  </StrictMode>,
-)
+if (DEMO && !new URLSearchParams(window.location.search).has('app')) {
+  // the demo page (landing + wall/phone switch); the app runs inside it in a device-sized frame
+  root.render(<StrictMode><DemoShell /></StrictMode>)
+} else {
+  if (DEMO) document.documentElement.dataset.demo = ''
+  // A phone gets the personal companion app; everything else (the wall tablet, laptops) the wall.
+  const phone = isPhone()
+  reloadWhenPhoneChanges(phone)
+  if (!phone) applyUiScale()
+  // the demo is static files on GitHub Pages: hash URLs work on any path without a server
+  const router = (DEMO ? createHashRouter : createBrowserRouter)(phone ? phoneRoutes : wallRoutes)
+  root.render(
+    <StrictMode>
+      <RouterProvider router={router} />
+    </StrictMode>,
+  )
+}

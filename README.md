@@ -7,6 +7,8 @@
 ![Docker: amd64 + arm64](https://img.shields.io/badge/docker-amd64%20%7C%20arm64-2496ED?logo=docker&logoColor=white)
 ![Self-hosted](https://img.shields.io/badge/self--hosted-home%20network%20only-success)
 
+**[▶ Try the demo](https://romanbrej.github.io/fitvio/)**: the wall and the phone app in your browser, with made-up data for two athletes. Nothing to install, nothing is sent anywhere.
+
 A self-hosted dashboard for a tablet on your wall. It pulls your activities and health data from Garmin Connect, compares every new workout with your own similar sessions, and shows today's plan, your recovery and how each sport is trending — with a little training buddy that reacts to how you're doing.
 
 I built it for my own hallway: a Raspberry Pi in the cupboard and a Samsung Galaxy Tab A8 on the wall. It's free, open source and runs entirely on your own network — no cloud, no account with me, no tracking.

@@ -194,6 +194,8 @@ button.card:active, a.card:active, .card-btn:active { transform: scale(0.985); b
 .btn.primary { background: var(--volt); color: var(--volt-ink); border-color: var(--volt); }
 .btn:active { background: var(--border); }
 .btn svg, .pill svg { flex-shrink: 0; }
+/* the demo (src/demo/) locks sync and settings: show it */
+html[data-demo] .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }

@@ -1,0 +1,54 @@
+/* The demo page around the app (DemoShell.tsx): landing, the switch bar and the device frames. */
+.demo-landing {
+  max-width: 880px; margin: 0 auto; padding: 48px 16px 32px;
+  display: flex; flex-direction: column; gap: 16px; min-height: 100%;
+}
+.demo-brand { font: 900 italic 28px var(--display); letter-spacing: 0.06em; color: var(--volt); }
+.demo-brand.sm { font-size: 20px; }
+.demo-landing h1 { font: 800 40px/1.1 var(--display); margin: 8px 0 0; }
+.demo-lede { font-size: 17px; line-height: 1.5; color: var(--text-2); margin: 0; max-width: 680px; }
+.demo-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; }
+.demo-choice {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; text-align: left;
+  padding: 24px; min-height: 44px; border-radius: var(--radius); cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border-2); color: var(--text); font: inherit;
+}
+.demo-choice svg { color: var(--volt); }
+.demo-choice b { font: 800 24px var(--display); }
+.demo-choice span { font-size: 15px; line-height: 1.45; color: var(--muted); }
+.demo-choice:hover, .demo-choice:focus-visible { border-color: var(--volt); outline: none; }
+.demo-foot { margin-top: 8px; font-size: 15px; color: var(--muted); }
+.demo-foot a, .demo-get { color: var(--volt); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+
+.demo-viewer { display: flex; flex-direction: column; height: 100%; }
+.demo-bar {
+  flex: none; display: flex; align-items: center; gap: 16px; padding: 0 16px;
+  padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right));
+  border-bottom: 1px solid var(--border); background: var(--surface);
+}
+.demo-back {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0;
+  background: none; border: 0; color: var(--text); cursor: pointer;
+}
+.demo-tag { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.demo-switch { display: flex; margin-left: auto; background: var(--surface-2); border-radius: 999px; padding: 4px; }
+.demo-switch button {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px; border-radius: 999px;
+  background: none; border: 0; color: var(--muted); font: 600 15px var(--font); cursor: pointer;
+}
+.demo-switch button.on { background: var(--volt); color: var(--volt-ink); }
+.demo-get { font-size: 15px; font-weight: 600; white-space: nowrap; }
+@media (max-width: 600px) {
+  .demo-tag, .demo-get { display: none; }
+}
+
+.demo-stage { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+.demo-app { border: 0; display: block; background: var(--bg); }
+.demo-app.fill { width: 100%; height: 100%; }
+.demo-fit { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+.demo-phone {
+  width: fit-content; padding: 12px; border-radius: 56px; background: #000;
+  border: 1px solid var(--border-2); box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+.demo-phone .demo-app { border-radius: 44px; }
+.demo-hint { margin: 0; font-size: 15px; color: var(--muted); }

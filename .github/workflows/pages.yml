@@ -1,0 +1,78 @@
+# The try-it demo on GitHub Pages: made-up people and data (fitvio demo-export) + the frontend's demo build.
+# Rebuilt every night so "today" is always today, and on every release. Pull requests only build and check it.
+# If the export, the build or the demo check fails, nothing is deployed: the last good demo stays online.
+# Publishing is switched on by the repository variable DEMO_PAGES=on (Settings → Secrets and variables → Actions)
+# together with Settings → Pages → Source: GitHub Actions. Without it the demo is only built and checked.
+name: demo
+
+on:
+  schedule:
+    - cron: '0 4 * * *'  # 06:00 in Berlin: today's made-up run "just finished" in the early morning
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths-ignore: ['**.md', 'docs/**', 'design-system/**', 'LICENSE']
+  pull_request:
+    paths: ['backend/**', 'frontend/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: demo-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Europe/Berlin
+      # optional repository secret: words that must never appear in the demo (e.g. real names), comma-separated
+      FITVIO_DEMO_DENY: ${{ secrets.FITVIO_DEMO_DENY }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - run: pip install -e './backend[dev]'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      # npm can stall on IPv6 and die with "Exit handler never called" → prefer IPv4 and retry once (as in build.yml)
+      - run: npm ci --no-audit --no-fund || (sleep 5 && npm ci --no-audit --no-fund)
+        working-directory: frontend
+        env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
+      - run: npm run build
+        working-directory: frontend
+        env:
+          VITE_DEMO: '1'
+      - run: fitvio demo-export frontend/dist/demo-data
+      # the smoke test's browser, only here: it is not a dependency of the app
+      - run: npm i --no-save --no-audit --no-fund playwright@1.64.0 && npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: node scripts/demo-check.mjs dist
+        working-directory: frontend
+      - if: github.event_name != 'pull_request' && vars.DEMO_PAGES == 'on'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: frontend/dist
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request' && vars.DEMO_PAGES == 'on'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

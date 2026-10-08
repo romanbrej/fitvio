@@ -1,6 +1,7 @@
 import { AlertTriangle, Pencil, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '../api'
+import { DEMO, DEMO_LOCKED } from '../demo/demo'
 import type { Account } from '../api'
 import './HrSettings.css'
 
@@ -88,7 +89,7 @@ export function HrSettings({ account, onSaved }: { account: Account; onSaved: ()
             <span className={`hr-source${isGuess(p[k].source) ? ' guess' : ''}`}>{p[k].source}</span>
           </div>
         ))}
-        <button className="btn hr-edit" onClick={open} aria-label={`Change max and resting HR for ${account.name}`}>
+        <button className="btn hr-edit" onClick={open} disabled={DEMO} title={DEMO ? DEMO_LOCKED : undefined} aria-label={`Change max and resting HR for ${account.name}`}>
           <Pencil size={16} aria-hidden /> Change
         </button>
       </div>
