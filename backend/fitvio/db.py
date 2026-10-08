@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS exercise_sets (
     exercise    TEXT NOT NULL,
     reps        INTEGER,
     weight_kg   REAL,
+    duration_s  REAL,
     PRIMARY KEY (session_id, set_index)
 );
 
@@ -138,7 +139,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 );
 """
 # Bump when SCHEMA or _migrate change: databases below this version get both applied on the next connect.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # 2: exercise_sets.duration_s
 
 JSON_COLUMNS = {"features", "reasons", "deltas", "context", "trend", "baseline_ids", "data"}
 
@@ -165,6 +166,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(health_days)")}
     if "vo2max_cycling" not in cols:
         conn.execute("ALTER TABLE health_days ADD COLUMN vo2max_cycling REAL")
+    if "duration_s" not in {r[1] for r in conn.execute("PRAGMA table_info(exercise_sets)")}:
+        conn.execute("ALTER TABLE exercise_sets ADD COLUMN duration_s REAL")
     conn.commit()
 
 

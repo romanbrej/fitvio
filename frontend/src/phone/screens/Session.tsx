@@ -2,6 +2,7 @@ import { ChevronRight } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../../api'
 import { SportIcon, VerdictPill } from '../../components/icons'
+import { SetList } from '../../components/SetList'
 import { distance, duration, kmh, num, pace, SPORT_LABEL, TYPE_LABEL, when } from '../../format'
 import { useFetch } from '../../useFetch'
 import { factGroups, keyMetric, StreamChart } from '../../views/SessionDetail'
@@ -17,8 +18,6 @@ export function SessionScreen() {
   const f = s.features || {}
   const laps = s.streams?.laps ?? []
   const numbers = factGroups(s)
-  const setsByEx: Record<string, typeof s.sets> = {}
-  s.sets.forEach(x => { (setsByEx[x.exercise] ??= []).push(x) })
   return (
     <div className="ph-stack">
       <div className="ph-row">
@@ -73,13 +72,7 @@ export function SessionScreen() {
       {s.sets.length > 0 && (
         <Card>
           <span className="ph-label">Sets</span>
-          {Object.entries(setsByEx).map(([ex, sets]) => (
-            <div key={ex} className="ph-list-row">
-              <div className="ph-grow"><span>{f.exercises?.[ex]?.label ?? ex}</span>
-                <span className="ph-foot num">{sets.map(x => `${x.reps ?? '?'}×${x.weight_kg ?? '?'}`).join('  ')}</span></div>
-              <span className="num">{num(f.exercises?.[ex]?.e1rm, 1)} kg</span>
-            </div>
-          ))}
+          <SetList sets={s.sets} exercises={f.exercises} />
         </Card>
       )}
 

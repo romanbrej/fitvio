@@ -36,7 +36,7 @@ def store_activity(conn: sqlite3.Connection, user: UserConfig, act: ParsedActivi
     conn.execute("DELETE FROM exercise_sets WHERE session_id = ?", (sid,))
     for i, s in enumerate(act.sets):
         db.upsert(conn, "exercise_sets", {"session_id": sid, "set_index": i, "exercise": s.exercise,
-                                          "reps": s.reps, "weight_kg": s.weight_kg})
+                                          "reps": s.reps, "weight_kg": s.weight_kg, "duration_s": s.duration_s})
     conn.commit()
     return sid
 
@@ -96,7 +96,8 @@ def store_health(conn: sqlite3.Connection, user_id: str, days: list[dict]) -> No
 # 4: form includes the day's own training (stored verdict trends carry form_before/form_after)
 # 5: intervals only compared with the same rep length (±30 %) from the last 6 months
 # 6: pace at the reference HR measured from steady seconds near it (every run type), smooth heat curve
-ANALYSIS_VERSION = "6"
+# 7: strength exercise names from the FIT profile (Garmin writes categories as numbers), set durations
+ANALYSIS_VERSION = "7"
 
 
 def reader_for(user: UserConfig):
