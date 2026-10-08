@@ -1,6 +1,8 @@
 import { ChevronRight } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../../api'
+import type { SessionDetail } from '../../api'
+import { BaselineSwitch, ConfirmExclude, ExcludeButton, useBaseline } from '../../components/Baseline'
 import { SportIcon, VerdictPill } from '../../components/icons'
 import { SetList } from '../../components/SetList'
 import { distance, duration, kmh, num, pace, SPORT_LABEL, TYPE_LABEL, when } from '../../format'
@@ -11,13 +13,20 @@ import { Back, Card } from '../parts'
 /** All of a session's numbers, stacked for a phone: key numbers, the chart, laps, sets and the baseline. */
 export function SessionScreen() {
   const { id } = useParams()
-  const { data: s, error } = useFetch(() => api.session(id!), [id])
+  const { data, error } = useFetch(() => api.session(id!), [id])
   if (error) return <><Back to="/" label="Today" /><Card>Could not load the session.</Card></>
-  if (!s) return <div className="ph-boot">Loading…</div>
+  if (!data) return <div className="ph-boot">Loading…</div>
+  return <SessionBody key={data.id} loaded={data} />
+}
+
+function SessionBody({ loaded }: { loaded: SessionDetail }) {
+  const bl = useBaseline(loaded)
+  const s = bl.session
   const v = s.verdict
   const f = s.features || {}
   const laps = s.streams?.laps ?? []
   const numbers = factGroups(s)
+  const pending = s.baseline_sessions.find(x => x.id === bl.confirm)  // a "Compared with" row waiting for "Leave out"
   return (
     <div className="ph-stack">
       <div className="ph-row">
@@ -81,15 +90,21 @@ export function SessionScreen() {
           <span className="ph-label">Compared with</span>
           <span className="ph-foot">{s.baseline_sessions.length} similar sessions · key metric</span>
           {s.baseline_sessions.map(b => (
-            <Link key={b.id} to={`/session/${encodeURIComponent(b.id)}`} className="ph-list-row">
-              <div className="ph-grow"><span>{when(b.start_time)}</span>
-                <span className="ph-foot num">{[distance(b.distance_m, s.sport), duration(b.duration_s), b.avg_hr ? `${num(b.avg_hr)} bpm` : null].filter(Boolean).join(' · ')}</span></div>
-              <span className="num">{keyMetric(s.sport, b.features)}</span>
-              <ChevronRight size={18} color="var(--faint)" aria-hidden />
-            </Link>
+            <div key={b.id} className="ph-list-row">
+              <Link to={`/session/${encodeURIComponent(b.id)}`} className="ph-row-link">
+                <div className="ph-grow"><span>{when(b.start_time)}</span>
+                  <span className="ph-foot num">{[distance(b.distance_m, s.sport), duration(b.duration_s), b.avg_hr ? `${num(b.avg_hr)} bpm` : null].filter(Boolean).join(' · ')}</span></div>
+                <span className="num">{keyMetric(s.sport, b.features)}</span>
+                <ChevronRight size={18} color="var(--faint)" aria-hidden />
+              </Link>
+              <ExcludeButton b={bl} id={b.id} />
+            </div>
           ))}
+          {pending && <ConfirmExclude b={bl} id={pending.id} what={`the session of ${when(pending.start_time)}`} phone />}
         </Card>
       )}
+
+      <Card><BaselineSwitch b={bl} phone /></Card>
     </div>
   )
 }

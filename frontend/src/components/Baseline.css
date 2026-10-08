@@ -1,0 +1,24 @@
+/* Leaving a session out of comparisons (Baseline.tsx). The switch itself is .switch (views/Detail.css). */
+.baseline { display: flex; flex-direction: column; gap: 12px; }
+.baseline-row { display: flex; align-items: center; gap: 16px; }
+.baseline-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.baseline-title { font-weight: 600; }
+.baseline-foot { font-size: 15px; line-height: 1.4; color: var(--muted); }
+.baseline-error { margin: 0; font-size: 15px; color: var(--worse); }
+
+.baseline-confirm {
+  display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: var(--radius-sm);
+  background: var(--surface-2); border: 1px solid var(--border-2); line-height: 1.4;
+}
+.baseline-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.baseline-actions button { min-height: 44px; }
+.baseline-confirm .spin { animation: baseline-spin 1s linear infinite; }
+@keyframes baseline-spin { to { transform: rotate(360deg); } }
+
+.baseline-exclude {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px;
+  border-radius: 12px; border: 0; background: none; color: var(--faint); cursor: pointer;
+}
+.baseline-exclude:hover, .baseline-exclude:focus-visible { color: var(--text); background: var(--surface-2); outline: none; }
+.baseline-exclude:disabled { opacity: 0.5; cursor: wait; }
+td.baseline-cell { width: 44px; padding-top: 0; padding-bottom: 0; }

@@ -2,7 +2,7 @@ import { DEMO } from './demo/demo'
 import { demoGet, demoSend } from './demo/demoApi'
 
 export type Sport = 'running' | 'cycling' | 'swimming' | 'strength' | 'other'
-export type VerdictKind = 'better' | 'in_line' | 'worse' | 'not_comparable' | 'load_only'
+export type VerdictKind = 'better' | 'in_line' | 'worse' | 'not_comparable' | 'load_only' | 'excluded'
 
 export interface User { id: string; name: string; color: string; initials: string }
 export interface AppConfig {
@@ -53,6 +53,8 @@ export interface SessionDetail extends Session {
   streams: Streams | null
   sets: { set_index: number; exercise: string; reps: number | null; weight_kg: number | null; duration_s: number | null }[]
   baseline_sessions: Pick<Session, 'id' | 'name' | 'start_time' | 'duration_s' | 'distance_m' | 'avg_hr' | 'session_type' | 'features' | 'rpe' | 'feel'>[]
+  /** left out of every comparison by the person (bad data), see setBaseline */
+  excluded_from_baseline: boolean
 }
 
 export interface PmcDay { day: string; load: number; fitness: number; fatigue: number; form: number }
@@ -254,8 +256,10 @@ export const api = {
   select: (user_id: string) => post('/api/wall/select', { user_id }),
   dismiss: (session_id: string) => post('/api/wall/dismiss', { session_id }),
   session: (id: string) => get<SessionDetail>(`/api/sessions/${seg(id)}`),
+  /** leave a session out of comparisons (or bring it back); recomputes the later verdicts */
+  setBaseline: (id: string, excluded: boolean) => send<SessionDetail>('PUT', `/api/sessions/${seg(id)}/baseline`, { excluded }),
   sessions: (user: string, sport?: string, limit = 60, opts: { offset?: number; type?: string } = {}) =>
-    get<(Session & { verdict: VerdictKind | null; headline: string | null })[]>(
+    get<(Session & { verdict: VerdictKind | null; headline: string | null; excluded: boolean | number })[]>(
       `/api/users/${seg(user)}/sessions?${new URLSearchParams({
         limit: String(limit), ...(sport ? { sport } : {}),
         ...(opts.offset ? { offset: String(opts.offset) } : {}), ...(opts.type ? { type: opts.type } : {}),

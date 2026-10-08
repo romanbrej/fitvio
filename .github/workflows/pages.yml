@@ -1,6 +1,7 @@
 # The try-it demo on GitHub Pages: made-up people and data (fitvio demo-export) + the frontend's demo build.
 # Rebuilt every night so "today" is always today, and on every release. Pull requests only build and check it.
 # If the export, the build or the demo check fails, nothing is deployed: the last good demo stays online.
+# Pull requests also run the end-to-end test.
 # Publishing is switched on by the repository variable DEMO_PAGES=on (Settings → Secrets and variables → Actions)
 # together with Settings → Pages → Source: GitHub Actions. Without it the demo is only built and checked.
 name: demo
@@ -48,14 +49,19 @@ jobs:
         working-directory: frontend
         env:
           NODE_OPTIONS: --dns-result-order=ipv4first
+      # the tests' browser, only here: it is not a dependency of the app
+      - run: npm i --no-save --no-audit --no-fund playwright@1.64.0 && npx playwright install --with-deps chromium
+        working-directory: frontend
+      # end-to-end: the real app and backend on made-up data (excluding sessions from comparisons, wall + phone).
+      # Pull requests only: the nightly and release runs just rebuild and publish the demo.
+      - if: github.event_name == 'pull_request'
+        run: npm run build && node scripts/e2e.mjs
+        working-directory: frontend
       - run: npm run build
         working-directory: frontend
         env:
           VITE_DEMO: '1'
       - run: fitvio demo-export frontend/dist/demo-data
-      # the smoke test's browser, only here: it is not a dependency of the app
-      - run: npm i --no-save --no-audit --no-fund playwright@1.64.0 && npx playwright install --with-deps chromium
-        working-directory: frontend
       - run: node scripts/demo-check.mjs dist
         working-directory: frontend
       - if: github.event_name != 'pull_request' && vars.DEMO_PAGES == 'on'

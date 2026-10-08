@@ -94,6 +94,24 @@ for (const u of users) {
     await check(`phone /${r} (${u})`, `${root}?app#/${r}`, phone, { phoneUser: u })
   }
 }
+// changes the demo can't make are refused with the demo message (here: leaving a session out of comparisons)
+{
+  const u = users[0]
+  const ctx = await browser.newContext({ viewport: phone, isMobile: true, hasTouch: true })
+  await ctx.addInitScript(id => localStorage.setItem('fitvio.me', id), u)
+  const page = await ctx.newPage()
+  await page.goto(`${root}?app#/session/${encodeURIComponent(firstSession(u))}`)
+  let ok = false
+  try {
+    await page.getByRole('switch', { name: 'Use for comparisons' }).click({ timeout: 5000 })
+    await page.getByRole('button', { name: 'Leave out', exact: true }).click({ timeout: 5000 })
+    ok = (await page.getByRole('alert').innerText({ timeout: 5000 })).includes('Not available in the demo')
+  } catch { /* reported below */ }
+  if (!ok) problems.push('excluding a session in the demo does not show the demo lock')
+  console.log(`${ok ? '✓' : '✗'} demo lock: excluding a session`)
+  await ctx.close()
+}
+
 await browser.close()
 server.close()
 finish()

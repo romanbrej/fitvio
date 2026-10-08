@@ -214,6 +214,8 @@ a.ph-card:active, .ph-hero:active, .ph-tile:active, .ph-day:active, .ph-list-row
   color: var(--text); text-decoration: none;
 }
 .ph-list-row .num { white-space: nowrap; }
+/* a list row whose main part is a link and that has its own button at the end (Session → Compared with) */
+.ph-row-link { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; align-self: stretch; color: inherit; text-decoration: none; }
 .ph-add { color: var(--volt); font-weight: 600; }
 
 /* plan */
@@ -326,3 +328,6 @@ a.ph-card:active, .ph-hero:active, .ph-tile:active, .ph-day:active, .ph-list-row
 .ph-history-end { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 0; }
 .ph-history-done { text-align: center; padding: 16px 0; }
 .ph-week-read { margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--border); align-items: baseline; }
+
+/* the phone's tab bar is fixed: keep the confirm clear of it when it scrolls into view */
+.ph .baseline-confirm { scroll-margin-bottom: calc(var(--tabbar) + var(--safe-bottom) + 16px); }

@@ -128,6 +128,14 @@ CREATE TABLE IF NOT EXISTS readiness_days (
     PRIMARY KEY (user_id, day)
 );
 
+-- sessions a person left out of every performance comparison (bad data: dead watch, broken HR strap).
+-- Its own table: store_activity replaces the sessions row on every re-ingest, which would drop a column.
+CREATE TABLE IF NOT EXISTS baseline_exclusions (
+    session_id  TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL,
+    excluded_at TEXT NOT NULL
+);
+
 -- name, sex, max/resting HR, FTP … as detected from Garmin (profile.py)
 CREATE TABLE IF NOT EXISTS profiles (
     user_id     TEXT NOT NULL,
@@ -139,7 +147,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 );
 """
 # Bump when SCHEMA or _migrate change: databases below this version get both applied on the next connect.
-SCHEMA_VERSION = 2  # 2: exercise_sets.duration_s
+SCHEMA_VERSION = 3  # 2: exercise_sets.duration_s, 3: baseline_exclusions
 
 JSON_COLUMNS = {"features", "reasons", "deltas", "context", "trend", "baseline_ids", "data"}
 

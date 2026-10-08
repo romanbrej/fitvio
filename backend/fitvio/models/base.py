@@ -34,6 +34,11 @@ class MetricSpec:
         return self.get(f) if self.get else f.get(self.key)
 
 
+def comparable(history: list[dict], sport: str) -> list[dict]:
+    """Earlier sessions of this sport that may be compared with: not excluded by the person."""
+    return [h for h in history if h["sport"] == sport and not h.get("excluded")]
+
+
 SPORT_NOUN = {"running": "runs", "cycling": "rides", "swimming": "swims", "strength": "gym sessions", "other": "sessions"}
 
 
@@ -72,8 +77,9 @@ class SportModel:
 
     # --- main ------------------------------------------------------------
     def evaluate(self, session: dict, history: list[dict], health: dict | None, health_base: dict | None) -> dict:
-        """history: all sessions of this user (any sport) that started before `session`."""
-        same_sport = [h for h in history if h["sport"] == session["sport"]]
+        """history: all sessions of this user (any sport) that started before `session`. Load and form
+        count all of them; the comparisons skip the ones the person excluded."""
+        same_sport = comparable(history, session["sport"])
         trend = load_model.impact_of(session, history + [session])
         trend.update(self.efficiency_trend(session, same_sport))
         context = self.context_notes(session, health, health_base, trend)
@@ -108,6 +114,13 @@ class SportModel:
         reasons += self.extra_reasons(session, same_sport)
         return self._result(session, verdict, confidence, score, headline, reasons, deltas, context, trend,
                             [s["id"] for s in similar])
+
+    def excluded(self, session: dict, history: list[dict]) -> dict:
+        """Left out of comparisons by the person (bad data): no judgement, only what it did to load and form."""
+        trend = load_model.impact_of(session, history + [session])
+        return self._result(session, "excluded", "low", None, "Not used for comparisons",
+                            ["You left this session out of comparisons. It still counts for training load."],
+                            [], [], trend, [])
 
     def find_similar(self, session: dict, same_sport: list[dict]) -> list[dict]:
         start = datetime.fromisoformat(session["start_time"])

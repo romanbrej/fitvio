@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .. import accounts, buddy, db, profile, wall
+from .. import accounts, buddy, db, pipeline, profile, wall
 from ..analytics import load as load_model
 from ..config import PROJECT_ROOT, AppConfig, env, load_config
 from ..pipeline import user_sessions
@@ -172,8 +172,10 @@ def list_sessions(user_id: str, sport: str | None = None, limit: int = Query(60,
     """Newest first. `offset` pages through the whole history (the phone loads 50 at a time); `type` = session type."""
     _user_or_404(c, user_id)
     q = """SELECT s.id, s.name, s.sport, s.session_type, s.start_time, s.duration_s, s.distance_m, s.avg_hr,
-                  s.load, s.rpe, s.feel, s.features, v.verdict, v.headline, v.confidence
-           FROM sessions s LEFT JOIN verdicts v ON v.session_id = s.id WHERE s.user_id = ?"""
+                  s.load, s.rpe, s.feel, s.features, v.verdict, v.headline, v.confidence,
+                  x.session_id IS NOT NULL AS excluded
+           FROM sessions s LEFT JOIN verdicts v ON v.session_id = s.id
+           LEFT JOIN baseline_exclusions x ON x.session_id = s.id WHERE s.user_id = ?"""
     args: list = [user_id]
     if sport:
         q += " AND s.sport = ?"
@@ -276,11 +278,11 @@ def local_network_only(request: Request) -> None:
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
-        raise HTTPException(403, "account setup is only allowed from your home network")
+        raise HTTPException(403, "changes are only allowed from your home network")
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
         ip = ip.ipv4_mapped  # a dual-stack socket reports IPv4 clients as ::ffff:a.b.c.d
     if not any(ip in net for net in HOME_NETWORKS):
-        raise HTTPException(403, "account setup is only allowed from your home network")
+        raise HTTPException(403, "changes are only allowed from your home network")
 
 
 def reset_config() -> None:
@@ -449,6 +451,23 @@ def morning_sync(c: AppConfig = Depends(cfg), cn=Depends(conn)):
         db.set_state(cn, key, f"{today}:{tries + 1}")
         started.append(accounts.start_sync(user, c.db_path, quick=True).public())
     return {"started": started, "pending": pending}
+
+
+class BaselineChoice(BaseModel):
+    model_config = {"extra": "forbid"}
+    excluded: bool = Field(strict=True)
+
+
+@app.put("/api/sessions/{session_id}/baseline", dependencies=[Depends(local_network_only)])
+def set_baseline(session_id: str, body: BaselineChoice, c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    """Leave a badly recorded session out of every comparison (or bring it back). Recomputes the verdicts
+    it reaches, so it answers with the session as it now is."""
+    row = cn.execute("SELECT user_id FROM sessions WHERE id = ?", (session_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "session not found")
+    _user_or_404(c, row["user_id"])
+    pipeline.set_excluded(cn, row["user_id"], session_id, body.excluded)
+    return wall.session_detail(cn, session_id)
 
 
 class ActivityCheck(BaseModel):

@@ -79,7 +79,7 @@ button { font: inherit; color: inherit; }
 .tone-better { color: var(--better); }
 .tone-in_line, .tone-inline { color: var(--inline); }
 .tone-worse { color: var(--worse); }
-.tone-not_comparable, .tone-muted { color: var(--na); }
+.tone-not_comparable, .tone-excluded, .tone-muted { color: var(--na); }
 .tone-load_only { color: var(--load); }
 .tone-warn { color: var(--warn); }
 

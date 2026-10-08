@@ -10,7 +10,7 @@ import sqlite3
 from datetime import date, timedelta
 
 from . import profile
-from .pipeline import user_sessions
+from .pipeline import performance_sessions, user_sessions
 
 BEST_WINDOW_DAYS = 90
 MIN_PRIOR = 3  # a "best in 90 days" needs at least this many earlier sessions to mean anything
@@ -168,13 +168,16 @@ def best_items(session: dict, history: list[dict], reasons: list[str]) -> list[d
 def what_improved(conn: sqlite3.Connection, session: dict, sessions: list[dict] | None = None) -> list[dict]:
     """`sessions`: the person's sessions if the caller already loaded them (saves reading them twice)."""
     v = session.get("verdict") or {}
+    if v.get("verdict") == "excluded":  # left out as bad data: it shows no gains, bests or comparisons
+        return []
     uid = session["user_id"]
     health = [dict(r) for r in conn.execute(
         "SELECT day, vo2max, vo2max_cycling, weight_kg FROM health_days WHERE user_id = ? ORDER BY day", (uid,))]
     stored = profile.stored(conn, uid).get("weight_kg") or {}
     weight = Weights(health, stored.get("value")).at(session["start_time"][:10])
-    history = [h for h in (sessions if sessions is not None else user_sessions(conn, uid)) if h["id"] != session["id"]]
     items = [fitness_item(v.get("trend") or {})]
+    history = [h for h in performance_sessions(sessions if sessions is not None else user_sessions(conn, uid))
+               if h["id"] != session["id"]]
     items += delta_items(session, v.get("deltas") or [], weight)
     items.append(vo2max_item(session, health))
     items += best_items(session, history, v.get("reasons") or [])

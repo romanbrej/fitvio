@@ -65,6 +65,7 @@ export function ago(iso: string | null): string {
 
 export const VERDICT_LABEL: Record<VerdictKind, string> = {
   better: 'Better', in_line: 'In line', worse: 'Worse', not_comparable: 'Not comparable', load_only: 'Logged',
+  excluded: 'Excluded',
 }
 
 export const SPORT_LABEL: Record<Sport, string> = {
