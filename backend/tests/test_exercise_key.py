@@ -20,10 +20,15 @@ def test_numbers_and_names_give_the_same_key():
 
 
 def test_unknown_category_reads_exercise():
-    assert exercise_key((65534,), (0,)) == ("unknown", "Exercise")
     assert exercise_key(None, None) == ("unknown", "Exercise")
-    assert exercise_key("unknown", 3) == ("unknown", "Exercise")
     assert exercise_key((9999,), None) == ("unknown", "Exercise")  # newer than our FIT profile
+
+
+def test_custom_exercises_stay_apart():
+    # Garmin Connect custom exercises come as category 65534; their subtype tells them apart
+    assert exercise_key((65534,), (0,)) == ("unknown.0", "Exercise")
+    assert exercise_key("unknown", 3) == ("unknown.3", "Exercise")
+    assert exercise_key((65534,), (0,))[0] != exercise_key((65534,), (1,))[0]
 
 
 def test_unknown_or_missing_subtype_falls_back_to_the_category():

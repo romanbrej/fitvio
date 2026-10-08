@@ -2,7 +2,7 @@ import type { SessionDetail } from '../api'
 import { duration, num } from '../format'
 import './SetList.css'
 
-type Set = SessionDetail['sets'][number]
+type SetRow = SessionDetail['sets'][number]
 
 const kg = (w: number) => String(+w.toFixed(1))
 
@@ -11,9 +11,9 @@ const kg = (w: number) => String(+w.toFixed(1))
  * Columns only appear when some set has them, so a plank shows Set · Time and a deadlift Set · kg · Reps.
  */
 export function SetList({ sets, exercises, wall = false }: {
-  sets: Set[]; exercises?: Record<string, { label?: string; e1rm?: number | null }>; wall?: boolean
+  sets: SetRow[]; exercises?: Record<string, { label?: string; e1rm?: number | null }>; wall?: boolean
 }) {
-  const byEx = new Map<string, Set[]>()
+  const byEx = new Map<string, SetRow[]>()
   sets.forEach(x => byEx.set(x.exercise, [...(byEx.get(x.exercise) ?? []), x]))
   return (
     <div className={`setlist${wall ? ' wall' : ''}`}>

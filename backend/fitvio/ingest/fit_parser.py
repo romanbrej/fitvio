@@ -51,7 +51,8 @@ def exercise_key(category, subtype) -> tuple[str, str]:
         category = FIELD_TYPES["exercise_category"].enum.get(category)
     cat = str(category) if category is not None else "unknown"
     if cat == "unknown" or cat.isdigit():
-        return "unknown", "Exercise"
+        # custom exercises arrive as 'unknown': the subtype keeps two of them apart
+        return (f"unknown.{subtype}", "Exercise") if isinstance(subtype, int) else ("unknown", "Exercise")
     names = FIELD_TYPES.get(f"{cat}_exercise_name")
     name = names.enum.get(subtype) if names is not None and isinstance(subtype, int) else None
     label = _readable(name if name else cat)

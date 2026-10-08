@@ -163,7 +163,6 @@ export function SessionDetailView() {
   const numbers = factGroups(s)
   const t = v?.trend
 
-
   return (
     <div className="detail">
       <div className="detail-grid">
@@ -287,7 +286,7 @@ export function SessionDetailView() {
         )}
 
         {s.baseline_sessions.length > 0 && (
-          <div className="card span-6">
+          <div className={`card ${s.sets.length > 0 ? 'span-12' : 'span-6'}`}>
             <div className="card-title">Baseline: the sessions you were compared with</div>
             <div className="table-wrap">
               <table className="data">
