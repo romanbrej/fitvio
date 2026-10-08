@@ -291,6 +291,46 @@ def test_own_max_hr_wins_and_reprocesses(client, tmp_path):
     assert client.put("/api/users/sam_fitbit/profile", json={"max_hr": 300}).status_code == 422
 
 
+def test_own_max_hr_survives_syncs_until_you_accept_the_new_one(client, tmp_path):
+    from fitvio import profile
+    r = client.post("/api/accounts/intervals", json={"athlete_id": "i123", "api_key": "secret-key-123"})
+    wait_for(client, r.json()["id"], ("done",))
+    r = client.put("/api/users/sam_fitbit/profile", json={"max_hr": 196, "rest_hr": 50})
+    wait_for(client, r.json()["job"]["id"], ("done",))
+    assert "suggested" not in r.json()["profile"]["max_hr"]          # 188 was on screen when you typed 196
+
+    def mine():
+        return next(a for a in client.get("/api/accounts").json() if a["id"] == "sam_fitbit")["profile"]
+
+    conn = db.connect(tmp_path / "app.db")
+    user = config.load_config(tmp_path / "users.json").user("sam_fitbit")
+
+    def sync_max_hr(bpm):  # the Intervals.icu setting changes and a sync stores it
+        athlete = {**ATHLETE, "sportSettings": [{"types": ["Run"], "max_hr": bpm, "lthr": 172}]}
+        (user.data_dir / "athlete.json").write_text(json.dumps(athlete))
+        profile.refresh(conn, user, icu.IntervalsReader(user.data_dir))
+
+    # yours still counts; the new value is only offered
+    sync_max_hr(201)
+    p = mine()
+    assert p["max_hr"]["value"] == 196.0 and p["max_hr"]["source"] == "set by you"
+    assert p["max_hr"]["suggested"]["value"] == 201
+    assert profile.resolve(conn, user).max_hr == 196.0
+
+    # "Keep mine": not offered again …
+    r = client.post("/api/users/sam_fitbit/profile/dismiss", json={"field": "max_hr"})
+    assert r.status_code == 200 and "suggested" not in r.json()["profile"]["max_hr"]
+    assert client.post("/api/users/sam_fitbit/profile/dismiss", json={"field": "rest_hr"}).status_code == 422
+    # … until the source changes again
+    sync_max_hr(203)
+    assert mine()["max_hr"]["suggested"]["value"] == 203
+
+    # "Use 203": the source's value counts, your own resting HR stays
+    r = client.put("/api/users/sam_fitbit/profile", json={"max_hr": None, "rest_hr": 50})
+    assert r.json()["profile"]["max_hr"]["value"] == 203 and r.json()["profile"]["rest_hr"]["source"] == "set by you"
+    wait_for(client, r.json()["job"]["id"], ("done",))
+
+
 # --- readiness without Garmin ---------------------------------------------------------
 
 def test_readiness_estimate_from_hrv_rhr_sleep_and_form():
