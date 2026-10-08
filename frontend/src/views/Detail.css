@@ -194,3 +194,4 @@ table.data tr.clickable:active { background: var(--surface-2); }
 @media (max-width: 640px) {
   .plan-days { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+.weeks-chart :focus { outline: none; }

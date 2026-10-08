@@ -1,10 +1,13 @@
 import { Activity, ChevronRight } from 'lucide-react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Ambient } from '../../api'
 import { SportIcon, TrendPill } from '../../components/icons'
 import { Sparkline } from '../../components/Sparkline'
 import { SPORT_LABEL } from '../../format'
-import { MiniPmc, SPORT_COLOR, tileContent } from '../../views/WallAmbient'
+import { SPORT_COLOR, tileContent } from '../../views/WallAmbient'
+import { weekState, weeklyLoads } from '../../weeks'
+import { AxisChart, dateAxis, dayLabel, niceTicks } from '../Chart'
 import { usePhone } from '../ctx'
 import { Card, FormNumbers, SweetBar } from '../parts'
 import { MAIN_SPORTS, sweetHint } from '../util'
@@ -18,54 +21,75 @@ export function TrendsNav({ on }: { on: 'load' | 'health' }) {
   )
 }
 
-/** Training load per week (Monday start), the last `n` weeks, from the daily PMC rows. */
-function weeklyLoads(a: Ambient, n = 8): { week: string; load: number }[] {
-  const byWeek = new Map<string, number>()
-  for (const d of a.pmc) {
-    const day = new Date(`${d.day}T12:00:00`)
-    day.setDate(day.getDate() - ((day.getDay() + 6) % 7))
-    const k = day.toISOString().slice(0, 10)
-    byWeek.set(k, (byWeek.get(k) ?? 0) + d.load)
-  }
-  return [...byWeek.entries()].sort().slice(-n).map(([week, load]) => ({ week, load: Math.round(load) }))
+const SWEET_EDGE = '#a3c25a'
+
+function LoadCard({ a }: { a: Ambient }) {
+  const [picked, setPicked] = useState<number | null>(null)
+  const days = a.pmc.slice(-42)
+  if (days.length < 2) return null
+  const d = picked == null ? a.form : days[picked]
+  const { lo, hi, ticks } = niceTicks(days.flatMap(p => [p.fitness, p.fatigue, p.form, 0]), v => String(v))
+  const when = picked == null ? '6 weeks' : picked === days.length - 1 ? 'Today' : dayLabel(days[picked].day, true)
+  return (
+    <Card>
+      <div className="ph-row"><span className="ph-h3">Training load</span><span className={`ph-right ph-when${picked != null ? ' on' : ''}`}>{when}</span></div>
+      <FormNumbers form={d} legend />
+      <AxisChart n={days.length} lo={lo} hi={hi} ticks={ticks.map(t => t.value === 0 ? { ...t, ref: true } : t)} height={150}
+                 lines={[
+                   { values: days.map(p => p.fitness), color: 'var(--fitness)', width: 3, area: true },
+                   { values: days.map(p => p.fatigue), color: 'var(--fatigue)', width: 1.8, dash: true },
+                   { values: days.map(p => p.form), color: 'var(--form)' },
+                 ]}
+                 axis={dateAxis(days.map(p => p.day), 'Today')}
+                 label="Training load, last 6 weeks" picked={picked} onPick={setPicked} />
+      <span className="ph-caption">Fitness is your 6-week training, fatigue the last week; form = fitness − fatigue. Above the dashed 0 line you’re fresh.</span>
+    </Card>
+  )
+}
+
+function WeeksCard({ a }: { a: Ambient }) {
+  const [picked, setPicked] = useState<number | null>(null)
+  const ss = a.sweet_spot!
+  const weeks = weeklyLoads(a.pmc)
+  const n = weeks.length
+  const hi = Math.ceil(Math.max(ss.high, ...weeks.map(w => w.load)) * 1.08 / 100) * 100
+  const i = picked ?? n - 2
+  const w = weeks[i]
+  const state = w && weekState(w.load, ss.low, ss.high, i === n - 1)
+  const title = i === n - 1 ? 'This week' : picked == null ? 'Last week' : `Week of ${dayLabel(w.week)}`
+  return (
+    <Card>
+      <div className="ph-row"><span className="ph-label">This week · TRIMP</span>
+        <span className="ph-right"><b className="num ph-v">{ss.load}</b> <span className="num ph-unit">/ {ss.low}–{ss.high}</span></span></div>
+      <SweetBar a={a} height={14} />
+      <div className="ph-axis"><span>too little</span><span>sweet spot</span><span>too much</span></div>
+      <span className="ph-secondary">{sweetHint(a)}</span>
+      {w && (
+        <div className="ph-row ph-week-read">
+          <span className="ph-label sm">{title}</span>
+          <span className="ph-right"><b className="num">{w.load}</b> <span className={`ph-foot tone-${state.tone}`} style={{ display: 'inline' }}>{state.text}</span></span>
+        </div>
+      )}
+      <AxisChart n={n} lo={0} hi={hi} height={120}
+                 ticks={[{ value: 0, label: '0' }, { value: ss.low, label: String(ss.low), ref: true }, { value: ss.high, label: String(ss.high), ref: true }]}
+                 band={[ss.low, ss.high]} bandColor="rgba(212, 255, 58, 0.08)" refColor={SWEET_EDGE}
+                 bars={weeks.map(x => x.load)}
+                 barColor={(k, p) => k === n - 1 ? (p == null || p === k ? 'var(--volt)' : '#8aa62a') : p == null ? 'var(--load)' : p === k ? '#ddd6fe' : '#6d5bb0'}
+                 barLabels={weeks.map((x, k) => k === n - 1 ? 'Now' : (n - 1 - k) % 2 === 0 ? dayLabel(x.week) : '')}
+                 label="Load per week, last 8 weeks" picked={picked} onPick={setPicked} />
+    </Card>
+  )
 }
 
 export function Trends() {
   const { ambient } = usePhone()
   const a = ambient!
-  const ss = a.sweet_spot
-  const weeks = weeklyLoads(a)
-  const top = Math.max(1, ...weeks.map(w => w.load), ss?.high ?? 0)
   return (
     <div className="ph-stack">
       <h1 className="ph-title">Trends</h1>
       <TrendsNav on="load" />
-
-      <Card>
-        <div className="ph-row"><span className="ph-h3">Training load</span><span className="ph-right ph-caption">6 weeks</span></div>
-        <FormNumbers form={a.form} legend />
-        <div className="ph-pmc"><MiniPmc days={a.pmc.slice(-42)} /></div>
-        <div className="ph-axis"><span>6 weeks ago</span><span>today</span></div>
-        <span className="ph-caption">Fitness is your 6-week training, fatigue the last week; form = fitness − fatigue. Above zero you’re fresh.</span>
-      </Card>
-
-      {ss && (
-        <Card>
-          <div className="ph-row"><span className="ph-label">This week · TRIMP</span>
-            <span className="ph-right"><b className="num ph-v">{ss.load}</b> <span className="num ph-unit">/ {ss.low}–{ss.high}</span></span></div>
-          <SweetBar a={a} height={14} />
-          <div className="ph-axis"><span>too little</span><span>sweet spot</span><span>too much</span></div>
-          <span className="ph-secondary">{sweetHint(a)}</span>
-          <div className="ph-bars" aria-label="Load per week, last 8 weeks">
-            {weeks.map((w, i) => (
-              <div key={w.week} className={i === weeks.length - 1 ? 'now' : ''}>
-                <i style={{ height: `${Math.max(3, w.load / top * 100)}%` }} />
-                <span className="num">{i === weeks.length - 1 ? 'now' : w.week.slice(5).replace('-', '/')}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
+      <LoadCard a={a} />
+      {a.sweet_spot && <WeeksCard a={a} />}
 
       <section className="ph-section">
         <span className="ph-label" style={{ padding: '0 4px' }}>Am I improving?</span>

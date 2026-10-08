@@ -145,15 +145,32 @@ a.ph-card:active, .ph-hero:active, .ph-tile:active, .ph-day:active, .ph-list-row
 .ph-sweet .zone { background: rgba(212, 255, 58, 0.25); }
 .ph-sweet .over { background: rgba(248, 113, 113, 0.22); }
 .ph-sweet .fill { left: 0; border-radius: 7px; background: var(--volt); }
-.ph-pmc { height: 150px; }
 .ph-axis { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
-.ph-bars { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; align-items: end; height: 96px; }
-.ph-bars > div { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; height: 100%; min-width: 0; }
-.ph-bars i { display: block; width: 100%; border-radius: 4px; background: var(--load); }
-.ph-bars .now i { background: var(--volt); }
-.ph-bars span { font-size: 11px; color: var(--muted); }
-.ph-bars.sleep { gap: 3px; height: 80px; }
-.ph-bars.sleep i { background: #818cf8; }
+
+/* charts with axes (phone/Chart.tsx): plot | values on the right, dates underneath */
+.ph-axchart { display: grid; grid-template-columns: minmax(0, 1fr) 48px; column-gap: 8px; row-gap: 6px; margin-top: 4px; }
+.ph-plot { position: relative; }
+.ph-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.ph-band { position: absolute; left: 0; right: 0; }
+.ph-grid { position: absolute; left: 0; right: 0; border-top: 1px solid var(--border); }
+.ph-grid.ref { border-top: 1.5px dashed var(--muted); }
+.ph-plot-bars { position: absolute; inset: 0; display: flex; align-items: flex-end; }
+.ph-plot-bars span { flex: 1 1 0; min-width: 0; height: 100%; display: flex; align-items: flex-end; justify-content: center; }
+.ph-plot-bars i { display: block; width: 62%; border-radius: 3px; }
+.ph-plot-bars i.none { height: 2px; border-radius: 1px; background: var(--border-2); }
+.ph-mark { position: absolute; top: 0; bottom: 0; border-left: 1px solid #5a6475; }
+.ph-dot { position: absolute; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--surface); transform: translate(-50%, -50%); }
+.ph-scrub { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; border-radius: 6px; background: transparent; cursor: crosshair; touch-action: pan-y; }
+.ph-scrub:focus-visible { outline: 2px solid var(--volt); outline-offset: 2px; }
+.ph-yaxis { position: relative; }
+.ph-yaxis span { position: absolute; left: 0; right: 0; transform: translateY(-50%); font-size: 12px; line-height: 1; white-space: nowrap; color: var(--muted); }
+.ph-xaxis { grid-column: 1; gap: 8px; }
+.ph-xaxis.slots { display: flex; }
+.ph-xaxis.slots span { flex: 1 1 0; min-width: 0; text-align: center; font-size: 11px; white-space: nowrap; color: var(--muted); }
+.ph-xaxis.slots span:last-child { color: var(--volt); }
+.ph-xaxis.slots span.on { color: var(--text); }
+.ph-when { display: block; font-size: 13px; color: var(--muted); }
+.ph-when.on { color: var(--text-2); }
 
 /* streak */
 .ph-streak-n { font: italic 900 34px/1 var(--display); color: var(--accent); }
@@ -308,3 +325,4 @@ a.ph-card:active, .ph-hero:active, .ph-tile:active, .ph-day:active, .ph-list-row
 .ph-hrow .pill { font-size: 12px; }
 .ph-history-end { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 0; }
 .ph-history-done { text-align: center; padding: 16px 0; }
+.ph-week-read { margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--border); align-items: baseline; }
