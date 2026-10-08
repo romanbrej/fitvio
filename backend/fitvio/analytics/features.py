@@ -166,6 +166,8 @@ def compute_features(act: ParsedActivity, user: UserConfig) -> dict:
 
     if act.weather:
         f["weather"] = act.weather
+    if act.track:
+        f["track"] = [list(p) for p in act.track]  # coarse (0.1°, every 30 min): for the weather lookup only
     if act.heat_acclimation is not None:
         f["heat_acclimation"] = act.heat_acclimation
     load = physio.trimp(recs, user.rest_hr, user.max_hr, user.sex, act.avg_hr, act.duration_s)

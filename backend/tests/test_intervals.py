@@ -149,7 +149,7 @@ def test_reader_maps_activity_and_wellness(tmp_path):
     act = r.load_activity("i1")
     assert (act.sport, act.indoor, act.duration_s, act.distance_m, act.rpe, act.feel) == \
         ("running", True, 2700.0, 8000.0, 4.0, 75)                                # feel 2 ("good") → 75
-    assert act.weather == {"temp_c": 24.0, "station": "Intervals.icu weather"} and act.records
+    assert act.weather == {"temp_c": 24.0, "source": "Intervals.icu"} and act.records
     assert r.load_activity("../../credentials") is None
     assert r.health_days(datetime(2026, 10, 1)) == [
         {"day": "2026-10-06", "rhr": 50, "hrv_last_night": 61.0, "sleep_total_min": 450.0, "sleep_score": 80,

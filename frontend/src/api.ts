@@ -283,6 +283,10 @@ export const api = {
   mfa: (id: string, code: string) => post<{ ok: boolean }>(`/api/jobs/${seg(id)}/mfa`, { code }),
   syncNow: (user: string) => post<Job>(`/api/users/${seg(user)}/sync`, {}),
   morning: () => post<{ started: Job[]; pending: boolean }>('/api/wall/morning', {}),
+  /** Open-Meteo's hourly weather (true) or only what Garmin / Intervals.icu give; changing it re-analyses */
+  weatherSetting: (user: string) => get<{ open_meteo: boolean }>(`/api/users/${seg(user)}/weather`),
+  setWeatherSetting: (user: string, open_meteo: boolean) =>
+    send<{ open_meteo: boolean; job: Job | null }>('PUT', `/api/users/${seg(user)}/weather`, { open_meteo }),
   activityCheck: () => get<ActivityCheck>('/api/settings/activity-check'),
   setActivityCheck: (enabled: boolean) => post<ActivityCheck>('/api/settings/activity-check', { enabled }),
   buddySettings: () => get<BuddySettings>('/api/settings/buddy'),

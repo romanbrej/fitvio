@@ -94,3 +94,10 @@ export function feelLabel(feel: number | null | undefined): string {
   if (feel >= 25) return 'Weak'
   return 'Very weak'
 }
+
+/** Where a session's weather came from (as fitvio/weather.py `label`): "Open-Meteo", "Garmin station Town", "Intervals.icu". */
+export function weatherSource(w: { source?: string; station?: string } | null | undefined): string | null {
+  if (!w) return null
+  if (w.source === 'Garmin' || (w.station && !w.source)) return w.station ? `Garmin station ${w.station}` : 'Garmin'
+  return w.source ?? null
+}

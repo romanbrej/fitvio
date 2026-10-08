@@ -7,7 +7,7 @@ import { BaselineSwitch, ConfirmExclude, ExcludeButton, useBaseline } from '../c
 import { SportIcon, VerdictIcon } from '../components/icons'
 import { Improvements } from '../components/Improvements'
 import { SetList } from '../components/SetList'
-import { distance, duration, feelLabel, kmh, num, pace, SPORT_LABEL, TYPE_LABEL, VERDICT_LABEL, when } from '../format'
+import { distance, duration, feelLabel, kmh, num, pace, SPORT_LABEL, TYPE_LABEL, VERDICT_LABEL, weatherSource, when } from '../format'
 import { useFetch } from '../useFetch'
 import { deltaTone } from './WallVerdict'
 import './Detail.css'
@@ -93,14 +93,17 @@ export function factGroups(s: SessionDetail): FactGroups {
     s.rpe != null ? ['Your effort', `${num(s.rpe)}/10`] : null,
     s.feel != null ? ['How you felt', feelLabel(s.feel)] : null,
   ])
-  // Garmin's weather for this activity (station near the start) — not the wrist sensor
+  // the weather over the session (Open-Meteo, else Garmin's station or Intervals.icu) — not the wrist sensor
   const w = f.weather
+  const source = weatherSource(w)
   add('Conditions', [
     w ? ['Weather', `${num(w.temp_c)} °C${w.desc ? ` · ${w.desc}` : ''}`] : null,
     w && w.feels_like_c != null && Math.round(w.feels_like_c) !== Math.round(w.temp_c) ? ['Feels like', `${num(w.feels_like_c)} °C`] : null,
+    w && w.dew_point_c != null ? ['Dew point', `${num(w.dew_point_c)} °C`] : null,
     w && w.humidity != null ? ['Humidity', `${num(w.humidity)} %`] : null,
     w && w.wind_kmh != null ? ['Wind', `${num(w.wind_kmh)} km/h${w.wind_dir ? ` ${w.wind_dir}` : ''}`] : null,
     f.heat_adj_pct ? ['Heat adjustment', `+${num(f.heat_adj_pct, 1)} %`] : null,
+    source ? ['Weather from', source] : null,
   ])
   return { key: key.slice(0, 6), groups }
 }
@@ -249,7 +252,6 @@ function SessionBody({ loaded }: { loaded: SessionDetail }) {
               </div>
             )}
           </div>
-          {f.weather?.station && <div className="faint small" style={{ marginTop: 10 }}>Weather from Garmin · station {f.weather.station}</div>}
         </div>
 
         <StreamChart s={s} />

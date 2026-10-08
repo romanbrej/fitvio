@@ -13,6 +13,7 @@ import fitdecode
 from fitdecode.profile import FIELD_TYPES
 
 from ..activity import ExerciseSet, Lap, Record, SwimLength, plausible_temp
+from ..sync import open_meteo
 
 
 def _get(frame, *names):
@@ -61,6 +62,17 @@ def exercise_key(category, subtype) -> tuple[str, str]:
     return cat, label
 
 
+SEMICIRCLE_DEG = 180 / 2**31
+
+
+def _position(frame) -> tuple[float, float] | None:
+    """A record's position, rounded to 0.1° right away: the exact route is never kept (open_meteo.add_to_track)."""
+    lat, lon = _num(_get(frame, "position_lat")), _num(_get(frame, "position_long"))
+    if lat is None or lon is None:
+        return None
+    return open_meteo.rounded(lat * SEMICIRCLE_DEG, lon * SEMICIRCLE_DEG)
+
+
 def parse_fit(path: str | Path) -> dict:
     records: list[Record] = []
     laps: list[Lap] = []
@@ -69,6 +81,7 @@ def parse_fit(path: str | Path) -> dict:
     labels: dict[str, str] = {}
     session: dict = {}
     t0: datetime | None = None
+    track: list = []
 
     with fitdecode.FitReader(str(path)) as fit:
         for frame in fit:
@@ -80,6 +93,7 @@ def parse_fit(path: str | Path) -> dict:
                 if ts is None:
                     continue
                 t0 = t0 or ts
+                open_meteo.add_to_track(track, (ts - t0).total_seconds(), _position(frame))
                 records.append(Record(
                     t=(ts - t0).total_seconds(),
                     hr=_num(_get(frame, "heart_rate")),
@@ -131,7 +145,7 @@ def parse_fit(path: str | Path) -> dict:
     if session.get("rpe") and session["rpe"] > 10:
         session["rpe"] = session["rpe"] / 10
     return {"records": records, "laps": laps, "lengths": lengths, "sets": sets,
-            "exercise_labels": labels, "session": session}
+            "exercise_labels": labels, "session": session, "track": track}
 
 
 def parse_fit_profile(path: str | Path) -> dict[str, dict]:

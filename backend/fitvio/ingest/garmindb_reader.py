@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from ..activity import Lap, ParsedActivity, Record, normalize_sport, plausible_temp
-from ..sync import garmin_extras
+from ..sync import garmin_extras, open_meteo
 from .fit_parser import parse_fit
 
 log = logging.getLogger(__name__)
@@ -58,6 +58,7 @@ class GarminDbReader:
         self.db_dir = self.base / "DBs"
         self.fit_dir = self.base / "FitFiles" / "Activities"
         self.extras_dir = garmin_extras.extras_dir(self.base)
+        self.weather_dir = self.base / "Weather"  # Open-Meteo's hours (sync/open_meteo.py)
 
     @property
     def available(self) -> bool:
@@ -144,6 +145,7 @@ class GarminDbReader:
             exercise_labels=parsed.get("exercise_labels", {}),
             weather=weather,
             heat_acclimation=garmin_extras.read_acclimation(self.extras_dir, start.date()),
+            track=parsed.get("track") or [p for p in [open_meteo.track_point(0, a.get("start_lat"), a.get("start_long"))] if p],
         )
         return act
 
