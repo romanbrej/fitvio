@@ -41,6 +41,7 @@ class ExerciseSet:
     exercise: str
     reps: int | None
     weight_kg: float | None
+    duration_s: float | None = None  # timed sets (a 45 s plank) have no reps
 
 
 @dataclass

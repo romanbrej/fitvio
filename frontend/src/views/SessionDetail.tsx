@@ -5,6 +5,7 @@ import { api } from '../api'
 import type { Delta, SessionDetail } from '../api'
 import { SportIcon, VerdictIcon } from '../components/icons'
 import { Improvements } from '../components/Improvements'
+import { SetList } from '../components/SetList'
 import { distance, duration, feelLabel, kmh, num, pace, SPORT_LABEL, TYPE_LABEL, VERDICT_LABEL, when } from '../format'
 import { useFetch } from '../useFetch'
 import { deltaTone } from './WallVerdict'
@@ -162,9 +163,6 @@ export function SessionDetailView() {
   const numbers = factGroups(s)
   const t = v?.trend
 
-  const setsByEx: Record<string, typeof s.sets> = {}
-  s.sets.forEach(x => { (setsByEx[x.exercise] ??= []).push(x) })
-  const exLabel = (k: string) => f.exercises?.[k]?.label ?? k
 
   return (
     <div className="detail">
@@ -282,22 +280,9 @@ export function SessionDetailView() {
         )}
 
         {s.sets.length > 0 && (
-          <div className="card span-6">
+          <div className="card span-12">
             <div className="card-title">Sets</div>
-            <div className="table-wrap">
-              <table className="data">
-                <thead><tr><th>Exercise</th><th className="num">Sets</th><th>Reps × kg</th><th className="num">e1RM</th></tr></thead>
-                <tbody>
-                  {Object.entries(setsByEx).map(([ex, sets]) => (
-                    <tr key={ex}>
-                      <td>{exLabel(ex)}</td><td className="num">{sets.length}</td>
-                      <td className="num">{sets.map(x => `${x.reps ?? '?'}×${x.weight_kg ?? '?'}`).join('  ')}</td>
-                      <td className="num">{num(f.exercises?.[ex]?.e1rm, 1)} kg</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <SetList sets={s.sets} exercises={f.exercises} wall />
           </div>
         )}
 

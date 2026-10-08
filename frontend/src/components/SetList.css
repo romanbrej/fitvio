@@ -1,0 +1,23 @@
+/* Strength sets as a gym log: one block per exercise, one row per set. Phone sizes by default, `.wall` for the TV. */
+.setlist { display: flex; flex-direction: column; }
+.setlist-ex { padding: 12px 0; border-top: 1px solid #1d232e; }
+.setlist-ex:first-child { border-top: 0; padding-top: 4px; }
+.setlist-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+.setlist-name { font-size: 17px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.setlist-meta { flex: none; font-size: 13px; color: var(--muted); }
+.setlist table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.setlist th {
+  text-align: left; font: 700 12px var(--display); letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--faint); padding: 4px 0;
+}
+.setlist td { padding: 4px 0; font-family: var(--mono); }
+.setlist th.num, .setlist td.num { text-align: right; width: 30%; }
+.setlist-no { color: var(--muted); }
+
+.setlist.wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); column-gap: 40px; }
+.setlist.wall .setlist-ex, .setlist.wall .setlist-ex:first-child { border-top: 1px solid #1d232e; padding: 14px 0; }
+.setlist.wall .setlist-name { font-size: 20px; }
+.setlist.wall .setlist-meta { font-size: 15px; }
+.setlist.wall table { font-size: 17px; }
+.setlist.wall th { font-size: 13px; }
+.setlist.wall td { padding: 6px 0; }

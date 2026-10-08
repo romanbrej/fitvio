@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 import fitdecode
+from fitdecode.profile import FIELD_TYPES
 
 from ..activity import ExerciseSet, Lap, Record, SwimLength, plausible_temp
 
@@ -31,15 +32,29 @@ def _num(v):
     return None
 
 
+def _readable(name: str) -> str:
+    """'single_leg_hip_raise' -> 'Single leg hip raise'."""
+    return name.replace("_", " ").capitalize()
+
+
 def exercise_key(category, subtype) -> tuple[str, str]:
-    """(stable key, display label) for a strength set. Garmin categories are broad
-    ('squat' covers goblet and back squat), so the numeric variant is part of the key."""
+    """(stable key, display label) for a strength set, e.g. ('plank.43', 'Plank').
+
+    Garmin writes the category as an array, which fitdecode leaves as raw numbers, so numbers and
+    names both go through the FIT profile and give the same key. Categories are broad ('squat'
+    covers goblet and back squat), so the numeric variant is part of the key and names the label."""
     if isinstance(category, (list, tuple)):
         category = category[0] if category else None
     if isinstance(subtype, (list, tuple)):
         subtype = subtype[0] if subtype else None
+    if isinstance(category, int):
+        category = FIELD_TYPES["exercise_category"].enum.get(category)
     cat = str(category) if category is not None else "unknown"
-    label = cat.replace("_", " ").title()
+    if cat == "unknown" or cat.isdigit():
+        return "unknown", "Exercise"
+    names = FIELD_TYPES.get(f"{cat}_exercise_name")
+    name = names.enum.get(subtype) if names is not None and isinstance(subtype, int) else None
+    label = _readable(name if name else cat)
     if isinstance(subtype, int):
         return f"{cat}.{subtype}", label
     return cat, label
@@ -99,7 +114,8 @@ def parse_fit(path: str | Path) -> dict:
                 labels[key] = label
                 reps = _get(frame, "repetitions")
                 sets.append(ExerciseSet(exercise=key, reps=int(reps) if reps is not None else None,
-                                        weight_kg=_num(_get(frame, "weight"))))
+                                        weight_kg=_num(_get(frame, "weight")),
+                                        duration_s=_num(_get(frame, "duration"))))
             elif name == "session":
                 session = {
                     "sport": str(_get(frame, "sport") or ""),

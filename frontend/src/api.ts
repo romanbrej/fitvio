@@ -48,7 +48,7 @@ export interface Streams {
 
 export interface SessionDetail extends Session {
   streams: Streams | null
-  sets: { set_index: number; exercise: string; reps: number | null; weight_kg: number | null }[]
+  sets: { set_index: number; exercise: string; reps: number | null; weight_kg: number | null; duration_s: number | null }[]
   baseline_sessions: Pick<Session, 'id' | 'name' | 'start_time' | 'duration_s' | 'distance_m' | 'avg_hr' | 'session_type' | 'features' | 'rpe' | 'feel'>[]
 }
 
