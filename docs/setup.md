@@ -20,7 +20,7 @@ Two containers start from the prebuilt image (`ghcr.io/romanbrej/fitvio`, amd64 
 
 | Container | Job |
 |---|---|
-| `web` | UI and API on port 8765 |
+| `web` | UI and API on port 8765 (IPv4) |
 | `sync` | Auto-sync: checks for a new activity every 2 min, full differential sync hourly |
 
 Your data and logins stay on the host in `./data` and `./config`. They are mounted into the containers and never built into the image (see `.dockerignore`).
@@ -28,18 +28,20 @@ Your data and logins stay on the host in `./data` and `./config`. They are mount
 - **Logs:** `docker compose logs -f sync` (or `web`).
 - **Build it yourself instead:** clone the repository and run `docker compose up -d --build`.
 - **Rollback:** put `FITVIO_TAG=sha-<commit>` in `.env`, then `docker compose up -d`. Remove it again to follow `latest`.
+- **Only on your LAN address:** the port is published on IPv4 only. To listen on one address, put `FITVIO_BIND=<server-ip>` in `.env` — only if that IP is fixed (a DHCP reservation in your router), otherwise the dashboard stops answering when it changes.
 
 ### Updates
 
 - **By hand:** `docker compose pull && docker compose up -d`.
 - **Automatically:** clone the repository to `~/fitvio` (your `data/`, `config/` and `.env` live there too) and run `./deploy/install-updater.sh`. A systemd user timer then checks for a newer image every 5 minutes and restarts the containers only when it changed. The server pulls; nothing from outside runs on it.
 - Without systemd, a cron line does the same: `*/5 * * * * cd ~/fitvio && docker compose pull -q && docker compose up -d`.
+- The updater refreshes the image, not `docker-compose.yml`. When a change touches that file (the pull request says so), run `git pull && docker compose up -d` in `~/fitvio` once.
 
 ## Connect Garmin
 
 Open `http://<server-ip>:8765` from a device in your home network. A fresh install asks for your Garmin email and password (and the security code, if your account uses two-factor login). Your whole history is downloaded in the background — the first time this can take a while; you can watch the progress. To add another person: Accounts (the person icon, top right) → *Add a person*.
 
-Logins are only accepted from your home network (private or loopback addresses), because the dashboard serves plain HTTP. Don't expose port 8765 to the internet.
+Logins are only accepted from your home network (10.x, 172.16–31.x, 192.168.x, IPv6 ULA/link-local, loopback), because the dashboard serves plain HTTP. Don't expose port 8765 to the internet. Rootless Docker hides where a client comes from, so every client would look local; use regular Docker for Fitvio.
 
 ### From a terminal
 
