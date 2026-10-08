@@ -7,11 +7,12 @@ import time
 from datetime import date, datetime, timedelta
 from statistics import median
 
-from . import db, profile
+from . import db, profile, weather
 from .activity import ParsedActivity
 from .analytics.features import build_streams, compute_features
 from .config import UserConfig
 from .models.sports import model_for
+from .sync import open_meteo
 
 log = logging.getLogger(__name__)
 
@@ -117,16 +118,25 @@ def set_excluded(conn: sqlite3.Connection, user_id: str, sid: str, excluded: boo
                          (sid, user_id, datetime.now().isoformat(timespec="seconds")))
         else:
             conn.execute("DELETE FROM baseline_exclusions WHERE session_id = ?", (sid,))
-        sessions = user_sessions(conn, user_id)
-        target = next(s for s in sessions if s["id"] == sid)
-        affected = [s["id"] for s in sessions
-                    if s["sport"] == target["sport"] and s["start_time"] >= target["start_time"]]
-        for aid in affected:
-            evaluate_session(conn, user_id, aid, sessions)
+        n = reevaluate_from(conn, user_id, [sid])
         conn.commit()
     except Exception:
         conn.rollback()  # all or nothing: never an exclusion with half its verdicts recomputed
         raise
+    return n
+
+
+def reevaluate_from(conn: sqlite3.Connection, user_id: str, sids: list[str]) -> int:
+    """Recompute the verdicts these sessions can reach: their own and every later one of the same sport
+    (baselines, trends and all-time bests look back that far). No commit. Returns how many."""
+    sessions = user_sessions(conn, user_id)
+    first: dict[str, str] = {}
+    for s in sessions:
+        if s["id"] in sids and s["start_time"] < first.get(s["sport"], "~"):
+            first[s["sport"]] = s["start_time"]
+    affected = [s["id"] for s in sessions if s["sport"] in first and s["start_time"] >= first[s["sport"]]]
+    for aid in affected:
+        evaluate_session(conn, user_id, aid, sessions)
     return len(affected)
 
 
@@ -144,7 +154,8 @@ def store_health(conn: sqlite3.Connection, user_id: str, days: list[dict]) -> No
 # 5: intervals only compared with the same rep length (±30 %) from the last 6 months
 # 6: pace at the reference HR measured from steady seconds near it (every run type), smooth heat curve
 # 7: strength exercise names from the FIT profile (Garmin writes categories as numbers), set durations
-ANALYSIS_VERSION = "7"
+# 8: weather from Open-Meteo's hours over the session (dew point for everyone), start point stored
+ANALYSIS_VERSION = "8"
 
 
 def reader_for(user: UserConfig):
@@ -186,10 +197,17 @@ def ingest(conn: sqlite3.Connection, user: UserConfig, full: bool = False,
     # away, even when the whole history has to be reprocessed afterwards (minutes on a small server).
     stored = []
     n_new = n_updated = 0
-    for aid in [*new_ids, *sorted(edited)]:
-        act = reader.load_activity(aid)
+    use_om = weather.enabled(conn, user.id)
+    wx_dir = getattr(reader, "weather_dir", None)
+    ids = [*new_ids, *sorted(edited)]
+    loaded = ((aid, reader.load_activity(aid)) for aid in ids)  # a full import is the whole history: one at a time
+    if use_om and not full:  # today's run gets its weather before its verdict; fill_weather does the rest
+        loaded = [(aid, act) for aid, act in loaded if act is not None]
+        open_meteo.fetch_missing(wx_dir, weather.needs(wx_dir, [act for _, act in loaded]), max_calls=10)
+    for aid, act in loaded:
         if act is None:
             continue
+        weather.apply(act, wx_dir, use_om)
         stored.append(store_activity(conn, user, act))
         if aid in edited:
             n_updated += 1
@@ -211,14 +229,57 @@ def ingest(conn: sqlite3.Connection, user: UserConfig, full: bool = False,
             done = set(new_ids) | edited
             for aid, _ in reader.activity_ids(None):
                 if aid in known and aid not in done and (act := reader.load_activity(aid)) is not None:
+                    weather.apply(act, wx_dir, use_om)
                     store_activity(conn, user, act)
         evaluate_all(conn, user.id)
         if not full:
             log.info("%s: reprocessed %d activities in %.0fs", user.id, len(known), time.monotonic() - started)
     db.set_state(conn, version_key, ANALYSIS_VERSION)  # only once the history is up to date
     conn.commit()
-    return {"activities": n_new, "updated": n_updated, "reprocessed": reprocess,
+    weather_result = fill_weather(conn, user, reader) if use_om else None
+    return {"activities": n_new, "updated": n_updated, "reprocessed": reprocess, "weather": weather_result,
             "profile": {k: v["value"] for k, v in profile.describe(conn, user).items()}}
+
+
+def fill_weather(conn: sqlite3.Connection, user: UserConfig, reader,
+                 max_calls: int = open_meteo.MAX_CALLS_PER_RUN) -> dict:
+    """Open-Meteo for the outdoor sessions that don't have it yet (the history after an update, a run
+    whose fetch failed while offline): fetch what's missing, newest first, a few requests per sync, then
+    re-store those sessions and recompute the verdicts they reach. A shown verdict keeps first_shown_at,
+    so the wall never pops up again for an old run."""
+    wx_dir = getattr(reader, "weather_dir", None)
+    if wx_dir is None:
+        return {"requests": 0, "updated": 0}
+    todo: dict[str, dict] = {}
+    for s in user_sessions(conn, user.id):
+        f = s.get("features") or {}
+        track = [tuple(p) for p in f.get("track") or []]
+        if s["indoor"] or not track or s["sport"] == "strength" or (f.get("weather") or {}).get("source") == "Open-Meteo":
+            continue
+        todo[s["activity_id"]] = {"track": track, "start": datetime.fromisoformat(s["start_time"]),
+                                  "duration": s["duration_s"] or 0}
+    needs: dict = {}
+    for t in todo.values():
+        weather.merge_needs(needs, open_meteo.missing(wx_dir, t["track"], t["start"], t["duration"]))
+    fetched = open_meteo.fetch_missing(wx_dir, needs, max_calls=max_calls) if needs \
+        else {"requests": 0, "days": 0, "pending": 0, "error": None}
+    # only what now has hours (a place/day Open-Meteo has nothing for stays as it is, without re-reading it)
+    ready = [aid for aid, t in todo.items()
+             if open_meteo.read_session(wx_dir, t["track"], t["start"], t["duration"]) is not None]
+    stored = []
+    for aid in ready:
+        act = reader.load_activity(aid)
+        if act is None:
+            continue
+        weather.apply(act, wx_dir, True)
+        if (act.weather or {}).get("source") == "Open-Meteo":
+            stored.append(store_activity(conn, user, act))
+    n = reevaluate_from(conn, user.id, stored) if stored else 0
+    conn.commit()
+    if stored:
+        log.info("%s: Open-Meteo weather for %d sessions, %d verdicts recomputed", user.id, len(stored), n)
+    return {"requests": fetched["requests"], "updated": len(stored), "pending": fetched["pending"],
+            "error": fetched["error"]}
 
 
 ingest_from_garmindb = ingest  # the name before Intervals.icu existed

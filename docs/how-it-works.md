@@ -34,8 +34,14 @@ When there are fewer than 3 comparable sessions it says **"Not comparable yet"**
 | Gym | Estimated 1-rep max per exercise (Epley) vs the best of your last 3 sessions, plus PRs. Needs reps and weight logged on the watch |
 | Everything else | Training load and recovery impact |
 
-**Heat and humidity.** Running efficiency is adjusted with **Garmin's own weather for the activity** (the same weather box Garmin Connect shows, taken from a station near the start at start time) and **Garmin's heat acclimation**. It uses the runners' temperature + dew point rule: the sum in °F sets how much harder the same effort was (0 % up to 100 °F, up to 12 % above 180 °F). Heat acclimation reduces that effect by up to half, which is a heuristic. Indoor and treadmill sessions get no heat adjustment. The wrist temperature sensor isn't used for this, because body heat skews it, and FIT files use 127 as a "no value" marker.
-Weather and acclimation are downloaded with each sync. For older history, run `fitvio backfill-extras` once (a first download does this automatically).
+**Heat and humidity.** Running efficiency is adjusted for the weather during the session and for **Garmin's heat acclimation**.
+
+The weather comes from **Open-Meteo**, which is free, needs no API key and works worldwide. Fitvio takes its hourly temperature, dew point, humidity and wind for each hour of the session, at the place you were in that hour, the same way for every watch and platform. Only a rough route is sent and stored: a point every 30 minutes, rounded to 0.1° (about 11 km). Your exact home or route never leaves the server.
+
+If Open-Meteo can't be reached, the session falls back to the platform's weather: Garmin's weather box (a station near the start, at start time) or Intervals.icu's temperature. A later sync then fills in the hours and works the verdict out again; a verdict already shown doesn't take over the wall a second time. The history is filled in a few requests per sync. Open-Meteo can be switched off per person in the phone's **Me** screen, which brings back exactly the platform-weather verdicts.
+
+The adjustment uses the runners' temperature + dew point rule: the sum in °F sets how much harder the same effort was (0 % up to 100 °F, up to 12 % above 180 °F). Heat acclimation reduces that effect by up to half, which is a heuristic. Indoor and treadmill sessions get no heat adjustment. The wrist temperature sensor isn't used for this, because body heat skews it, and FIT files use 127 as a "no value" marker.
+Garmin's weather and acclimation are downloaded with each sync. For older history, run `fitvio backfill-extras` once (a first download does this automatically).
 
 **Verdict check.** Rate *How did you feel* and *Perceived effort* on your watch after each activity. The app tracks how often the verdicts agree with how you felt, and lists the disagreements.
 
@@ -78,7 +84,7 @@ It protects your Garmin account, because the app uses the unofficial Garmin Conn
 
 - Garmin's endpoints used here are unofficial and can change; the parsers are pinned to real (anonymized) answers in `backend/tests/fixtures/garmin`.
 - Garmin Coach's adaptive plan only schedules about a week ahead, so the wall shows the next ~7 planned days.
-- Weather comes from the nearest Garmin weather station at the start, so it doesn't capture sun, shade or temperature changes during long sessions.
+- Weather is a model value for a ~10 km grid cell, hour by hour along the route. It doesn't capture sun, shade or valleys.
 - Garmin has no public webhook. A new activity is found by polling (every 2 min, 05:00–24:00); at night it waits for the hourly sync.
 - Pool HR from a wrist sensor is unreliable. Swimming verdicts rely on pace and SWOLF, not HR.
 - Garmin's strength categories are broad (for example "squat" covers goblet and back squat). The numeric variant is kept in the exercise key so different variants aren't mixed.

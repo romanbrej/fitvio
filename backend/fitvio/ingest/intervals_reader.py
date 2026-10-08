@@ -30,6 +30,7 @@ from typing import Callable
 
 from ..activity import ParsedActivity, normalize_sport, plausible_temp
 from ..config import env
+from ..sync import open_meteo
 from .fit_parser import parse_fit
 
 log = logging.getLogger(__name__)
@@ -234,6 +235,13 @@ def download(base: Path, client: Client, full: bool = False, today: date | None 
 
 # --- reading (what the pipeline sees) -----------------------------------------------
 
+def _start_latlng(a: dict) -> list:
+    """The start as a one-point track, when there's no FIT file to sample the route from."""
+    ll = a.get("start_latlng")
+    p = open_meteo.track_point(0, ll[0], ll[1]) if isinstance(ll, list) and len(ll) == 2 else None
+    return [p] if p else []
+
+
 def _local(s: str) -> datetime:
     return datetime.fromisoformat(s.replace("Z", "")).replace(tzinfo=None)
 
@@ -242,6 +250,7 @@ class IntervalsReader:
     def __init__(self, base_dir: Path):
         self.base = Path(base_dir)
         self.acts_dir = self.base / "activities"
+        self.weather_dir = self.base / "weather"  # Open-Meteo's hours (sync/open_meteo.py)
 
     @property
     def available(self) -> bool:
@@ -300,7 +309,7 @@ class IntervalsReader:
             ascent_m=_num(a.get("total_elevation_gain")),
             # weather at the activity (Intervals.icu's own lookup), never the wrist sensor
             avg_temp_c=plausible_temp(temp) if a.get("has_weather") else None,
-            weather={"temp_c": temp, "station": "Intervals.icu weather"}
+            weather={"temp_c": temp, "source": "Intervals.icu"}
             if a.get("has_weather") and plausible_temp(temp) is not None else None,
             indoor=indoor,
             rpe=rpe if rpe and 1 <= rpe <= 10 else None,
@@ -311,6 +320,7 @@ class IntervalsReader:
             lengths=parsed.get("lengths", []),
             sets=parsed.get("sets", []),
             exercise_labels=parsed.get("exercise_labels", {}),
+            track=parsed.get("track") or _start_latlng(a),
         )
 
     def _wellness(self) -> dict[str, dict]:

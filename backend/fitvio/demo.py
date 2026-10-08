@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta
 from . import db, pipeline, profile
 from .activity import ExerciseSet, Lap, ParsedActivity, Record, SwimLength
 from .config import AppConfig, UserConfig
+from .sync import open_meteo
 
 STEP = 2.0  # seconds between synthetic records
 
@@ -71,8 +72,27 @@ def _run(rng: random.Random, uid: str, start: datetime, fitness: float, kind: st
         sub_sport="generic", name={"easy": "Easy Run", "long": "Long Run", "tempo": "Tempo Run",
                                    "intervals": "Intervals 3' on/off"}[kind],
         duration_s=n * STEP, distance_m=dist, avg_hr=sum(hrs) / len(hrs), max_hr=max(hrs),
-        ascent_m=320 * (minutes / 60) if hilly else 20, avg_temp_c=temp + 4, records=recs, laps=laps,
+        ascent_m=320 * (minutes / 60) if hilly else 20, avg_temp_c=round(temp, 1), records=recs, laps=laps,
+        weather=_weather(start, n * STEP, temp), track=[(0, 52.4, 9.7)],
     )
+
+
+def _weather(start: datetime, duration_s: float, temp: float) -> dict:
+    """Made-up hourly weather shaped like Open-Meteo's (the demo never asks it). No random numbers, so
+    the rest of the made-up data stays the same."""
+    hours = []
+    for h in range(int(duration_s // 3600) + 2):
+        t = (start.replace(minute=0) + timedelta(hours=h))
+        dew = temp - 7 + 2 * math.sin(start.toordinal() / 3)
+        wind_deg = (start.toordinal() * 47) % 360
+        hours.append({"t": t.strftime("%H:%M"), "lat": 52.4, "lon": 9.7, "temp_c": round(temp + 0.4 * h, 1), "dew_point_c": round(dew, 1),
+                      "humidity": round(100 * math.exp(17.6 * dew / (243 + dew) - 17.6 * temp / (243 + temp))),
+                      "feels_like_c": round(temp + 0.4 * h - 1, 1), "wind_kmh": round(8 + 6 * abs(math.sin(start.toordinal())), 1),
+                      "wind_deg": wind_deg})
+    avg = lambda k: round(sum(x[k] for x in hours) / len(hours), 1)  # noqa: E731
+    return {"temp_c": avg("temp_c"), "dew_point_c": avg("dew_point_c"), "humidity": round(avg("humidity")),
+            "feels_like_c": avg("feels_like_c"), "wind_kmh": avg("wind_kmh"), "wind_deg": hours[0]["wind_deg"],
+            "wind_dir": open_meteo.compass(hours[0]["wind_deg"]), "source": "Open-Meteo", "hourly": hours}
 
 
 def _ride(rng, uid, start, ftp, user) -> ParsedActivity:
@@ -94,11 +114,17 @@ def _ride(rng, uid, start, ftp, user) -> ParsedActivity:
         hr = user.rest_hr + (p / ef - user.rest_hr) * min(1, 0.6 + t / 600) * (1 + 0.04 * frac) + rng.gauss(0, 1.5)
         recs.append(Record(t=t, hr=round(hr), power=max(0, p), cadence=88 + rng.gauss(0, 3), speed=p / 30))
     hrs = [r.hr for r in recs]
+    outdoor = kind == "easy"  # endurance rides outside (with weather along the route), the hard ones on Zwift
+    temp = 12 + 10 * math.sin((start.timetuple().tm_yday - 100) / 365 * 2 * math.pi)
     return ParsedActivity(
         activity_id=f"demo-{uid}-{start:%Y%m%d%H%M}", start_time=start, sport="cycling", raw_sport="cycling",
-        sub_sport="indoor_cycling", name={"easy": "Zwift Endurance", "tempo": "Sweet Spot", "intervals": "VO2 4x4"}[kind],
+        sub_sport="road_biking" if outdoor else "indoor_cycling",
+        name={"easy": "Endurance Ride", "tempo": "Sweet Spot", "intervals": "VO2 4x4"}[kind],
         duration_s=n * STEP, distance_m=sum(r.speed * STEP for r in recs), avg_hr=sum(hrs) / len(hrs),
-        max_hr=max(hrs), indoor=True, records=recs,
+        max_hr=max(hrs), indoor=not outdoor, records=recs,
+        avg_temp_c=round(temp, 1) if outdoor else None,
+        weather=_weather(start, n * STEP, temp) if outdoor else None,
+        track=[(0, 52.4, 9.7), (1800, 52.3, 9.5)] if outdoor else [],
     )
 
 

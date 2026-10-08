@@ -122,6 +122,7 @@ def read_weather(directory: Path, activity_id: str) -> dict | None:
         "wind_dir": (raw.get("windDirectionCompassPoint") or "").upper() or None,
         "station": (raw.get("weatherStationDTO") or {}).get("name"),
         "desc": (raw.get("weatherTypeDTO") or {}).get("desc"),
+        "source": "Garmin",
     }
 
 

@@ -12,6 +12,7 @@ from typing import Callable
 
 from ..analytics import load as load_model
 from ..analytics import physio
+from ..weather import label as weather_label
 
 MIN_SIMILAR = 3
 WINDOWS_DAYS = (56, 84, 120)
@@ -205,8 +206,8 @@ class SportModel:
             text = f"Warm & humid: {w['temp_c']:.0f} °C"
             if w.get("dew_point_c") is not None:
                 text += f", dew point {w['dew_point_c']:.0f} °C"
-            if w.get("station"):
-                text += f" ({w['station']})"
+            if (source := weather_label(w)):
+                text += f" ({source})"
             text += f" — efficiency adjusted +{heat:.1f} %"
             if f.get("heat_acclimation") is not None:
                 text += f"; heat acclimation {f['heat_acclimation']:.0f} %"

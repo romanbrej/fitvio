@@ -98,7 +98,7 @@ def _export(out_dir: Path, days: int) -> dict[str, int]:
         save(path)
     for u in cfg.users:
         base = f"/api/users/{u.id}"
-        for path in ("ambient", "profile", "validation"):
+        for path in ("ambient", "profile", "validation", "weather"):
             save(f"{base}/{path}")
         for d in PMC_DAYS:
             save(f"{base}/pmc?days={d}")

@@ -2,7 +2,8 @@
 // Needs the normal app build in dist/ (npm run build), the backend installed (`fitvio` on PATH, or FITVIO_BIN)
 // and playwright (CI: npm i --no-save playwright && npx playwright install --with-deps chromium).
 // Covers leaving a session out of comparisons (#19) on the wall and the phone: confirm, recalculated
-// verdicts, persistence, restore, a refused change. The demo's lock is checked in demo-check.mjs.
+// verdicts, persistence, restore, a refused change. And the weather (#18): the session's conditions with
+// their source, and the per-person Open-Meteo switch. The demo's lock is checked in demo-check.mjs.
 import { spawn, spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
@@ -161,6 +162,65 @@ try {
   check('restoring gives back the original verdict', now.verdict === before.verdict && now.score === before.score)
   const all = await api('/api/users/alex/sessions?sport=running&limit=200')
   check('nothing is left excluded', all.every(r => !r.excluded && r.verdict !== 'excluded'))
+  await p.close()
+
+  // --- weather (#18): the session's hourly weather and the per-person Open-Meteo switch ------------------
+  console.log('— weather')
+  const w = (await detail(T.id)).features.weather
+  const conditions = async page => {
+    const group = page.locator('.fact-group, .ph-dl').filter({ hasText: 'Conditions' })
+    await group.waitFor()
+    return group.innerText()
+  }
+  p = await newPage(false)
+  await p.goto(`${ROOT}session/${encodeURIComponent(T.id)}`)
+  let text = await conditions(p)
+  check('the wall shows dew point, humidity and wind over the session',
+    /Dew point/.test(text) && /Humidity/.test(text) && /Wind/.test(text) && text.includes(`${Math.round(w.dew_point_c)} °C`), text)
+  check('… and where the weather came from', /Weather from\s+Open-Meteo/.test(text), text)
+  await p.close()
+
+  const rides = await Promise.all((await api('/api/users/alex/sessions?sport=cycling&limit=10')).map(r => detail(r.id)))
+  const outside = rides.find(r => !r.indoor), trainer = rides.find(r => r.indoor)
+  p = await newPage(false)
+  await p.goto(`${ROOT}session/${encodeURIComponent(outside.id)}`)
+  text = await conditions(p)
+  check('an outdoor ride shows its weather too', /Dew point/.test(text) && /Weather from\s+Open-Meteo/.test(text), text)
+  await p.goto(`${ROOT}session/${encodeURIComponent(trainer.id)}`)
+  await p.getByText('The numbers').first().waitFor()
+  check('an indoor ride has no weather', !(await p.getByText('Weather from').count()))
+  await p.close()
+
+  p = await newPage(true)
+  await p.goto(`${ROOT}session/${encodeURIComponent(T.id)}`)
+  text = await conditions(p)
+  check('the phone shows the same conditions and source', /Dew point/.test(text) && /Weather from\s+Open-Meteo/.test(text), text)
+
+  await p.goto(`${ROOT}me`)
+  const wx = () => p.getByRole('switch', { name: 'Hourly weather from Open-Meteo' })
+  await wx().waitFor()
+  check('Open-Meteo is on by default', await wx().getAttribute('aria-checked') === 'true'
+    && (await api('/api/users/alex/weather')).open_meteo === true)
+  await wx().click()
+  await p.getByText(/Uses only the weather from/).waitFor()
+  check('switching it off is saved', await wx().getAttribute('aria-checked') === 'false'
+    && (await api('/api/users/alex/weather')).open_meteo === false)
+  await p.reload()
+  await wx().waitFor()
+  check('… and still off after a reload', await wx().getAttribute('aria-checked') === 'false')
+  await wx().click()
+  await p.getByText(/rough route/).waitFor()
+  check('switching it back on is saved', (await api('/api/users/alex/weather')).open_meteo === true)
+
+  await p.route('**/weather', r => r.request().method() === 'PUT'
+    ? r.fulfill({ status: 403, contentType: 'application/json',
+                  body: JSON.stringify({ detail: 'changes are only allowed from your home network' }) })
+    : r.continue())
+  await wx().click()
+  await p.getByText(/home network/).waitFor()
+  check('a refused change shows why and the switch stays on', await wx().getAttribute('aria-checked') === 'true'
+    && (await api('/api/users/alex/weather')).open_meteo === true)
+  await p.close()
 } finally {
   await browser.close()
   server.kill()

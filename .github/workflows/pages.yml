@@ -52,7 +52,7 @@ jobs:
       # the tests' browser, only here: it is not a dependency of the app
       - run: npm i --no-save --no-audit --no-fund playwright@1.64.0 && npx playwright install --with-deps chromium
         working-directory: frontend
-      # end-to-end: the real app and backend on made-up data (excluding sessions from comparisons, wall + phone).
+      # end-to-end: the real app and backend on made-up data (excluding sessions, weather; wall + phone).
       # Pull requests only: the nightly and release runs just rebuild and publish the demo.
       - if: github.event_name == 'pull_request'
         run: npm run build && node scripts/e2e.mjs

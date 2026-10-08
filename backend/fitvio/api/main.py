@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .. import accounts, buddy, db, pipeline, profile, wall
+from .. import accounts, buddy, db, pipeline, profile, wall, weather
 from ..analytics import load as load_model
 from ..config import PROJECT_ROOT, AppConfig, env, load_config
 from ..pipeline import user_sessions
@@ -351,6 +351,29 @@ def connect_intervals(body: ConnectIntervals, c: AppConfig = Depends(cfg)):
     except accounts.ConnectBusy as e:
         raise HTTPException(429, str(e)) from None
     return job.public()
+
+
+class WeatherChoice(BaseModel):
+    model_config = {"extra": "forbid"}
+    open_meteo: bool = Field(strict=True)
+
+
+@app.get("/api/users/{user_id}/weather")
+def get_weather_setting(user_id: str, c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    _user_or_404(c, user_id)
+    return {"open_meteo": weather.enabled(cn, user_id)}
+
+
+@app.put("/api/users/{user_id}/weather", dependencies=[Depends(local_network_only)])
+def set_weather_setting(user_id: str, body: WeatherChoice, c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    """Open-Meteo's hourly weather (on) or only what Garmin / Intervals.icu give (off). Every verdict is
+    worked out again from what is already downloaded; weather fetched before stays cached."""
+    user = _user_or_404(c, user_id)
+    if weather.enabled(cn, user.id) != body.open_meteo:
+        weather.set_enabled(cn, user.id, body.open_meteo)
+        db.set_state(cn, f"analysis_version:{user.id}", "")  # → the next ingest reprocesses everything
+    job = accounts.active_for(user.id) or (accounts.start_reprocess(user, c.db_path) if user.source else None)
+    return {"open_meteo": body.open_meteo, "job": job.public() if job else None}
 
 
 @app.put("/api/users/{user_id}/profile", dependencies=[Depends(local_network_only)])

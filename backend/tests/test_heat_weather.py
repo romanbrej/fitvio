@@ -129,7 +129,7 @@ def test_heat_note_only_with_real_weather():
     notes = model.context_notes({**base, "features": run({"temp_c": 23.9, "dew_point_c": 15.0, "station": "Town"}, 8)},
                                 None, None, {})
     heat = [n["text"] for n in notes if n["kind"] == "heat"]
-    assert heat == ["Warm & humid: 24 °C, dew point 15 °C (Town) — efficiency adjusted +2.3 %; heat acclimation 8 %"]
+    assert heat == ["Warm & humid: 24 °C, dew point 15 °C (Garmin station Town) — efficiency adjusted +2.3 %; heat acclimation 8 %"]
 
 
 def test_multisport_legs_share_the_parent_weather(tmp_path):

@@ -67,6 +67,8 @@ backend/fitvio/
   sync/garmindb_runner.py     runs GarminDB, differential sync, sync lock
   sync/garmindb_fast.py       runtime patches: skip cached days, adaptive pacing, changed-only import
   sync/garmin_extras.py       Garmin weather, heat acclimation, precise VO₂max
+  sync/open_meteo.py          hourly weather per session from Open-Meteo (cached per place and day)
+  weather.py                  which weather a session uses (Open-Meteo, else Garmin / Intervals.icu)
   sync/garmin_coach.py        Garmin calendar workouts, training plan, Training Readiness
   sync/activity_watch.py      auto-sync: new-activity check (cached tokens only) + hourly sync
 frontend/src/                 React + Vite wall UI (views/Wall*, PlanDetail, detail views, components/WeekStrip, Buddy, Day/NightScreen)

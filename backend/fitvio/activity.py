@@ -70,6 +70,12 @@ class ParsedActivity:
     # Garmin's weather for the activity (station near the start, at start time) and heat acclimation %
     weather: dict | None = None
     heat_acclimation: float | None = None
+    # coarse route for the weather: [(seconds since start, lat, lon), …], a point every 30 min, rounded to 0.1°
+    track: list[tuple[float, float, float]] = field(default_factory=list)
+
+    @property
+    def start_position(self) -> tuple[float, float] | None:
+        return (self.track[0][1], self.track[0][2]) if self.track else None
 
     @property
     def has_power(self) -> bool:

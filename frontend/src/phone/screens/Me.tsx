@@ -19,12 +19,14 @@ export function Me() {
   const [accounts, setAccounts] = useState<Account[] | null>(null)
   const [buddies, setBuddies] = useState<BuddySettings | null>(null)
   const [check, setCheck] = useState<ActivityCheck | null>(null)
+  const [openMeteo, setOpenMeteo] = useState<boolean | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
 
   const load = useCallback(() => api.accounts().then(setAccounts).catch(e => setProblem(errorText(e))), [])
   useEffect(() => { load() }, [load])
   useEffect(() => { api.buddySettings().then(setBuddies).catch(() => setBuddies(null)) }, [])
   useEffect(() => { api.activityCheck().then(setCheck).catch(() => setCheck(null)) }, [])
+  useEffect(() => { api.weatherSetting(me.id).then(r => setOpenMeteo(r.open_meteo)).catch(() => setOpenMeteo(null)) }, [me.id])
   useEffect(() => {
     // keep sync progress fresh while anything runs
     if (!accounts?.some(a => a.job)) return
@@ -44,6 +46,11 @@ export function Me() {
     if (!check) return
     setProblem(null)
     try { setCheck(await api.setActivityCheck(!check.enabled)) } catch (e) { setProblem(errorText(e)) }
+  }
+  const toggleWeather = async () => {
+    if (openMeteo == null) return
+    setProblem(null)
+    try { setOpenMeteo((await api.setWeatherSetting(me.id, !openMeteo)).open_meteo); await load() } catch (e) { setProblem(errorText(e)) }
   }
   const mine = buddies?.users[me.id]
   const myAccount = accounts?.find(a => a.id === me.id)
@@ -75,6 +82,22 @@ export function Me() {
         <Card>
           <span className="ph-label">Heart rate</span>
           <HrSettings account={myAccount} onSaved={load} />
+        </Card>
+      )}
+
+      {openMeteo != null && (
+        <Card>
+          <span className="ph-label">Weather</span>
+          <div className="ph-list-row">
+            <div className="ph-grow">
+              <span className="ph-strong">Hourly weather from Open-Meteo</span>
+              <span className="ph-foot">{openMeteo
+                ? 'Temperature, dew point and wind over each outdoor session, for the heat adjustment. Sends only a rough route (about 11 km).'
+                : `Uses only the weather from ${myAccount?.source === 'intervals' ? 'Intervals.icu' : 'Garmin'}.`}</span>
+            </div>
+            <button role="switch" aria-checked={openMeteo} className={`switch ${openMeteo ? 'on' : ''}`}
+                    onClick={toggleWeather} aria-label="Hourly weather from Open-Meteo"><span /></button>
+          </div>
         </Card>
       )}
 
