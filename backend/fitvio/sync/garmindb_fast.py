@@ -171,6 +171,9 @@ def get_hydration(self, directory_func, date, days, overwrite):
 _original_hydration = dl.Download.get_hydration
 
 
+MAX_UNZIPPED = 64 * 2**20  # one file in a Garmin download (a day of monitoring is well under 1 MB)
+
+
 def unzip_changed(self, outdir):
     """GarminDB's __unzip_files, but a file is only (re)written when it is new or its bytes differ."""
     out = Path(outdir)
@@ -183,6 +186,9 @@ def unzip_changed(self, outdir):
                 for member in zf.infolist():
                     rel = Path(member.filename)
                     if member.is_dir() or rel.is_absolute() or ".." in rel.parts:
+                        continue
+                    if member.file_size > MAX_UNZIPPED:  # a tiny zip can claim gigabytes
+                        root_logger.error("unzip_files: skipping %s (%d bytes)", member.filename, member.file_size)
                         continue
                     data = zf.read(member)
                     target = out / rel

@@ -75,15 +75,29 @@ def _target(step: dict) -> dict | None:
     return None
 
 
-def _steps(raw: list[dict]) -> list[dict]:
+MAX_REPEATS = 99      # Garmin's editor allows up to 99 repeats per group
+MAX_DEPTH = 3         # repeat groups inside repeat groups
+MAX_STEPS = 500       # a flat workout the wall can draw; more is cut off
+
+
+def _steps(raw: list[dict], depth: int = 0) -> list[dict]:
     """Garmin's nested steps → flat list; repeat groups are expanded (6 × 800 m becomes 6 intervals
-    with recoveries) so the wall can draw the workout's shape and count the blocks."""
+    with recoveries) so the wall can draw the workout's shape and count the blocks. Bounded: nested
+    repeats multiply, so a few hundred bytes of workout JSON could otherwise expand to millions of steps."""
     out: list[dict] = []
     for s in sorted(raw or [], key=lambda s: s.get("stepOrder") or 0):
+        if len(out) >= MAX_STEPS:
+            break
         if s.get("type") == "RepeatGroupDTO" or s.get("workoutSteps"):
-            inner = _steps(s.get("workoutSteps") or [])
-            for _ in range(int(s.get("numberOfIterations") or 1)):
-                out.extend(dict(x) for x in inner)
+            if depth >= MAX_DEPTH:
+                continue
+            inner = _steps(s.get("workoutSteps") or [], depth + 1)
+            n = s.get("numberOfIterations")
+            n = int(min(n, MAX_REPEATS)) if isinstance(n, (int, float)) and n >= 1 else 1  # also inf/NaN
+            for _ in range(n):
+                if not inner or len(out) >= MAX_STEPS:
+                    break
+                out.extend(dict(x) for x in inner[:MAX_STEPS - len(out)])
             continue
         cond = (s.get("endCondition") or {}).get("conditionTypeKey")
         value = s.get("endConditionValue")
@@ -101,7 +115,7 @@ def parse_workout(raw: dict) -> dict:
     """A Garmin workout (adaptive or your own) → what the wall shows."""
     steps = []
     for seg in raw.get("workoutSegments") or []:
-        steps.extend(_steps(seg.get("workoutSteps") or []))
+        steps.extend(_steps(seg.get("workoutSteps") or [])[:MAX_STEPS - len(steps)])
     sport_key = (raw.get("sportType") or {}).get("sportTypeKey")
     est = raw.get("estimatedDurationInSecs")
     timed = sum(s["duration_s"] or 0 for s in steps)

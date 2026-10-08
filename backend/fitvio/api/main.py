@@ -20,7 +20,17 @@ from ..config import PROJECT_ROOT, AppConfig, env, load_config
 from ..pipeline import user_sessions
 from ..sync import activity_watch
 
-app = FastAPI(title="Fitvio", docs_url=None, redoc_url=None, openapi_url=None)
+class SafeJSONResponse(JSONResponse):
+    """Non-finite numbers become null instead of an HTTP 500, so one bad value from a provider
+    can't take down the shared wall for the whole household."""
+
+    def render(self, content) -> bytes:
+        return json.dumps(db.finite(content), ensure_ascii=False, allow_nan=False,
+                          separators=(",", ":")).encode("utf-8")
+
+
+app = FastAPI(title="Fitvio", docs_url=None, redoc_url=None, openapi_url=None,
+              default_response_class=SafeJSONResponse)
 _cfg: AppConfig | None = None
 
 # Extra hostnames the wall may be reached by (e.g. "fitvio" or "pi.fritz.box"), comma-separated.
@@ -252,6 +262,13 @@ async def events(request: Request, c: AppConfig = Depends(cfg)):
 
 # --- accounts (connect Garmin from the UI) -------------------------------------
 
+# Home-network address ranges, listed explicitly: Python's is_private also counts internet tunnel
+# prefixes (Teredo 2001::/32, 6to4 2002::/16) and other special ranges as private.
+HOME_NETWORKS = tuple(ipaddress.ip_network(n) for n in (
+    "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "127.0.0.0/8",  # RFC 1918, link-local, loopback
+    "fc00::/7", "fe80::/10", "::1/128"))                                              # ULA, link-local, loopback
+
+
 def local_network_only(request: Request) -> None:
     """The dashboard speaks plain HTTP, so Garmin credentials may only be sent from the home network."""
     host = request.client.host if request.client else ""
@@ -260,9 +277,8 @@ def local_network_only(request: Request) -> None:
     except ValueError:
         raise HTTPException(403, "account setup is only allowed from your home network")
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
-        # a dual-stack socket reports IPv4 clients as ::ffff:a.b.c.d; older Pythons call that whole range private
-        ip = ip.ipv4_mapped
-    if not (ip.is_private or ip.is_loopback):
+        ip = ip.ipv4_mapped  # a dual-stack socket reports IPv4 clients as ::ffff:a.b.c.d
+    if not any(ip in net for net in HOME_NETWORKS):
         raise HTTPException(403, "account setup is only allowed from your home network")
 
 
@@ -337,14 +353,15 @@ def connect_intervals(body: ConnectIntervals, c: AppConfig = Depends(cfg)):
 @app.put("/api/users/{user_id}/profile", dependencies=[Depends(local_network_only)])
 def set_profile(user_id: str, body: ProfileOverride, c: AppConfig = Depends(cfg), cn=Depends(conn)):
     """Your own max/resting HR (null = use the data source again). Zones, load and the reference HR of
-    the whole history follow on the next sync, which starts right away."""
+    the whole history are worked out again right away from what is already downloaded."""
     from ..config import set_overrides
     user = _user_or_404(c, user_id)
     set_overrides(user.id, {"max_hr": body.max_hr, "rest_hr": body.rest_hr})
     reset_config()
     db.set_state(cn, f"analysis_version:{user.id}", "")  # → the next ingest reprocesses everything
     user = load_config().user(user.id)
-    job = accounts.active_for(user.id) or (accounts.start_sync(user, c.db_path) if user.source else None)
+    # re-analyse what's downloaded; no new download, so this asks Garmin/Intervals.icu nothing
+    job = accounts.active_for(user.id) or (accounts.start_reprocess(user, c.db_path) if user.source else None)
     return {"profile": profile.describe(cn, user), "job": job.public() if job else None}
 
 

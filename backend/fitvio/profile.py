@@ -23,6 +23,7 @@ from pathlib import Path
 from statistics import median
 
 from .config import UserConfig
+from .db import finite
 
 log = logging.getLogger(__name__)
 
@@ -198,7 +199,9 @@ def refresh(conn: sqlite3.Connection, user: UserConfig, source) -> bool:
     now = datetime.now().isoformat(timespec="seconds")
     for field, (value, source_text) in found.items():
         if isinstance(value, (int, float)):
-            value = float(value)
+            value = finite(float(value))
+            if value is None:  # inf/NaN from a provider: keep what was there
+                continue
         conn.execute("INSERT OR REPLACE INTO profiles (user_id, field, value, source, updated_at) VALUES (?,?,?,?,?)",
                      (user.id, field, json.dumps(value), source_text, now))
     conn.commit()

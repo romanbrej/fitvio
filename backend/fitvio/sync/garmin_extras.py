@@ -55,11 +55,20 @@ def _get_or_empty(connectapi: Callable, url: str):
         raise
 
 
+def _day(day: date | str) -> str | None:
+    """YYYY-MM-DD, or None for anything else: the day comes from Garmin's activity list and goes
+    into a file name and a request path."""
+    try:
+        return date.fromisoformat(str(day)[:10]).isoformat()
+    except ValueError:
+        return None
+
+
 def missing(directory: Path, activity_id: str, day: date | str) -> tuple[bool, bool]:
     """(weather missing, acclimation missing) for one activity."""
-    wid = weather_id(activity_id)
+    wid, day = weather_id(activity_id), _day(day)
     return (wid is not None and not (directory / f"weather_{wid}.json").exists(),
-            not (directory / f"acclimation_{day}.json").exists())
+            day is not None and not (directory / f"acclimation_{day}.json").exists())
 
 
 def fetch_extras(connectapi: Callable, directory: Path, activity_id: str, day: date | str) -> int:
@@ -74,6 +83,7 @@ def fetch_extras(connectapi: Callable, directory: Path, activity_id: str, day: d
         return 0
     directory.mkdir(parents=True, exist_ok=True)
     need_weather, need_accl = missing(directory, activity_id, day)
+    day = _day(day)
     requests = 0
     if need_weather:  # none for indoor activities or without GPS
         requests += 1

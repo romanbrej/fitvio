@@ -5,8 +5,11 @@ overridden with the FITVIO_CONFIG env var, the app database with FITVIO_DB.
 """
 from __future__ import annotations
 
+import functools
 import json
 import os
+import tempfile
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -111,6 +114,19 @@ def config_path() -> Path:
     return Path(env("CONFIG") or PROJECT_ROOT / "config" / "users.json")
 
 
+_WRITE_LOCK = threading.Lock()  # connect jobs and the HR-settings endpoint both rewrite users.json
+
+
+def _serialized(fn):
+    """One read-modify-write of users.json at a time, so a concurrent change can't drop a new account."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with _WRITE_LOCK:
+            return fn(*args, **kwargs)
+    return wrapper
+
+
+@_serialized
 def add_user(user_id: str, garmindb_config_dir: str | None = None, intervals_dir: str | None = None) -> UserConfig:
     """Append a person to config/users.json (created if missing). Only id, colour and the data source
     dir are stored; everything else comes from the source."""
@@ -134,6 +150,7 @@ def add_user(user_id: str, garmindb_config_dir: str | None = None, intervals_dir
 PROFILE_OVERRIDES = ("max_hr", "rest_hr")
 
 
+@_serialized
 def set_overrides(user_id: str, values: dict[str, float | None]) -> None:
     """Set (or with None: remove) a person's own max/resting HR in config/users.json. These win over
     what the data source says (see profile.resolve)."""
@@ -151,6 +168,16 @@ def set_overrides(user_id: str, values: dict[str, float | None]) -> None:
 
 
 def _write(path: Path, raw: dict) -> None:
+    """Write to a private temp file, then rename over users.json: a full disk or a crash mid-write
+    leaves the old file intact instead of a truncated one that stops web and sync from starting."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(raw, indent=2) + "\n")
-    os.chmod(path, 0o600)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".users-", suffix=".json")  # created 0600
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(json.dumps(raw, indent=2) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise

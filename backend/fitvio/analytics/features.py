@@ -1,6 +1,7 @@
 """Turn a ParsedActivity into a flat feature dict + session row + chart streams."""
 from __future__ import annotations
 
+import math
 import re
 from statistics import median, pstdev
 
@@ -202,7 +203,7 @@ def _avg(values) -> float | None:
 
 def _round(obj):
     if isinstance(obj, float):
-        return round(obj, 4)
+        return round(obj, 4) if math.isfinite(obj) else None
     if isinstance(obj, dict):
         return {k: _round(v) for k, v in obj.items()}
     if isinstance(obj, list):
