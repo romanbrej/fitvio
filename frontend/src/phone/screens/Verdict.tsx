@@ -50,7 +50,7 @@ export function VerdictScreen() {
             </div>
             <span className="ph-h3">{v.headline}</span>
             <div className="ph-row" style={{ flexWrap: 'wrap', gap: 8 }}>
-              <span className="pill">Confidence: {v.confidence}</span>
+              {v.verdict !== 'excluded' && <span className="pill">Confidence: {v.confidence}</span>}
               {s.rpe != null && <span className="pill">RPE {num(s.rpe)}/10</span>}
             </div>
           </>

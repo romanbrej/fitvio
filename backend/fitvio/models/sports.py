@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from ..analytics import load as load_model
-from .base import MIN_SIMILAR, MetricSpec, SportModel
+from .base import MIN_SIMILAR, MetricSpec, SportModel, comparable
 
 
 def fmt_pace_km(speed: float) -> str:
@@ -145,7 +145,7 @@ class StrengthModel(SportModel):
     STRONGER, WEAKER = 0.02, -0.03
 
     def evaluate(self, session, history, health, health_base):
-        same = sorted((h for h in history if h["sport"] == "strength"), key=lambda h: h["start_time"], reverse=True)
+        same = sorted(comparable(history, "strength"), key=lambda h: h["start_time"], reverse=True)
         trend = load_model.impact_of(session, history + [session])
         context = self.context_notes(session, health, health_base, trend)
         exercises = (session.get("features") or {}).get("exercises") or {}

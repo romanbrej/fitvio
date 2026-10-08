@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Bar, BarChart } from 'recharts'
 import { api } from '../api'
 import type { Delta, SessionDetail } from '../api'
+import { BaselineSwitch, ConfirmExclude, ExcludeButton, useBaseline } from '../components/Baseline'
 import { SportIcon, VerdictIcon } from '../components/icons'
 import { Improvements } from '../components/Improvements'
 import { SetList } from '../components/SetList'
@@ -153,20 +154,28 @@ export function StreamChart({ s }: { s: SessionDetail }) {
 
 export function SessionDetailView() {
   const { id } = useParams()
-  const nav = useNavigate()
-  const { data: s, error } = useFetch(() => api.session(id!), [id])
+  const { data, error } = useFetch(() => api.session(id!), [id])
   if (error) return <div className="card">Could not load session: {error}</div>
-  if (!s) return <div className="muted">Loading…</div>
+  if (!data) return <div className="muted">Loading…</div>
+  return <SessionBody key={data.id} loaded={data} />
+}
+
+function SessionBody({ loaded }: { loaded: SessionDetail }) {
+  const nav = useNavigate()
+  const bl = useBaseline(loaded)
+  const s = bl.session
   const v = s.verdict
   const f = s.features || {}
   const laps = s.streams?.laps ?? []
   const numbers = factGroups(s)
-  const t = v?.trend
+  // "What improved" beside the verdict; a session left out of comparisons (bad data) shows no gains
+  const improved = !!v?.trend && v.verdict !== 'excluded'
+  const pending = s.baseline_sessions.find(x => x.id === bl.confirm)  // a "Compared with" row waiting for "Leave out"
 
   return (
     <div className="detail">
       <div className="detail-grid">
-        <section className={`card hero stripes ${t ? 'span-7' : 'span-12'}`}>
+        <section className={`card hero stripes ${improved ? 'span-7' : 'span-12'}`}>
           <div className="stack" style={{ gap: 8 }}>
             <div className="row">
               <span className="pill"><SportIcon sport={s.sport} size={16} /> {SPORT_LABEL[s.sport]} · {TYPE_LABEL[s.session_type] ?? s.session_type}</span>
@@ -180,14 +189,14 @@ export function SessionDetailView() {
                 </div>
                 <div className="display" style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.1 }}>{v.headline}</div>
                 <div className="row" style={{ gap: 8 }}>
-                  <span className="pill">Confidence: {v.confidence}</span>
+                  {v.verdict !== 'excluded' && <span className="pill">Confidence: {v.confidence}</span>}
                   {s.rpe != null && <span className="pill">Effort {num(s.rpe)}/10{s.feel != null ? ` · ${feelLabel(s.feel)}` : ''}</span>}
                 </div>
               </>
             )}
           </div>
         </section>
-        {t && (
+        {improved && (
           <div className="span-5">
             <Improvements items={s.improvements ?? []}
                           onClick={() => nav(`/u/${s.user_id}/load`)} />
@@ -207,6 +216,8 @@ export function SessionDetailView() {
             )}
           </div>
         )}
+
+        <div className="card span-12"><BaselineSwitch b={bl} /></div>
 
         {v && v.deltas.length > 0 && (
           <div className="card span-12">
@@ -290,18 +301,20 @@ export function SessionDetailView() {
             <div className="card-title">Baseline: the sessions you were compared with</div>
             <div className="table-wrap">
               <table className="data">
-                <thead><tr><th>When</th><th className="num">Duration</th><th className="num">Dist</th><th className="num">Avg HR</th><th className="num">Key metric</th></tr></thead>
+                <thead><tr><th>When</th><th className="num">Duration</th><th className="num">Dist</th><th className="num">Avg HR</th><th className="num">Key metric</th><th aria-label="Leave out" /></tr></thead>
                 <tbody>
                   {s.baseline_sessions.map(b => (
                     <tr key={b.id} className="clickable" onClick={() => nav(`/session/${encodeURIComponent(b.id)}`)}>
                       <td>{when(b.start_time)}</td><td className="num">{duration(b.duration_s)}</td>
                       <td className="num">{distance(b.distance_m, s.sport)}</td><td className="num">{num(b.avg_hr)}</td>
                       <td className="num">{v?.deltas[0] ? keyMetric(s.sport, b.features) : '—'}</td>
+                      <td className="baseline-cell"><ExcludeButton b={bl} id={b.id} /></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            {pending && <div style={{ marginTop: 12 }}><ConfirmExclude b={bl} id={pending.id} what={`the session of ${when(pending.start_time)}`} /></div>}
           </div>
         )}
       </div>

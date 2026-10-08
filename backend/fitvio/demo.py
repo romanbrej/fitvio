@@ -212,6 +212,7 @@ def generate(conn: sqlite3.Connection, cfg: AppConfig, days: int = 150, seed: in
         conn.execute("DELETE FROM sessions WHERE user_id = ?", (user.id,))
         conn.execute("DELETE FROM verdicts WHERE user_id = ?", (user.id,))
         conn.execute("DELETE FROM health_days WHERE user_id = ?", (user.id,))
+        conn.execute("DELETE FROM baseline_exclusions WHERE user_id = ?", (user.id,))
         improving = ui == 0
         n = 0
         for d in range(days, -1, -1):

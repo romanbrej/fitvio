@@ -20,6 +20,7 @@ const PRIMARY: Record<string, { label: string; get: (f: Record<string, any>) => 
 
 const VCOLOR: Record<VerdictKind, string> = {
   better: 'var(--better)', in_line: 'var(--inline)', worse: 'var(--worse)', not_comparable: 'var(--na)', load_only: 'var(--load)',
+  excluded: 'var(--na)',
 }
 
 export function SportDetail() {
@@ -28,8 +29,9 @@ export function SportDetail() {
   const { data } = useFetch(() => api.sessions(user!, sport, 200), [user, sport])
   const p = PRIMARY[sport ?? 'other'] ?? PRIMARY.other
   const [all, setAll] = useState(false)
-  // running: like the wall card, every outdoor run with steady time at the reference HR (others have no value)
-  const usable = (s: { indoor?: boolean | number; features?: Record<string, any> | null }) => sport !== 'running' || !s.indoor
+  // running: like the wall card, every outdoor run with steady time at the reference HR (others have no value).
+  // Sessions left out of comparisons (bad data) are not plotted; their row in the table says "Excluded".
+  const usable = (s: { indoor?: boolean | number; excluded?: boolean | number }) => !s.excluded && (sport !== 'running' || !s.indoor)
   const pts = (data ?? []).filter(usable).slice().reverse()
     .map(s => ({ t: new Date(s.start_time).getTime(), v: p.get(s.features ?? {}), verdict: s.verdict, id: s.id, type: s.session_type }))
     .filter(x => x.v != null)
@@ -70,7 +72,7 @@ export function SportDetail() {
   // strength: per-exercise e1RM history
   const exHist: Record<string, { label: string; pts: { t: number; v: number }[] }> = {}
   if (sport === 'strength') {
-    (data ?? []).slice().reverse().forEach(s => {
+    (data ?? []).filter(usable).slice().reverse().forEach(s => {
       Object.entries((s.features?.exercises ?? {}) as Record<string, any>).forEach(([k, e]) => {
         if (!e.e1rm) return
         ;(exHist[k] ??= { label: e.label ?? k, pts: [] }).pts.push({ t: new Date(s.start_time).getTime(), v: e.e1rm })

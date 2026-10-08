@@ -7,6 +7,7 @@ export const MAIN_SPORTS: Sport[] = ['running', 'cycling', 'swimming', 'strength
 /** The verdict's colour: Better gets the volt accent, like on the wall. Always shown with its icon and word. */
 export const VERDICT_COLOR: Record<VerdictKind, string> = {
   better: 'var(--volt)', in_line: 'var(--inline)', worse: 'var(--worse)', not_comparable: 'var(--na)', load_only: 'var(--load)',
+  excluded: 'var(--na)',
 }
 
 /** A short note under a number, coloured by `tone` (better / worse / inline / muted). */

@@ -42,8 +42,26 @@ def store_activity(conn: sqlite3.Connection, user: UserConfig, act: ParsedActivi
 
 
 def user_sessions(conn: sqlite3.Connection, user_id: str) -> list[dict]:
+    """All of a person's sessions, oldest first, each with `excluded` (left out of comparisons)."""
     rows = conn.execute("SELECT * FROM sessions WHERE user_id = ? ORDER BY start_time", (user_id,)).fetchall()
-    return [db.row_to_dict(r) for r in rows]
+    sessions = [db.row_to_dict(r) for r in rows]
+    _mark_excluded(sessions, excluded_ids(conn, user_id))
+    return sessions
+
+
+def excluded_ids(conn: sqlite3.Connection, user_id: str) -> set[str]:
+    return {r["session_id"] for r in conn.execute(
+        "SELECT session_id FROM baseline_exclusions WHERE user_id = ?", (user_id,))}
+
+
+def _mark_excluded(sessions: list[dict], excluded: set[str]) -> None:
+    for s in sessions:
+        s["excluded"] = s["id"] in excluded
+
+
+def performance_sessions(sessions: list[dict]) -> list[dict]:
+    """The sessions that count for performance (verdicts, trends, bests). Load and form use them all."""
+    return [s for s in sessions if not s.get("excluded")]
 
 
 def health_for(conn: sqlite3.Connection, user_id: str, day: str) -> tuple[dict | None, dict | None]:
@@ -59,10 +77,16 @@ def health_for(conn: sqlite3.Connection, user_id: str, day: str) -> tuple[dict |
 
 def evaluate_session(conn: sqlite3.Connection, user_id: str, sid: str, sessions: list[dict] | None = None) -> dict:
     sessions = sessions if sessions is not None else user_sessions(conn, user_id)
+    # read fresh: a sync running alongside may hold a list loaded before someone excluded a session
+    _mark_excluded(sessions, excluded_ids(conn, user_id))
     session = next(s for s in sessions if s["id"] == sid)
     history = [s for s in sessions if s["start_time"] < session["start_time"]]
-    health, base = health_for(conn, user_id, session["start_time"][:10])
-    result = model_for(session["sport"]).evaluate(session, history, health, base)
+    model = model_for(session["sport"])
+    if session["excluded"]:
+        result = model.excluded(session, history)
+    else:
+        health, base = health_for(conn, user_id, session["start_time"][:10])
+        result = model.evaluate(session, history, health, base)
     prev = conn.execute("SELECT first_shown_at FROM verdicts WHERE session_id = ?", (sid,)).fetchone()
     result["first_shown_at"] = prev["first_shown_at"] if prev else None  # re-evaluation must not re-trigger the wall
     result["created_at"] = datetime.now().isoformat(timespec="seconds")
@@ -81,6 +105,29 @@ def evaluate_all(conn: sqlite3.Connection, user_id: str, only_missing: bool = Fa
         n += 1
     conn.commit()
     return n
+
+
+def set_excluded(conn: sqlite3.Connection, user_id: str, sid: str, excluded: bool) -> int:
+    """Leave a session out of every performance comparison, or bring it back, and recompute the verdicts
+    it can reach: its own and every later one of the same sport (baselines, trends and all-time bests
+    look back that far). Returns how many verdicts were recomputed."""
+    try:
+        if excluded:
+            conn.execute("INSERT OR IGNORE INTO baseline_exclusions (session_id, user_id, excluded_at) VALUES (?, ?, ?)",
+                         (sid, user_id, datetime.now().isoformat(timespec="seconds")))
+        else:
+            conn.execute("DELETE FROM baseline_exclusions WHERE session_id = ?", (sid,))
+        sessions = user_sessions(conn, user_id)
+        target = next(s for s in sessions if s["id"] == sid)
+        affected = [s["id"] for s in sessions
+                    if s["sport"] == target["sport"] and s["start_time"] >= target["start_time"]]
+        for aid in affected:
+            evaluate_session(conn, user_id, aid, sessions)
+        conn.commit()
+    except Exception:
+        conn.rollback()  # all or nothing: never an exclusion with half its verdicts recomputed
+        raise
+    return len(affected)
 
 
 def store_health(conn: sqlite3.Connection, user_id: str, days: list[dict]) -> None:

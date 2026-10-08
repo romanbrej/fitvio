@@ -9,7 +9,7 @@ from . import buddy, coach, db, improvements, profile
 from .analytics import load as load_model
 from .analytics import physio
 from .config import AppConfig
-from .pipeline import user_sessions
+from .pipeline import performance_sessions, user_sessions
 
 
 def _now() -> datetime:
@@ -27,7 +27,8 @@ def fresh_verdict(conn: sqlite3.Connection, cfg: AppConfig, now: datetime | None
     cutoff = (now - timedelta(hours=cfg.wall.fresh_activity_hours)).isoformat(timespec="seconds")
     rows = conn.execute(
         """SELECT v.*, s.start_time FROM verdicts v JOIN sessions s ON s.id = v.session_id
-           WHERE s.start_time >= ? ORDER BY s.start_time DESC""", (cutoff,)).fetchall()
+           WHERE s.start_time >= ? AND v.verdict != 'excluded'
+           ORDER BY s.start_time DESC""", (cutoff,)).fetchall()
     for r in rows:
         shown = r["first_shown_at"]
         if shown is None or datetime.fromisoformat(shown) > now - timedelta(minutes=cfg.wall.verdict_minutes):
@@ -66,6 +67,8 @@ def session_detail(conn: sqlite3.Connection, session_id: str) -> dict | None:
     s["sets"] = [dict(r) for r in conn.execute(
         "SELECT * FROM exercise_sets WHERE session_id = ? ORDER BY set_index", (session_id,))]
     s["baseline_sessions"] = _sessions_by_id(conn, (s["verdict"] or {}).get("baseline_ids") or [])
+    s["excluded_from_baseline"] = conn.execute(
+        "SELECT 1 FROM baseline_exclusions WHERE session_id = ?", (session_id,)).fetchone() is not None
     return s
 
 
@@ -124,21 +127,24 @@ def sport_status(sessions: list[dict], sport: str, ftp: float | None, weights: i
     cycling: power per heartbeat of the rides with power in 3 months, plus W/kg of FTP and of the
              power at the reference HR.
     strength: sessions per 6 weeks vs the 6 before, and the e1RM trend when weights are logged.
+    Sessions someone excluded (bad data) count for how often they trained, never for a performance number.
     """
-    def recent(days, keep):
+    perf = performance_sessions(sessions)
+
+    def recent(days, keep, pool=perf):
         lo = (today - timedelta(days=days)).isoformat()
-        return sorted((s for s in sessions if s["sport"] == sport and s["start_time"][:10] >= lo and keep(s)),
+        return sorted((s for s in pool if s["sport"] == sport and s["start_time"][:10] >= lo and keep(s)),
                       key=lambda s: s["start_time"])
 
     if sport == "running":
         # every outdoor run counts, for the steady seconds it spent at the reference HR (features.py)
-        measured = [s for s in sessions if s["sport"] == "running" and not s.get("indoor")
+        measured = [s for s in perf if s["sport"] == "running" and not s.get("indoor")
                     and (s.get("features") or {}).get("speed_at_ref_hr") and s["features"].get("ref_hr_secs")]
         if not measured:
             return None
         newest = max(date.fromisoformat(s["start_time"][:10]) for s in measured)
         lo = (newest - timedelta(days=42)).isoformat()
-        runs = sorted((s for s in sessions if s["sport"] == "running" and not s.get("indoor")
+        runs = sorted((s for s in perf if s["sport"] == "running" and not s.get("indoor")
                        and s["start_time"][:10] >= lo), key=lambda s: s["start_time"])
         pts = []  # (start, pace s/km, heat-adjusted pace, seconds, ref HR)
         for s in runs:
@@ -185,7 +191,7 @@ def sport_status(sessions: list[dict], sport: str, ftp: float | None, weights: i
                 "ref_hr": lf.get("ref_hr"),
                 "points": [{"day": s["start_time"][:10], "value": round(s["features"]["ef"], 3)} for s in rides]}
     if sport == "strength":
-        return strength_status(recent(84, lambda s: True), today)
+        return strength_status(recent(84, lambda s: True, pool=sessions), today)
     return None
 
 
@@ -201,7 +207,7 @@ def strength_status(gym: list[dict], today: date) -> dict:
 
     # per exercise with 3+ weighted sessions in 6 weeks: e1RM slope over 6 weeks in % of its mean
     by_ex: dict[str, list[tuple[float, float]]] = {}
-    for s in now:
+    for s in performance_sessions(now):
         day = (date.fromisoformat(s["start_time"][:10]) - today).days
         for ex, d in ((s.get("features") or {}).get("exercises") or {}).items():
             if d.get("e1rm"):
@@ -261,7 +267,8 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
     for sport in ("running", "cycling", "swimming", "strength"):
         r = conn.execute(
             """SELECT v.trend, v.verdict, s.start_time, s.id FROM verdicts v JOIN sessions s ON s.id = v.session_id
-               WHERE s.user_id = ? AND s.sport = ? ORDER BY s.start_time DESC LIMIT 1""", (user_id, sport)).fetchone()
+               WHERE s.user_id = ? AND s.sport = ? AND v.verdict != 'excluded'
+               ORDER BY s.start_time DESC LIMIT 1""", (user_id, sport)).fetchone()
         if r:
             t = db.row_to_dict(r)
             trends[sport] = {"last_session": t["id"], "last_time": t["start_time"], "last_verdict": t["verdict"],
@@ -277,7 +284,7 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
                 trends[sport]["status"] = sport_status(sessions, sport, (prof.get("ftp") or {}).get("value"),
                                                        weights, today)
         if "running" in trends:
-            trends["running"]["cadence"] = coach.running_cadence(sessions, today)
+            trends["running"]["cadence"] = coach.running_cadence(performance_sessions(sessions), today)
 
     recent = conn.execute(
         """SELECT s.id, s.name, s.sport, s.session_type, s.start_time, s.duration_s, s.distance_m, s.load,

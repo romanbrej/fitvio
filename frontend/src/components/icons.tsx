@@ -1,10 +1,10 @@
-import { Activity, Bike, CircleHelp, Dumbbell, Footprints, MoveRight, TrendingDown, TrendingUp, Waves } from 'lucide-react'
+import { Activity, Ban, Bike, CircleHelp, Dumbbell, Footprints, MoveRight, TrendingDown, TrendingUp, Waves } from 'lucide-react'
 import type { LucideProps } from 'lucide-react'
 import type { Sport, VerdictKind } from '../api'
 import { VERDICT_LABEL } from '../format'
 
 const SPORT_ICON = { running: Footprints, cycling: Bike, swimming: Waves, strength: Dumbbell, other: Activity }
-const VERDICT_ICON = { better: TrendingUp, in_line: MoveRight, worse: TrendingDown, not_comparable: CircleHelp, load_only: Activity }
+const VERDICT_ICON = { better: TrendingUp, in_line: MoveRight, worse: TrendingDown, not_comparable: CircleHelp, load_only: Activity, excluded: Ban }
 
 export function SportIcon({ sport, ...p }: { sport: Sport } & LucideProps) {
   const I = SPORT_ICON[sport] ?? Activity
