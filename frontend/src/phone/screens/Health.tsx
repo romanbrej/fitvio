@@ -19,13 +19,15 @@ function column(days: string[], rows: Map<string, HealthDay>, k: keyof HealthDay
   return days.map(d => { const v = rows.get(d)?.[k]; return typeof v === 'number' ? v : null })
 }
 
-/** "▼ 3 bpm in 30 days", coloured by whether that direction is good. */
+/** "▼ 3 bpm in 30 days" from the first to the last value in the range, coloured by whether that direction is good. */
 function change(values: (number | null)[], unit: string, dp: number, goodUp: boolean): Note | null {
-  const xs = values.filter((v): v is number => v != null)
-  if (xs.length < 2) return null
-  const diff = xs[xs.length - 1] - xs[0]
-  if (Math.abs(diff) < (dp ? 0.1 : 1)) return { text: `→ steady over ${values.length} days`, tone: 'muted' }
-  return { text: `${diff > 0 ? '▲' : '▼'} ${Math.abs(diff).toFixed(dp)}${unit} in ${values.length} days`, tone: diff > 0 === goodUp ? 'better' : 'worse' }
+  const first = values.findIndex(v => v != null)
+  const last = values.findLastIndex(v => v != null)
+  const days = last - first
+  if (first < 0 || days < 1) return null
+  const diff = values[last]! - values[first]!
+  if (Math.abs(diff) < (dp ? 0.1 : 1)) return { text: `→ steady over ${days} days`, tone: 'muted' }
+  return { text: `${diff > 0 ? '▲' : '▼'} ${Math.abs(diff).toFixed(dp)}${unit} in ${days} days`, tone: diff > 0 === goodUp ? 'better' : 'worse' }
 }
 
 interface Metric {
@@ -45,8 +47,8 @@ function MetricCard({ m, days, focus, picked, onPick }: {
   return (
     <Card id={`m-${m.id}`} className={focus === m.id ? 'ph-focus' : ''}>
       <div className="ph-row" style={{ alignItems: 'flex-start' }}>
-        <div><span className="ph-label">{m.label}</span><span className={`ph-when${picked != null ? ' on' : ''}`}>{picked != null && v == null ? `${when} · no data` : when}</span></div>
-        <span className="ph-right"><b className="num ph-v">{value}</b>{m.unit && (picked == null || v != null) && <span className="ph-unit"> {m.unit}</span>}</span>
+        <div aria-live="polite"><span className="ph-label">{m.label}</span><span className={`ph-when${picked != null ? ' on' : ''}`}>{picked != null && v == null ? `${when} · no data` : when}</span></div>
+        <span className="ph-right" aria-live="polite"><b className="num ph-v">{value}</b>{m.unit && (picked == null || v != null) && <span className="ph-unit"> {m.unit}</span>}</span>
       </div>
       {m.note && <span className={`ph-foot tone-${m.note.tone}`}>{m.note.text}</span>}
       <AxisChart n={days.length} lo={m.lo} hi={m.hi} ticks={m.ticks} band={m.band} refColor={m.refColor}
@@ -75,7 +77,7 @@ export function Health() {
   const focus = params.get('metric')
   const [range, setRange] = useState<number>(30)
   const [rows, setRows] = useState<HealthDay[] | null>(null)
-  const [picks, setPicks] = useState<Record<string, number | null>>({})
+  const [picks, setPicks] = useState<Record<string, string | null>>({})  // metric → picked day
   useEffect(() => {
     let alive = true
     api.health(me.id, range).then(d => alive && setRows(d)).catch(() => alive && setRows([]))
@@ -96,7 +98,6 @@ export function Health() {
   const bb = bodyBatteryNote(h.bb_max)
 
   const metrics = (): Metric[] => {
-    const days = lastDays(range)
     const byDay = new Map(rows!.map(r => [r.day, r]))
     const col = (k: keyof HealthDay) => column(days, byDay, k)
     const int = (v: number) => String(Math.round(v))
@@ -136,6 +137,7 @@ export function Health() {
     return out
   }
 
+  const days = lastDays(range)
   const pickRange = (r: number) => { setRange(r); setPicks({}) }
 
   return (
@@ -148,10 +150,11 @@ export function Health() {
         ))}
       </div>
 
-      {!rows ? <div className="ph-boot">Loading…</div> : metrics().map(m => (
-        <MetricCard key={m.id} m={m} days={lastDays(range)} focus={focus} picked={picks[m.id] ?? null}
-                    onPick={i => setPicks(p => ({ ...p, [m.id]: i }))} />
-      ))}
+      {!rows ? <div className="ph-boot">Loading…</div> : metrics().map(m => {
+        const at = picks[m.id] ? days.indexOf(picks[m.id]!) : -1
+        return <MetricCard key={m.id} m={m} days={days} focus={focus} picked={at < 0 ? null : at}
+                           onPick={i => setPicks(p => ({ ...p, [m.id]: i == null ? null : days[i] }))} />
+      })}
     </div>
   )
 }

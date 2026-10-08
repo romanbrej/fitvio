@@ -23,16 +23,24 @@ export function TrendsNav({ on }: { on: 'load' | 'health' }) {
 
 const SWEET_EDGE = '#a3c25a'
 
+/** Index of the picked key in `keys`, null when nothing (or something no longer shown) is picked. */
+function indexOf(keys: string[], key: string | null): number | null {
+  const i = key == null ? -1 : keys.indexOf(key)
+  return i < 0 ? null : i
+}
+
 function LoadCard({ a }: { a: Ambient }) {
-  const [picked, setPicked] = useState<number | null>(null)
+  const [pickedDay, setPickedDay] = useState<string | null>(null)  // a date, so a refresh can't move it
   const days = a.pmc.slice(-42)
   if (days.length < 2) return null
+  const picked = indexOf(days.map(p => p.day), pickedDay)
+  const setPicked = (i: number | null) => setPickedDay(i == null ? null : days[i].day)
   const d = picked == null ? a.form : days[picked]
   const { lo, hi, ticks } = niceTicks(days.flatMap(p => [p.fitness, p.fatigue, p.form, 0]), v => String(v))
   const when = picked == null ? '6 weeks' : picked === days.length - 1 ? 'Today' : dayLabel(days[picked].day, true)
   return (
     <Card>
-      <div className="ph-row"><span className="ph-h3">Training load</span><span className={`ph-right ph-when${picked != null ? ' on' : ''}`}>{when}</span></div>
+      <div className="ph-row"><span className="ph-h3">Training load</span><span className={`ph-right ph-when${picked != null ? ' on' : ''}`} aria-live="polite">{when}</span></div>
       <FormNumbers form={d} legend />
       <AxisChart n={days.length} lo={lo} hi={hi} ticks={ticks.map(t => t.value === 0 ? { ...t, ref: true } : t)} height={150}
                  lines={[
@@ -48,10 +56,12 @@ function LoadCard({ a }: { a: Ambient }) {
 }
 
 function WeeksCard({ a }: { a: Ambient }) {
-  const [picked, setPicked] = useState<number | null>(null)
+  const [pickedWeek, setPickedWeek] = useState<string | null>(null)  // the week's Monday, not its position
   const ss = a.sweet_spot!
   const weeks = weeklyLoads(a.pmc)
   const n = weeks.length
+  const picked = indexOf(weeks.map(x => x.week), pickedWeek)
+  const setPicked = (i: number | null) => setPickedWeek(i == null ? null : weeks[i]?.week ?? null)
   const hi = Math.ceil(Math.max(ss.high, ...weeks.map(w => w.load)) * 1.08 / 100) * 100
   const i = picked ?? n - 2
   const w = weeks[i]
@@ -65,7 +75,7 @@ function WeeksCard({ a }: { a: Ambient }) {
       <div className="ph-axis"><span>too little</span><span>sweet spot</span><span>too much</span></div>
       <span className="ph-secondary">{sweetHint(a)}</span>
       {w && (
-        <div className="ph-row ph-week-read">
+        <div className="ph-row ph-week-read" aria-live="polite">
           <span className="ph-label sm">{title}</span>
           <span className="ph-right"><b className="num">{w.load}</b> <span className={`ph-foot tone-${state.tone}`} style={{ display: 'inline' }}>{state.text}</span></span>
         </div>

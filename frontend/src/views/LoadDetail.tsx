@@ -42,7 +42,7 @@ function WeeksCard({ a }: { a: Ambient }) {
     <section className="card">
       <div className="between" style={{ alignItems: 'baseline' }}>
         <div className="card-title">TRIMP per week · sweet spot {ss.low}–{ss.high}</div>
-        <div><span className="label">{title}</span>{' '}
+        <div aria-live="polite"><span className="label">{title}</span>{' '}
           <b className="num" style={{ fontSize: 28 }}>{w.load}</b>{' '}
           <span className={`tone-${state.tone}`}>{state.text}</span></div>
       </div>
