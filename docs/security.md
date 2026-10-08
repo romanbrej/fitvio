@@ -15,7 +15,9 @@ Everything under `data/` and `config/users.json` is git-ignored and never built 
 
 ## How the web app is protected
 
-- **Home network only.** Garmin logins and settings changes are only accepted from private or loopback addresses. The dashboard speaks plain HTTP, so never forward port 8765 to the internet.
+- **Home network only.** Garmin logins and settings changes are only accepted from home-network addresses (10.x, 172.16–31.x, 192.168.x, IPv6 ULA and link-local, loopback). The dashboard speaks plain HTTP, so never forward port 8765 to the internet.
+- **Docker listens on IPv4 only.** Docker hands IPv6 connections to the container through a proxy, which hides the real client behind a private address. So the published port is IPv4-only; set `FITVIO_BIND` in `.env` to your server's LAN IP to listen on the home network only. With rootless Docker every client looks local, so don't use it for Fitvio.
+- **Bad data from a provider can't break the wall.** Numbers that aren't finite (e.g. an infinite speed in a crafted FIT file) are dropped on import, and workouts and downloads have size limits.
 - **DNS rebinding.** The server only answers to IP addresses, `localhost`, bare LAN hostnames and local domains (`.local`, `.lan`, `.home`, `.fritz.box`, …). To use another hostname, set `FITVIO_ALLOWED_HOSTS=myname.example`.
 - **Cross-site requests.** State-changing requests from another origin are refused, and non-JSON bodies are rejected.
 - **Headers.** A strict Content-Security-Policy, `X-Frame-Options: DENY` (no clickjacking of the login form), `nosniff`, `no-referrer`, and `no-store` on API responses.

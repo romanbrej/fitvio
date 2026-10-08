@@ -330,6 +330,32 @@ def start_connect_intervals(athlete_id: str, api_key: str, db_path: Path,
     return job
 
 
+def start_reprocess(user: UserConfig, db_path: Path) -> Job:
+    """Re-analyse what is already downloaded (e.g. after a max/resting HR change). Asks the data
+    source nothing, so it needs no sync cooldown."""
+    running = active_for(user.id)
+    if running:
+        return running
+    job = _add(Job(kind="sync", user_id=user.id, phase="importing",
+                   message="Analysing your activities and working out every verdict"))
+
+    def run() -> None:
+        conn = db.connect(db_path)
+        try:
+            job.result = timed_ingest(conn, user, full=False, changed_since=changed_since(conn, user.id))
+            job.phase = "done"
+            job.message = result_message(job.result, False)
+        except Exception as e:
+            log.exception("reprocess failed for %s", user.id)
+            job.phase, job.error = "error", str(e)
+        finally:
+            job.finished_at = _now()
+            conn.close()
+
+    threading.Thread(target=run, name=f"reprocess-{job.id}", daemon=True).start()
+    return job
+
+
 def start_sync(user: UserConfig, db_path: Path, full: bool = False, quick: bool = False) -> Job:
     running = active_for(user.id)
     if running:

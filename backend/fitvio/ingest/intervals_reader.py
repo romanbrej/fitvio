@@ -14,14 +14,15 @@ Layout of <base>  (data/intervals/<user>/, chmod 700):
 from __future__ import annotations
 
 import base64
-import gzip
 import json
 import logging
+import math
 import os
 import re
 import urllib.error
 import urllib.parse
 import urllib.request
+import zlib
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from statistics import median
@@ -35,6 +36,7 @@ log = logging.getLogger(__name__)
 
 API = "https://intervals.icu/api/v1"
 TIMEOUT_S = 60
+MAX_BYTES = 64 * 2**20  # one answer or unpacked FIT file; a real FIT is a few MB
 FULL_HISTORY_DAYS = 5 * 365  # first download; FITVIO_INTERVALS_HISTORY_DAYS=30 for a quick test
 RECENT_DAYS = 14  # a normal sync re-reads at least this window: late uploads and edits (name, RPE) show up
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
@@ -103,7 +105,7 @@ class Client:
                                                    "User-Agent": "fitvio"})
         try:
             with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:
-                return r.read()
+                data = r.read(MAX_BYTES + 1)
         except urllib.error.HTTPError as e:
             if e.code in (401, 403):
                 raise AuthFailed("Intervals.icu rejected the API key — check it in Accounts") from None
@@ -112,6 +114,9 @@ class Client:
             raise IntervalsError(f"Intervals.icu answered {e.code} for {path}") from None
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             raise IntervalsError(f"Intervals.icu not reachable: {e}") from None
+        if len(data) > MAX_BYTES:
+            raise IntervalsError(f"Intervals.icu answer for {path} is larger than {MAX_BYTES // 2**20} MB")
+        return data
 
     def json(self, path: str, **params):
         return json.loads(self._fetch(path, params))
@@ -133,11 +138,37 @@ class Client:
         aid = activity["id"]
         if str(activity.get("file_type") or "").lower() == "fit":
             data = self._fetch(f"/activity/{aid}/file", {})
-            data = gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data
+            data = _gunzip(data)
             if data[8:12] == b".FIT":
                 return data
         data = self._fetch(f"/activity/{aid}/fit-file", {})
-        return gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data
+        return _gunzip(data)
+
+
+def _gunzip(data: bytes) -> bytes:
+    """Unpack a gzipped file, but never beyond MAX_BYTES (a small gzip can unpack to gigabytes)."""
+    if data[:2] != b"\x1f\x8b":
+        return data
+    try:
+        d = zlib.decompressobj(wbits=31)
+        out = d.decompress(data, MAX_BYTES)
+    except zlib.error as e:
+        raise IntervalsError(f"Intervals.icu sent a broken gzip file: {e}") from None
+    if d.unconsumed_tail:
+        raise IntervalsError(f"Intervals.icu file unpacks to more than {MAX_BYTES // 2**20} MB")
+    return out
+
+
+def _num(v) -> float | None:
+    """A finite number from provider JSON, else None. json.loads turns 1e999 into inf, and an inf
+    that reaches the database makes every API response containing it fail."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    try:
+        f = float(v)
+    except OverflowError:  # an integer too large for a float
+        return None
+    return f if math.isfinite(f) else None
 
 
 # --- download -----------------------------------------------------------------------
@@ -251,7 +282,7 @@ class IntervalsReader:
         raw_sport, raw_sub = SPORTS.get(a.get("type") or "", (str(a.get("type") or "other").lower(), None))
         sport, indoor = normalize_sport(fs.get("sport") or raw_sport, fs.get("sub_sport") or raw_sub)
         indoor = indoor or bool(a.get("trainer"))
-        rpe = a.get("icu_rpe") or fs.get("rpe")
+        rpe = _num(a.get("icu_rpe")) or _num(fs.get("rpe"))
         feel = a.get("feel")  # Intervals.icu: 1 (strong) … 5 (weak) → Fitvio 0..100, 100 = very strong
         feel = (5 - feel) * 25 if isinstance(feel, (int, float)) and 1 <= feel <= 5 else fs.get("feel")
         temp = a.get("average_weather_temp")
@@ -262,17 +293,17 @@ class IntervalsReader:
             raw_sport=a.get("type"),
             sub_sport=fs.get("sub_sport") or raw_sub,
             name=a.get("name"),
-            duration_s=float(a.get("moving_time") or a.get("elapsed_time") or 0),
-            distance_m=a.get("distance") or a.get("icu_distance"),
-            avg_hr=a.get("average_heartrate"),
-            max_hr=a.get("max_heartrate"),
-            ascent_m=a.get("total_elevation_gain"),
+            duration_s=_num(a.get("moving_time")) or _num(a.get("elapsed_time")) or 0.0,
+            distance_m=_num(a.get("distance")) or _num(a.get("icu_distance")),
+            avg_hr=_num(a.get("average_heartrate")),
+            max_hr=_num(a.get("max_heartrate")),
+            ascent_m=_num(a.get("total_elevation_gain")),
             # weather at the activity (Intervals.icu's own lookup), never the wrist sensor
             avg_temp_c=plausible_temp(temp) if a.get("has_weather") else None,
             weather={"temp_c": temp, "station": "Intervals.icu weather"}
             if a.get("has_weather") and plausible_temp(temp) is not None else None,
             indoor=indoor,
-            rpe=float(rpe) if rpe else None,
+            rpe=rpe if rpe and 1 <= rpe <= 10 else None,
             feel=feel,
             pool_length_m=fs.get("pool_length"),
             records=parsed["records"],
@@ -292,10 +323,10 @@ class IntervalsReader:
         for day, w in sorted(self._wellness().items()):
             if day < day0:
                 continue
-            sleep = w.get("sleepSecs")
-            row = {"day": day, "rhr": w.get("restingHR"), "hrv_last_night": w.get("hrv"),
-                   "sleep_total_min": sleep / 60 if sleep else None, "sleep_score": w.get("sleepScore"),
-                   "weight_kg": w.get("weight"), "steps": w.get("steps"), "vo2max": w.get("vo2max")}
+            sleep = _num(w.get("sleepSecs"))
+            row = {"day": day, "rhr": _num(w.get("restingHR")), "hrv_last_night": _num(w.get("hrv")),
+                   "sleep_total_min": sleep / 60 if sleep else None, "sleep_score": _num(w.get("sleepScore")),
+                   "weight_kg": _num(w.get("weight")), "steps": _num(w.get("steps")), "vo2max": _num(w.get("vo2max"))}
             row = {k: v for k, v in row.items() if v is not None}
             if len(row) > 1:
                 out.append(row)

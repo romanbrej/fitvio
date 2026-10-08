@@ -5,6 +5,7 @@ so we read those straight from the cached FIT file.
 """
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from pathlib import Path
 
@@ -23,7 +24,11 @@ def _get(frame, *names):
 
 
 def _num(v):
-    return float(v) if isinstance(v, (int, float)) else None
+    """A finite number or None. A FIT file declares its own field types, so a float32 field can hold inf."""
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        f = float(v)
+        return f if math.isfinite(f) else None
+    return None
 
 
 def exercise_key(category, subtype) -> tuple[str, str]:

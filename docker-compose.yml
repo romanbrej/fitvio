@@ -4,7 +4,8 @@
 #   docker compose logs -f sync      watch the Garmin sync
 #   ./deploy/install-updater.sh      automatic updates: pulls a newer image every 5 minutes
 # Data and settings stay on the host in ./data and ./config (credentials, tokens, health data).
-# Optional .env: FITVIO_UID / FITVIO_GID = the host user owning those folders (id -u / id -g), TZ = your time zone.
+# Optional .env: FITVIO_UID / FITVIO_GID = the host user owning those folders (id -u / id -g), TZ = your time zone,
+#   FITVIO_BIND = the LAN IP the dashboard listens on (default: every IPv4 address).
 # Rollback: FITVIO_TAG=sha-<commit> in .env, then docker compose up -d (remove it to follow latest again).
 
 x-common: &common
@@ -23,7 +24,10 @@ services:
     build: .
     command: ["fitvio", "serve", "--host", "0.0.0.0", "--port", "8765"]
     ports:
-      - "8765:8765"
+      # IPv4 only, on purpose: Docker forwards IPv6 clients to an IPv4 container through its proxy, and
+      # the app would then see Docker's private gateway address instead of the real client. Set
+      # FITVIO_BIND=<this machine's LAN IP> in .env to listen on the home network only.
+      - "${FITVIO_BIND:-0.0.0.0}:8765:8765"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/health', timeout=5)"]
       interval: 60s

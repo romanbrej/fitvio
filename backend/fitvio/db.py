@@ -6,6 +6,7 @@ GarminDB `--rebuild_db` or schema change can never corrupt our analytics.
 from __future__ import annotations
 
 import json
+import math
 import os
 import sqlite3
 from pathlib import Path
@@ -177,8 +178,21 @@ def row_to_dict(row: sqlite3.Row | None) -> dict | None:
     return out
 
 
+def finite(v):
+    """inf/NaN → None, also inside lists and dicts. The API's JSON encoder refuses non-finite numbers,
+    so one stored inf would make every response that contains it fail (e.g. the shared wall)."""
+    if isinstance(v, float):
+        return v if math.isfinite(v) else None
+    if isinstance(v, dict):
+        return {k: finite(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [finite(x) for x in v]
+    return v
+
+
 def upsert(conn: sqlite3.Connection, table: str, row: dict) -> None:
-    row = {k: (json.dumps(v) if k in JSON_COLUMNS and not isinstance(v, str) and v is not None else v)
+    row = {k: finite(v) for k, v in row.items()}
+    row = {k: (json.dumps(v, allow_nan=False) if k in JSON_COLUMNS and not isinstance(v, str) and v is not None else v)
            for k, v in row.items()}
     cols = ", ".join(row)
     marks = ", ".join("?" for _ in row)
