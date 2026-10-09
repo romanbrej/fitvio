@@ -22,6 +22,11 @@ def fmt_num(dp: int, unit: str = ""):
     return lambda v: f"{v:.{dp}f}{unit}"
 
 
+def _drift(f: dict) -> float | None:
+    """HR drift less the extra drift this person's heat response expects for the session's heat."""
+    return f["decoupling_adj"] if f.get("decoupling_adj") is not None else f.get("decoupling")
+
+
 class RunningModel(SportModel):
     sport = "running"
     primary = "ef_adj"
@@ -29,7 +34,7 @@ class RunningModel(SportModel):
         MetricSpec("ef_adj", "Aerobic efficiency", +1, 0.45, fmt_num(2, " m/beat")),
         MetricSpec("speed_at_ref_hr", "Pace at fixed HR", +1, 0.35, fmt_pace_km,
                    get=lambda f: f.get("speed_at_ref_hr_adj") or f.get("speed_at_ref_hr")),  # heat-adjusted
-        MetricSpec("decoupling", "HR drift", -1, 0.20, fmt_num(1, " %"), mode="abs", noise=1.5),
+        MetricSpec("decoupling", "HR drift", -1, 0.20, fmt_num(1, " %"), mode="abs", noise=1.5, get=_drift),
     ]
 
     # intervals: only the work reps count — the recovery jogs would dilute pace and efficiency,
@@ -94,13 +99,15 @@ class RunningModel(SportModel):
 class CyclingModel(SportModel):
     sport = "cycling"
     primary = "ef"
-    metrics = [
-        MetricSpec("ef", "Power per heartbeat", +1, 0.5, fmt_num(2, " W/beat")),
-        MetricSpec("decoupling", "Power:HR drift", -1, 0.2, fmt_num(1, " %"), mode="abs", noise=1.5),
+    metrics = [  # heat adjusted, like the runs (rides cool better: their own, smaller heat response)
+        MetricSpec("ef", "Power per heartbeat", +1, 0.5, fmt_num(2, " W/beat"),
+                   get=lambda f: f.get("ef_adj") or f.get("ef")),
+        MetricSpec("decoupling", "Power:HR drift", -1, 0.2, fmt_num(1, " %"), mode="abs", noise=1.5, get=_drift),
         MetricSpec("p300", "Best 5-min power", +1, 0.3, fmt_num(0, " W"), noise=0.02,
                    get=lambda f: (f.get("power_curve") or {}).get("300")),
         # informational (weight 0): shown as W/kg in "What improved", doesn't move the verdict
-        MetricSpec("power_at_ref_hr", "Power at fixed HR", +1, 0.0, fmt_num(0, " W")),
+        MetricSpec("power_at_ref_hr", "Power at fixed HR", +1, 0.0, fmt_num(0, " W"),
+                   get=lambda f: f.get("power_at_ref_hr_adj") or f.get("power_at_ref_hr")),
     ]
 
     def load_only_reason(self, session):

@@ -12,6 +12,7 @@ from typing import Callable
 
 from ..analytics import load as load_model
 from ..analytics import physio
+from ..analytics.heat import PRIOR as HEAT_PRIOR
 from ..weather import label as weather_label
 
 MIN_SIMILAR = 3
@@ -38,6 +39,11 @@ class MetricSpec:
 def comparable(history: list[dict], sport: str) -> list[dict]:
     """Earlier sessions of this sport that may be compared with: not excluded by the person."""
     return [h for h in history if h["sport"] == sport and not h.get("excluded")]
+
+
+def physio_prior(sport: str) -> float | None:
+    """The standard heat factor for a sport (what everyone gets before their own is learned)."""
+    return (HEAT_PRIOR.get(sport) or {}).get("k")
 
 
 SPORT_NOUN = {"running": "runs", "cycling": "rides", "swimming": "swims", "strength": "gym sessions", "other": "sessions"}
@@ -209,6 +215,14 @@ class SportModel:
             if (source := weather_label(w)):
                 text += f" ({source})"
             text += f" — efficiency adjusted +{heat:.1f} %"
+            resp = f.get("heat_response") or {}
+            k, warm = resp.get("k"), resp.get("warm")
+            if k is not None and warm and k != physio_prior(self.sport):
+                text += f" (your heat response {k:.1f}×, from {warm} warm {SPORT_NOUN[self.sport]})"
+            drift = (f.get("decoupling") or 0) - (f.get("decoupling_adj") if f.get("decoupling_adj") is not None
+                                                  else f.get("decoupling") or 0)
+            if drift >= 0.1:
+                text += f", HR drift −{drift:.1f} points"
             if f.get("heat_acclimation") is not None:
                 text += f"; heat acclimation {f['heat_acclimation']:.0f} %"
             notes.append({"kind": "heat", "text": text})

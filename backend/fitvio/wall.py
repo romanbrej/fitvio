@@ -184,7 +184,8 @@ def sport_status(sessions: list[dict], sport: str, ftp: float | None, weights: i
         today_kg = weights.at(today.isoformat())
         ride_kg = weights.at(last["start_time"][:10]) if last else None
         efs = [s["features"]["ef"] for s in rides]
-        change = round((efs[-1] - efs[0]) / efs[0] * 100, 1) if len(efs) >= 3 and efs[0] else None
+        fair = [s["features"].get("ef_adj") or s["features"]["ef"] for s in rides]  # heat adjusted
+        change = round((fair[-1] - fair[0]) / fair[0] * 100, 1) if len(fair) >= 3 and fair[0] else None
         return {"w_per_beat": round(efs[-1], 2) if efs else None, "w_per_beat_change_pct": change,
                 "ftp_wkg": round(ftp / today_kg, 2) if ftp and today_kg else None,
                 "hr_wkg": round(lf["power_at_ref_hr"] / ride_kg, 2) if lf.get("power_at_ref_hr") and ride_kg else None,

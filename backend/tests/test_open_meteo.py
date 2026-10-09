@@ -226,7 +226,7 @@ def test_intervals_session_gets_a_real_dew_point(tmp_path):
     weather.apply(filled, tmp_path, True)
     assert filled.weather["dew_point_c"] is not None
     a, b = compute_features(guessed, USER)["features"], compute_features(filled, USER)["features"]
-    assert a["heat_adj_pct"] != b["heat_adj_pct"] and b["track"] == [[0, 52.4, 9.7]]
+    assert a["heat_load_pct"] != b["heat_load_pct"] and b["track"] == [[0, 52.4, 9.7]]
 
 
 @pytest.mark.parametrize("w, text", [({"source": "Open-Meteo"}, "Open-Meteo"),

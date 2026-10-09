@@ -27,20 +27,24 @@ When there are fewer than 3 comparable sessions it says **"Not comparable yet"**
 
 | Sport | What "improved" means |
 |---|---|
-| Running | Grade-adjusted pace per heartbeat (Minetti energy-cost model, heat-normalised), pace at a fixed HR, aerobic decoupling (HR drift) |
-| Cycling (with power, e.g. a smart trainer) | Power per heartbeat, Power:HR drift, best 5-min power, power-curve PRs, eFTP |
+| Running | Grade-adjusted pace per heartbeat (Minetti energy-cost model), pace at a fixed HR, aerobic decoupling (HR drift), all heat adjusted |
+| Cycling (with power, e.g. a smart trainer) | Power per heartbeat and Power:HR drift (heat adjusted outdoors), best 5-min power, power-curve PRs, eFTP |
 | Cycling without power | Training load only, marked low confidence (wind and terrain make speed meaningless) |
 | Swimming | Pace per 100 m and SWOLF, compared only against the same main stroke |
 | Gym | Estimated 1-rep max per exercise (Epley) vs the best of your last 3 sessions, plus PRs. Needs reps and weight logged on the watch |
 | Everything else | Training load and recovery impact |
 
-**Heat and humidity.** Running efficiency is adjusted for the weather during the session and for **Garmin's heat acclimation**.
+**Heat and humidity.** Outdoor runs and rides are adjusted for the weather during the session, for how much heat costs *you*, and for **Garmin's heat acclimation**.
 
 The weather comes from **Open-Meteo**, which is free, needs no API key and works worldwide. Fitvio takes its hourly temperature, dew point, humidity and wind for each hour of the session, at the place you were in that hour, the same way for every watch and platform. Only a rough route is sent and stored: a point every 30 minutes, rounded to 0.1° (about 11 km). Your exact home or route never leaves the server.
 
 If Open-Meteo can't be reached, the session falls back to the platform's weather: Garmin's weather box (a station near the start, at start time) or Intervals.icu's temperature. A later sync then fills in the hours and works the verdict out again; a verdict already shown doesn't take over the wall a second time. The history is filled in a few requests per sync. Open-Meteo can be switched off per person in the phone's **Me** screen, which brings back exactly the platform-weather verdicts.
 
-The adjustment uses the runners' temperature + dew point rule: the sum in °F sets how much harder the same effort was (0 % up to 100 °F, up to 12 % above 180 °F). Heat acclimation reduces that effect by up to half, which is a heuristic. Indoor and treadmill sessions get no heat adjustment. The wrist temperature sensor isn't used for this, because body heat skews it, and FIT files use 127 as a "no value" marker.
+The starting point is the runners' temperature + dew point rule: the sum in °F sets how much harder the same effort was (0 % up to 100 °F, up to 12 % above 180 °F). Fitvio applies it to each hour of the session and averages over the session's time, so a ride that ends in the midday heat counts its hot end. Heat acclimation reduces that load by up to half, which is a heuristic.
+
+How much that load costs differs between people by a factor of two to three, and at the same heart rate it costs more than race-pace tables suggest. A lab study found 17 % less power at the same HR at 33 °C than at 18 °C, though without the airflow you get outside. So Fitvio learns your **heat response** per sport. Each steady outdoor session is compared with your similar sessions from three weeks either side, and the differences in efficiency and HR drift are set against the differences in heat. Using both sides means a summer build-up in fitness doesn't look like "heat doesn't matter". Until there are enough warm sessions, the response stays near the standard: the table for runs and half of it for rides, because riding at 25–35 km/h cools you better. Drift gets no correction until your own sessions show extra drift in the heat.
+
+The response is relearned after syncs that bring new sessions. When it moves, the verdicts of that sport are worked out again; a verdict already shown doesn't take over the wall a second time. The phone's **Me** screen shows your factor per sport (e.g. "heat costs you 1.4× the standard"). Switching *Learn my heat response* off goes back to the standard factors. `fitvio heat-report` prints the numbers behind it. Indoor and treadmill sessions get no heat adjustment. The wrist temperature sensor isn't used for this, because body heat skews it, and FIT files use 127 as a "no value" marker.
 Garmin's weather and acclimation are downloaded with each sync. For older history, run `fitvio backfill-extras` once (a first download does this automatically).
 
 **Verdict check.** Rate *How did you feel* and *Perceived effort* on your watch after each activity. The app tracks how often the verdicts agree with how you felt, and lists the disagreements.

@@ -5,7 +5,7 @@ from datetime import datetime
 import pytest
 
 from fitvio.activity import ParsedActivity, plausible_temp
-from fitvio.analytics import physio
+from fitvio.analytics import heat, physio
 from fitvio.analytics.features import compute_features
 from fitvio.config import UserConfig
 from fitvio.models.sports import RunningModel
@@ -109,7 +109,9 @@ def run(weather=None, acclimation=None, indoor=False):
     act = ParsedActivity(activity_id="1", start_time=datetime(2026, 9, 28, 17, 15), sport="running",
                          name="Run", duration_s=2700, distance_m=8000, indoor=indoor,
                          records=steady_records(minutes=45, hr=137), weather=weather, heat_acclimation=acclimation)
-    return compute_features(act, USER)["features"]
+    f = compute_features(act, USER)["features"]
+    heat.adjust([{"sport": "running", "indoor": indoor, "features": f}], heat.priors())  # what storing does
+    return f
 
 
 def test_efficiency_is_adjusted_by_weather_not_wrist_sensor():

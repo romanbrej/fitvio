@@ -8,6 +8,7 @@
   fitvio backtest [--user ID] [--sport S]     print verdicts over history
   fitvio demo [--days N]                      fill the DB with synthetic data
   fitvio demo-export <out_dir>                made-up people + data as static JSON (the GitHub Pages demo)
+  fitvio heat-report [--user ID]              how much heat costs each person, learned from their sessions
   fitvio serve [--host H] [--port P]          run the API + wall UI
 """
 from __future__ import annotations
@@ -56,6 +57,9 @@ def main(argv=None) -> int:
     s.add_argument("--days", type=int, default=150)
     s.add_argument("--deny", default="", help="comma-separated words that must not appear in the output "
                                               "(also FITVIO_DEMO_DENY), e.g. real names")
+    s = sub.add_parser("heat-report", help="how much heat costs each person per sport (reads FITVIO_DB only, "
+                                           "read-only; prints numbers, no names)")
+    s.add_argument("--user")
     s = sub.add_parser("serve")
     s.add_argument("--host", default="0.0.0.0")
     s.add_argument("--port", type=int, default=8765)
@@ -70,6 +74,8 @@ def main(argv=None) -> int:
         deny = f"{a.deny},{env('DEMO_DENY', '')}".split(",")
         print(json.dumps(export(Path(a.out_dir), days=a.days, deny=deny)))
         return 0
+    if a.cmd == "heat-report":  # before load_config: needs only the database, opened read-only
+        return heat_report(a.user)
     cfg = load_config()
 
     if a.cmd == "serve":
@@ -171,6 +177,50 @@ def main(argv=None) -> int:
         print(generate(conn, cfg, days=a.days))
         return 0
     return 1
+
+
+def heat_report(user_id: str | None) -> int:
+    import sqlite3
+    from pathlib import Path
+
+    from .analytics import heat
+    from .config import PROJECT_ROOT, env
+    path = Path(env("DB") or PROJECT_ROOT / "data" / "app.db").expanduser()
+    if not path.exists():
+        print(f"No database at {path} (set FITVIO_DB)", file=sys.stderr)
+        return 1
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    ids = [user_id] if user_id else [r[0] for r in conn.execute("SELECT DISTINCT user_id FROM sessions ORDER BY 1")]
+    for n, uid in enumerate(ids, 1):
+        sessions = pipeline.user_sessions(conn, uid)
+        print(f"\n== person {n} ==")
+        for sport in heat.SPORTS:
+            r = heat.fit_response(sessions, sport)
+            om = sum(1 for s in sessions if s["sport"] == sport and not s.get("indoor")
+                     and ((s.get("features") or {}).get("weather") or {}).get("source") == "Open-Meteo")
+
+            def est(v, se):
+                return f"{v:+.2f} ± {se:.2f}" if v is not None and se else "—"
+            print(f"{sport}: {r['sessions']} steady outdoor sessions ({om} {sport} sessions with Open-Meteo), "
+                  f"{r['n']} with ≥{heat.MIN_NEIGHBOURS} neighbours, {r['warm']} warm (load ≥ {heat.WARM_PCT:g} %)")
+            print(f"  heat response k: measured {est(r['k_hat'], r['k_se'])} → used {r['k']:.2f} "
+                  f"(prior {r['prior']['k']:g} ± {heat.PRIOR_SD['k']:g})")
+            print(f"  extra HR drift d: measured {est(r['d_hat'], r['d_se'])} points per % → used {r['d']:.2f} "
+                  f"(prior {r['prior']['d']:g} ± {heat.PRIOR_SD['d']:g})")
+            cov = heat.coverage(sessions, sport)
+            if cov:
+                print("  per month:  all indoor  Open-Meteo  platform  no-weather  steady  no-EF  usable  warm  max load %")
+                for m in cov[-18:]:
+                    print(f"  {m['month']:>9} {m['all']:>4} {m['indoor']:>6} {m['open_meteo']:>11} {m['platform']:>9} "
+                          f"{m['no_weather']:>11} {m['steady']:>7} {m['no_ef']:>6} {m['usable']:>7} {m['warm']:>5} "
+                          f"{m['max_load'] if m['max_load'] is not None else '—':>11}")
+            rows = heat.binned(sessions, sport, r["k"])
+            if rows:
+                print("  efficiency vs neighbours by heat load:  load %   n   as measured   heat adjusted")
+                for b in rows:
+                    print(f"  {'':40}{b['bin']:>6} {b['n']:>4} {b['raw_pct']:>+11.2f} % {b['adjusted_pct']:>+11.2f} %")
+    return 0
 
 
 def backfill_extras(user, on_progress=None) -> dict:

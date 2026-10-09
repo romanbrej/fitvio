@@ -102,10 +102,18 @@ export function factGroups(s: SessionDetail): FactGroups {
     w && w.dew_point_c != null ? ['Dew point', `${num(w.dew_point_c)} °C`] : null,
     w && w.humidity != null ? ['Humidity', `${num(w.humidity)} %`] : null,
     w && w.wind_kmh != null ? ['Wind', `${num(w.wind_kmh)} km/h${w.wind_dir ? ` ${w.wind_dir}` : ''}`] : null,
-    f.heat_adj_pct ? ['Heat adjustment', `+${num(f.heat_adj_pct, 1)} %`] : null,
+    f.heat_adj_pct ? ['Heat adjustment', `+${num(f.heat_adj_pct, 1)} %${heatFactor(f.heat_response, s.sport)}`] : null,
+    f.decoupling != null && f.decoupling_adj != null && f.decoupling - f.decoupling_adj >= 0.1
+      ? ['Heat drift', `−${num(f.decoupling - f.decoupling_adj, 1)} points`] : null,
     source ? ['Weather from', source] : null,
   ])
   return { key: key.slice(0, 6), groups }
+}
+
+/** " · your 1.4×" when the person's learned heat response differs from the standard for the sport */
+function heatFactor(r: { k?: number; warm?: number } | undefined, sport: string) {
+  const standard = sport === 'cycling' ? 0.5 : 1
+  return r?.k != null && r.warm && Math.abs(r.k - standard) >= 0.05 ? ` · you ${num(r.k / standard, 1)}×` : ''
 }
 
 const ZONE_COLORS = ['#64748b', '#38bdf8', '#3ddc84', '#f5b83d', '#f87171']

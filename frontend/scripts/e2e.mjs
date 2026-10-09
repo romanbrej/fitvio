@@ -3,7 +3,8 @@
 // and playwright (CI: npm i --no-save playwright && npx playwright install --with-deps chromium).
 // Covers leaving a session out of comparisons (#19) on the wall and the phone: confirm, recalculated
 // verdicts, persistence, restore, a refused change. And the weather (#18): the session's conditions with
-// their source, and the per-person Open-Meteo switch. The demo's lock is checked in demo-check.mjs.
+// their source, and the per-person Open-Meteo switch; the learned heat response (#18 part 2) on runs and
+// rides and its switch. The demo's lock is checked in demo-check.mjs.
 import { spawn, spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
@@ -220,6 +221,51 @@ try {
   await p.getByText(/home network/).waitFor()
   check('a refused change shows why and the switch stays on', await wx().getAttribute('aria-checked') === 'true'
     && (await api('/api/users/alex/weather')).open_meteo === true)
+  await p.close()
+
+  // --- heat response (#18 part 2): learned per person and sport, shown with the session, switchable ---------
+  console.log('— heat response')
+  const runs = await Promise.all((await api('/api/users/alex/sessions?sport=running&limit=60')).map(r => detail(r.id)))
+  const warm = runs.find(r => !r.indoor && r.features.heat_adj_pct > 0.5)
+  p = await newPage(false)
+  await p.goto(`${ROOT}session/${encodeURIComponent(warm.id)}`)
+  text = await conditions(p)
+  check('a warm run shows its heat adjustment', text.includes(`+${warm.features.heat_adj_pct.toFixed(1)} %`), text)
+  await p.close()
+  const warmRide = rides.find(r => !r.indoor && r.features.heat_adj_pct > 0)
+  check('outdoor rides are heat adjusted, indoor rides are not',
+    !!warmRide && warmRide.features.ef_adj > warmRide.features.ef && trainer.features.heat_adj_pct === 0
+      && trainer.features.ef_adj === trainer.features.ef, JSON.stringify(warmRide?.features ?? {}))
+
+  const learned = await api('/api/users/alex/heat')
+  p = await newPage(true)
+  await p.goto(`${ROOT}me`)
+  const hs = () => p.getByRole('switch', { name: 'Learn my heat response' })
+  await hs().waitFor()
+  check('learning is on by default and says what it learned', await hs().getAttribute('aria-checked') === 'true'
+    && learned.learn && learned.sports.running.learned && (await p.locator('[data-heat=running]').innerText()).startsWith('Runs:'))
+  await hs().click()
+  await p.getByText('Uses the standard heat adjustment for everyone.').waitFor()
+  const standard = await detail(warm.id)
+  check('switching it off goes back to the standard factors, verdicts redone',
+    (await api('/api/users/alex/heat')).learn === false && standard.features.heat_response.k === 1
+      && Math.abs(standard.features.heat_adj_pct * learned.sports.running.k - warm.features.heat_adj_pct) < 0.02,
+    JSON.stringify(standard.features.heat_response))
+  await p.reload()
+  await hs().waitFor()
+  check('… and still off after a reload', await hs().getAttribute('aria-checked') === 'false')
+  await hs().click()
+  await p.getByText(/from your own warm sessions/).waitFor()
+  check('switching it back on brings the learned factor back',
+    (await detail(warm.id)).features.heat_adj_pct === warm.features.heat_adj_pct)
+  await p.route('**/heat', r => r.request().method() === 'PUT'
+    ? r.fulfill({ status: 403, contentType: 'application/json',
+                  body: JSON.stringify({ detail: 'changes are only allowed from your home network' }) })
+    : r.continue())
+  await hs().click()
+  await p.getByText(/home network/).waitFor()
+  check('a refused change shows why and learning stays on', await hs().getAttribute('aria-checked') === 'true'
+    && (await api('/api/users/alex/heat')).learn === true)
   await p.close()
 } finally {
   await browser.close()
