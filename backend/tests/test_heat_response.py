@@ -184,3 +184,14 @@ def test_heat_api(client, monkeypatch):  # noqa: F811
     monkeypatch.setattr(heat_response, "LEARN_HEAT_RESPONSE", False)  # held back: standard factors, no switch
     assert client.get("/api/users/a/heat").json()["available"] is False
     assert client.put("/api/users/a/heat", json={"learn": True}).status_code == 404
+
+
+def test_sessions_without_weather_are_left_out_and_counted():
+    sessions = _season(days=120)
+    for s in sessions[::3]:
+        s["features"].pop("weather")
+    with_weather = [s for s in sessions if "weather" in s["features"]]
+    assert heat.fit_response(sessions, "running")["sessions"] == len(with_weather)
+    cov = heat.coverage(sessions, "running")
+    assert sum(m["no_weather"] for m in cov) == len(sessions) - len(with_weather)
+    assert sum(m["usable"] for m in cov) == len(with_weather)
