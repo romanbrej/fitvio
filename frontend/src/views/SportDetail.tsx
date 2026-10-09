@@ -1,3 +1,4 @@
+import { ArrowRight } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, Line, ComposedChart } from 'recharts'
@@ -5,6 +6,9 @@ import { api } from '../api'
 import type { Sport, VerdictKind } from '../api'
 import { SportIcon, VerdictPill } from '../components/icons'
 import { distance, duration, num, pace, shortDay, SPORT_LABEL, TYPE_LABEL, VERDICT_LABEL, when } from '../format'
+import { PeriodChips } from '../components/PeriodChips'
+import { periodAnswer, TONE_BG, TONE_COLOR } from '../periodAnswer'
+import { daysFor, periodSince, periodText, useTrendPeriod } from '../trendPeriod'
 import { useFetch } from '../useFetch'
 import './Detail.css'
 
@@ -12,7 +16,7 @@ const PRIMARY: Record<string, { label: string; get: (f: Record<string, any>) => 
   // pace held at the reference HR in s/km (grade & heat adjusted, so runs compare fairly) — lower is faster
   running: { label: 'Pace at fixed HR (/km, grade & heat adjusted) — steady time at that HR in any run, lower is faster',
              get: f => { const v = f.speed_at_ref_hr_adj ?? f.speed_at_ref_hr; return v ? 1000 / v : null }, fmt: v => duration(v) },
-  cycling: { label: 'Power per heartbeat (W/beat)', get: f => f.ef, fmt: v => v.toFixed(2) },
+  cycling: { label: 'Power per heartbeat (W/beat, heat adjusted)', get: f => f.ef_adj ?? f.ef, fmt: v => v.toFixed(2) },
   swimming: { label: 'Pace per 100 m (s) — lower is better', get: f => f.pace_100m_s, fmt: v => duration(v) },
   strength: { label: 'Session volume (kg)', get: f => f.total_volume, fmt: v => num(v) },
   other: { label: 'Training load', get: () => null, fmt: v => num(v) },
@@ -26,17 +30,32 @@ const VCOLOR: Record<VerdictKind, string> = {
 export function SportDetail() {
   const { user, sport } = useParams()
   const nav = useNavigate()
-  const { data } = useFetch(() => api.sessions(user!, sport, 200), [user, sport])
+  const { data } = useFetch(() => api.sessions(user!, sport, 500), [user, sport])
+  const { data: ambient } = useFetch(() => api.ambient(user!), [user])
+  const [picked, pick] = useTrendPeriod()
+  // running, cycling, strength: the same numbers as the wall card and the phone, over the picked period
+  const trend = sport ? ambient?.trends[sport as Sport] : undefined
+  const days = daysFor(sport as Sport, picked)
+  const period = trend?.periods?.[String(days)]
   const p = PRIMARY[sport ?? 'other'] ?? PRIMARY.other
   const [all, setAll] = useState(false)
   // running: like the wall card, every outdoor run with steady time at the reference HR (others have no value).
   // Sessions left out of comparisons (bad data) are not plotted; their row in the table says "Excluded".
   const usable = (s: { indoor?: boolean | number; excluded?: boolean | number }) => !s.excluded && (sport !== 'running' || !s.indoor)
-  const pts = (data ?? []).filter(usable).slice().reverse()
-    .map(s => ({ t: new Date(s.start_time).getTime(), v: p.get(s.features ?? {}), verdict: s.verdict, id: s.id, type: s.session_type }))
+  const allPts = (data ?? []).filter(usable).slice().reverse()
+    .map(s => ({ t: new Date(s.start_time).getTime(), day: s.start_time.slice(0, 10), v: p.get(s.features ?? {}), verdict: s.verdict, id: s.id, type: s.session_type }))
     .filter(x => x.v != null)
-  // 5-session rolling median as the trend line
+  // with a period: only its sessions, counted back from the newest one (like the wall card)
+  const lastT = allPts.length ? allPts[allPts.length - 1].t : 0
+  // with a period: only its sessions (chart and table), from the same first day as the phone's list
+  const since = period ? periodSince(sport as Sport, trend, days) : null
+  const inPeriod = (iso: string) => since == null || iso.slice(0, 10) >= since
+  const pts = period ? allPts.filter(x => inPeriod(x.day)) : allPts
+  const rows = (data ?? []).filter(s => inPeriod(s.start_time))
+  // the trend line: with a period, the server's (then → now, the same line as the answer); else a 5-session median
+  const line = period?.then != null && period?.now != null ? { then: period.then, now: period.now } : null
   const withTrend = pts.map((x, i) => {
+    if (line) return { ...x, trend: line.then + (line.now - line.then) * (1 - (lastT - x.t) / (days * 86400000)) }
     const win = pts.slice(Math.max(0, i - 4), i + 1).map(y => y.v as number).sort((a, b) => a - b)
     return { ...x, trend: win[Math.floor(win.length / 2)] }
   })
@@ -50,7 +69,7 @@ export function SportDetail() {
     const ref = [...withTrend].reverse().find(x => lastPt.t - x.t >= 42 * 86400000) ?? withTrend[Math.min(4, withTrend.length - 1)]
     const first = ref.trend
     const last = lastPt.trend
-    const recent = withTrend.filter(x => lastPt.t - x.t <= 365 * 86400000).map(x => x.v as number)
+    const recent = allPts.filter(x => lastPt.t - x.t <= 365 * 86400000).map(x => x.v as number)  // whatever the period
     const best = lowerBetter ? Math.min(...recent) : Math.max(...recent)
     const weeks = Math.max(1, Math.round((lastPt.t - ref.t) / 604800000))
     const gain = lowerBetter ? first - last : last - first
@@ -62,6 +81,9 @@ export function SportDetail() {
       : `${unit} ${gain > 0 ? (lowerBetter ? 'faster' : 'better') : (lowerBetter ? 'slower' : 'lower')} in ${weeks} weeks.`
     answer = { word, text, now: last, then: first, best, weeks }
   }
+  // the period's answer, from the server (heat-adjusted, weighted by time at the reference HR): the phone says the same
+  const periodAns = trend && period ? periodAnswer(sport as Sport, trend, days) : null
+
   // running: cadence of the easy and long runs (same runs as the pace chart)
   const cadence = sport === 'running' ? pts.map(x => {
     const s = (data ?? []).find(d => d.id === x.id)
@@ -93,11 +115,27 @@ export function SportDetail() {
         <div className="hero-grid">
           <div className="stack" style={{ gap: 6 }}>
             <div className="label">Am I improving?</div>
+            {period && <PeriodChips days={days} onPick={pick} className="tabs period-tabs" btnClass="btn" />}
             <h1 className="display hero-title">
-              {answer ? <><span className="hl">{answer.word}</span> {answer.text}</> : 'Not enough sessions yet.'}
+              {periodAns ? <><span className="hl" style={{ color: TONE_COLOR[periodAns.tone] }}>{periodAns.word}</span> {periodAns.text}</>
+                : answer ? <><span className="hl">{answer.word}</span> {answer.text}</> : 'Not enough sessions yet.'}
             </h1>
+            {periodAns && trend?.status && <div className="hero-sub">{sport === 'running' ? `Pace at ${trend.status.ref_hr ?? '—'} bpm, heat-adjusted`
+              : sport === 'cycling' ? 'Power per heartbeat, heat-adjusted · rides with power' : `Sessions against the ${periodText(days)} before`}</div>}
           </div>
-          {answer && (
+          {periodAns ? (
+            <div className="compare-block">
+              <div className="compare">
+                <div><div className="label">{periodAns.compare.thenLabel}</div><div className="v">{periodAns.compare.then}</div></div>
+                <ArrowRight size={36} color="var(--muted)" aria-hidden className="compare-arrow" />
+                <div><div className="label">{periodAns.compare.nowLabel}</div><div className="v" style={{ color: 'var(--volt)' }}>{periodAns.compare.now}</div></div>
+              </div>
+              <div className="compare-foot">
+                <span className="compare-change" style={{ color: TONE_COLOR[periodAns.tone], background: TONE_BG[periodAns.tone] }}>{periodAns.compare.change}</span>
+                <span className="muted">{periodAns.count} · last {periodText(days)}</span>
+              </div>
+            </div>
+          ) : answer && (
             <div className="kpi-grid">
               <div className="tile"><div className="label">Now (trend)</div><div className="v" style={{ color: 'var(--volt)' }}>{p.fmt(answer.now)}</div></div>
               <div className="tile"><div className="label">{answer.weeks} weeks ago</div><div className="v">{p.fmt(answer.then)}</div></div>
@@ -117,15 +155,15 @@ export function SportDetail() {
                   <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']} scale="time" tickFormatter={v => shortDay(new Date(v).toISOString())} minTickGap={40} />
                   <YAxis width={52} domain={['auto', 'auto']} reversed={sport === 'swimming' || sport === 'running'} tickFormatter={p.fmt} />
-                  <Tooltip labelFormatter={v => shortDay(new Date(Number(v)).toISOString())} formatter={(v, k) => [p.fmt(Number(v)), k === 'trend' ? 'Trend (5-session median)' : 'Session']} />
-                  <Line dataKey="trend" stroke="var(--volt)" strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                  <Tooltip labelFormatter={v => shortDay(new Date(Number(v)).toISOString())} formatter={(v, k) => [p.fmt(Number(v)), k === 'trend' ? (line ? 'Trend' : 'Trend (5-session median)') : 'Session']} />
+                  <Line dataKey="trend" stroke="var(--volt)" strokeWidth={line ? 3 : 2.5} strokeDasharray={line ? '10 7' : undefined} dot={false} isAnimationActive={false} />
                   <Scatter dataKey="v" isAnimationActive={false} onClick={(d: any) => d?.payload?.id && nav(`/session/${encodeURIComponent(d.payload.id)}`)}
                            shape={(props: any) => <circle cx={props.cx} cy={props.cy} r={6} fill={VCOLOR[props.payload.verdict as VerdictKind] ?? 'var(--na)'} style={{ cursor: 'pointer' }} />} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
             <div className="row muted" style={{ fontSize: 14 }}>
-              Dots = sessions, coloured by verdict ({(['better', 'in_line', 'worse', 'not_comparable'] as VerdictKind[]).map(k => <span key={k} style={{ color: VCOLOR[k] }}>● {VERDICT_LABEL[k]} </span>)}) · line = 5-session median · tap a dot to open it
+              Dots = sessions, coloured by verdict ({(['better', 'in_line', 'worse', 'not_comparable'] as VerdictKind[]).map(k => <span key={k} style={{ color: VCOLOR[k] }}>● {VERDICT_LABEL[k]} </span>)}) · {line ? 'dashed line = the trend over the period' : 'line = 5-session median'} · tap a dot to open it
             </div>
           </div>
         )}
@@ -172,12 +210,12 @@ export function SportDetail() {
         )}
 
         <div className="card span-12">
-          <div className="card-title">Sessions</div>
+          <div className="card-title">Sessions{since ? ` · last ${periodText(days)} · ${rows.length}` : ''}</div>
           <div className="table-wrap">
             <table className="data">
               <thead><tr><th>When</th><th>Session</th><th>Type</th><th className="num">Duration</th><th className="num">Distance</th>{sport === 'running' && <th className="num">Pace</th>}<th className="num">Key metric</th><th>Verdict</th></tr></thead>
               <tbody>
-                {(data ?? []).slice(0, all ? undefined : 30).map(s => {
+                {rows.slice(0, all ? undefined : 30).map(s => {
                   const v = p.get(s.features ?? {})
                   return (
                     <tr key={s.id} className="clickable" onClick={() => nav(`/session/${encodeURIComponent(s.id)}`)}>
@@ -192,8 +230,9 @@ export function SportDetail() {
               </tbody>
             </table>
           </div>
-          {!all && (data?.length ?? 0) > 30 && (
-            <button className="btn" style={{ marginTop: 12 }} onClick={() => setAll(true)}>Show all {data!.length}</button>
+          {!rows.length && since && <div className="muted" style={{ padding: '12px 0' }}>No sessions in the last {periodText(days)}.</div>}
+          {!all && rows.length > 30 && (
+            <button className="btn" style={{ marginTop: 12 }} onClick={() => setAll(true)}>Show all {rows.length}</button>
           )}
         </div>
       </div>

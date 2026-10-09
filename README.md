@@ -60,7 +60,7 @@ docker run --rm -p 8765:8765 -e FITVIO_CONFIG=/tmp/demo/users.json -e FITVIO_DB=
 - **Today's mission** — one headline from Garmin's Training Readiness, and the week of your **Garmin Coach plan**: done ✓, missed ×, today, planned. Tap any day for its workout, step by step.
 - **Training load that makes sense** — fitness, fatigue and form on one chart, plus a weekly *sweet spot* that keeps you improving without overdoing it.
 - **Recovery at a glance** — readiness, HRV against your normal range, resting HR, sleep, Body Battery, VO₂max.
-- **Every sport, one trend** — running, cycling, swimming and gym, each with the number that matters and its 6-week trend.
+- **Every sport, one trend** — running, cycling, swimming and gym, each with the number that matters and its trend over the period you pick: 2 weeks up to a year.
 - **A training buddy** — pick one of 8 animals; it cheers after a good session, gets hungry when you skip, sleeps at night.
 - **Made for the wall** — big type, day and night screens, the newest activity takes over the screen, auto-scales to big tablets.
 - **For the whole household** — one Garmin login per person; tap an avatar to switch.

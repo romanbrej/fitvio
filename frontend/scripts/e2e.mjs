@@ -165,6 +165,52 @@ try {
   check('nothing is left excluded', all.every(r => !r.excluded && r.verdict !== 'excluded'))
   await p.close()
 
+  // --- trend periods: "Am I improving?" over 2 wk … 1 yr, on the phone and the wall ----------------------
+  console.log('— trend periods')
+  const amb = await api('/api/users/alex/ambient')
+  const runP = amb.trends.running.periods
+  check('the API sends every period, the 6-week one equal to the card',
+    ['14', '28', '42', '56', '91', '182', '365'].every(k => k in runP) && runP['42'].change === amb.trends.running.status.change_s_per_km)
+  p = await newPage(true)
+  await p.goto(`${ROOT}trends/sport/running`)
+  const chips = p.getByRole('group', { name: 'Period' })
+  await chips.waitFor()
+  check('6 wk is picked until someone picks another', await chips.getByRole('button', { name: '6 wk' }).getAttribute('aria-pressed') === 'true')
+  await chips.getByRole('button', { name: '1 yr' }).click()
+  await p.getByText(/12 months ago/i).waitFor()
+  const card = await p.locator('.ph-card').first().innerText()
+  check('picking 1 yr gives the answer, a year ago → now, the change and the count', /12 months/i.test(card)
+    && /Now/i.test(card) && /s\/km/.test(card) && card.includes(`${runP['365'].n} runs`), card)
+  await p.reload()
+  await p.getByText(/12 months ago/i).waitFor()
+  check('the pick survives a reload', await p.getByRole('group', { name: 'Period' }).getByRole('button', { name: '1 yr' }).getAttribute('aria-pressed') === 'true')
+  // the list below follows the period: 2 weeks shows only the sessions from its first day on
+  await p.getByRole('group', { name: 'Period' }).getByRole('button', { name: '2 wk' }).click()
+  await p.getByText(/sessions · last 2 wks/i).waitFor()
+  const last = new Date(amb.trends.running.last_time)
+  const first = new Date(last.getFullYear(), last.getMonth(), last.getDate() - 14, 12)
+  const since = `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, '0')}-${String(first.getDate()).padStart(2, '0')}`
+  const inTwo = since ? (await api(`/api/users/alex/sessions?sport=running&limit=500&since=${since}`)).length : 0
+  await p.getByText(/That’s the last 2 wks|No sessions in the last 2 wks/).waitFor()
+  check('the session list shows only the last 2 weeks', (await p.locator('.ph-hrow').count()) === inTwo
+    && /That’s the last 2 wks/.test(await p.locator('.ph-history').innerText()), `${await p.locator('.ph-hrow').count()} vs ${inTwo}`)
+  await p.goto(`${ROOT}trends`)
+  await p.getByText('Am I improving?').waitFor()
+  check('the Trends list uses the picked period', (await p.locator('.ph-sport-row', { hasText: 'Running' }).innerText()).includes('2 wks'))
+  await p.close()
+  p = await newPage(false)
+  await p.goto(`${ROOT}u/alex/sport/cycling`)
+  const wallChips = p.getByRole('group', { name: 'Period' })
+  await wallChips.waitFor()
+  check('the wall opens cycling at its own 3 months', await wallChips.getByRole('button', { name: '3 mo' }).getAttribute('aria-pressed') === 'true')
+  await wallChips.getByRole('button', { name: '4 wk' }).click()
+  await p.getByText(/rides · last 4 wks/i).waitFor()
+  const heroText = await p.locator('section.hero').innerText()
+  check('the wall hero answers for 4 weeks, a period ago → now', /4 WKS AGO/i.test(heroText) && heroText.includes(`${amb.trends.cycling.periods['28'].n} rides`), heroText)
+  const table = await p.locator('.card-title', { hasText: /^Sessions/ }).innerText()
+  check('the wall table shows only those 4 weeks', /last 4 wks/i.test(table), table)
+  await p.close()
+
   // --- weather (#18): the session's hourly weather and the per-person Open-Meteo switch ------------------
   console.log('— weather')
   const w = (await detail(T.id)).features.weather

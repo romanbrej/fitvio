@@ -165,11 +165,16 @@ def get_ambient(user_id: str, c: AppConfig = Depends(cfg), cn=Depends(conn)):
     return wall.ambient(cn, c, user_id)
 
 
+DAY_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
+
+
 @app.get("/api/users/{user_id}/sessions")
 def list_sessions(user_id: str, sport: str | None = None, limit: int = Query(60, ge=1, le=500),
                   offset: int = Query(0, ge=0), session_type: str | None = Query(None, alias="type", max_length=20),
+                  since: str | None = Query(None, pattern=DAY_PATTERN),
                   c: AppConfig = Depends(cfg), cn=Depends(conn)):
-    """Newest first. `offset` pages through the whole history (the phone loads 50 at a time); `type` = session type."""
+    """Newest first. `offset` pages through the whole history (the phone loads 50 at a time); `type` = session type;
+    `since` (YYYY-MM-DD): only sessions from that day on (the period picked on the phone)."""
     _user_or_404(c, user_id)
     q = """SELECT s.id, s.name, s.sport, s.session_type, s.start_time, s.duration_s, s.distance_m, s.avg_hr,
                   s.load, s.rpe, s.feel, s.features, v.verdict, v.headline, v.confidence,
@@ -183,20 +188,27 @@ def list_sessions(user_id: str, sport: str | None = None, limit: int = Query(60,
     if session_type:
         q += " AND s.session_type = ?"
         args.append(session_type)
+    if since:
+        q += " AND s.start_time >= ?"
+        args.append(since)
     q += " ORDER BY s.start_time DESC, s.id DESC LIMIT ? OFFSET ?"
     args += [limit, offset]
     return [db.row_to_dict(r) for r in cn.execute(q, args)]
 
 
 @app.get("/api/users/{user_id}/session-types")
-def session_types(user_id: str, sport: str | None = None, c: AppConfig = Depends(cfg), cn=Depends(conn)):
-    """How many sessions of each type (easy, long, …) someone has — the phone's filter chips."""
+def session_types(user_id: str, sport: str | None = None, since: str | None = Query(None, pattern=DAY_PATTERN),
+                  c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    """How many sessions of each type (easy, long, …) someone has — the phone's filter chips. `since` as above."""
     _user_or_404(c, user_id)
     q = "SELECT session_type AS type, COUNT(*) AS count FROM sessions WHERE user_id = ?"
     args: list = [user_id]
     if sport:
         q += " AND sport = ?"
         args.append(sport)
+    if since:
+        q += " AND start_time >= ?"
+        args.append(since)
     q += " GROUP BY session_type ORDER BY count DESC"
     return [{"type": r["type"], "count": r["count"]} for r in cn.execute(q, args)]
 

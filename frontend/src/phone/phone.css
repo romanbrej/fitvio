@@ -331,3 +331,12 @@ a.ph-card:active, .ph-hero:active, .ph-tile:active, .ph-day:active, .ph-list-row
 
 /* the phone's tab bar is fixed: keep the confirm clear of it when it scrolls into view */
 .ph .baseline-confirm { scroll-margin-bottom: calc(var(--tabbar) + var(--safe-bottom) + 16px); }
+
+/* sport page: "Am I improving?" over a period — the answer, then a period ago → now with the change */
+.ph-answer { margin: 4px 0 0; font: italic 900 28px/1.05 var(--display); text-transform: uppercase; }
+.ph-compare { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; padding: 12px; border-radius: 12px; background: var(--surface-2); }
+.ph-compare-pair { display: flex; align-items: flex-end; gap: 10px; min-width: 0; }
+.ph-compare-pair > span { display: flex; flex-direction: column; gap: 2px; }
+.ph-compare-pair b { font: 600 20px var(--mono); }
+.ph-compare-pair svg { margin-bottom: 5px; flex: none; }
+.ph-change { padding: 6px 10px; border-radius: 10px; font: 600 15px var(--mono); white-space: nowrap; }

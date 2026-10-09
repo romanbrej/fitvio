@@ -84,8 +84,20 @@ export interface SportTrend {
     sessions_6w?: number; sessions_prev_6w?: number; minutes_6w?: number; e1rm_change_pct?: number | null
     points: { day: string; value: number }[]
   } | null
+  /** the same change over every length a person can pick, by days ("14" … "365"): running s/km faster
+   *  (heat-adjusted, `change_raw` as run), cycling % power per beat, strength % e1RM and sessions vs before */
+  periods?: Record<string, PeriodTrend>
   /** running only: median cadence of easy/long runs in 6 weeks vs the 6 before */
   cadence?: { spm: number; change: number | null; runs: number } | null
+}
+
+export interface PeriodTrend {
+  change: number | null; change_raw: number | null; n: number
+  /** running s/km, cycling W/beat: the trend line at the newest session and one period before it */
+  now?: number | null; then?: number | null
+  n_prev?: number; minutes?: number  // strength
+  /** `trend`: the trend line at that session (running, cycling) */
+  points: { day: string; value: number; trend?: number | null }[]
 }
 
 /** Garmin's Training Readiness (the watch's score). */
@@ -264,14 +276,17 @@ export const api = {
   session: (id: string) => get<SessionDetail>(`/api/sessions/${seg(id)}`),
   /** leave a session out of comparisons (or bring it back); recomputes the later verdicts */
   setBaseline: (id: string, excluded: boolean) => send<SessionDetail>('PUT', `/api/sessions/${seg(id)}/baseline`, { excluded }),
-  sessions: (user: string, sport?: string, limit = 60, opts: { offset?: number; type?: string } = {}) =>
+  /** `since` (YYYY-MM-DD): only sessions from that day on */
+  sessions: (user: string, sport?: string, limit = 60, opts: { offset?: number; type?: string; since?: string } = {}) =>
     get<(Session & { verdict: VerdictKind | null; headline: string | null; excluded: boolean | number })[]>(
       `/api/users/${seg(user)}/sessions?${new URLSearchParams({
         limit: String(limit), ...(sport ? { sport } : {}),
         ...(opts.offset ? { offset: String(opts.offset) } : {}), ...(opts.type ? { type: opts.type } : {}),
+        ...(opts.since ? { since: opts.since } : {}),
       })}`),
-  sessionTypes: (user: string, sport?: string) =>
-    get<{ type: string; count: number }[]>(`/api/users/${seg(user)}/session-types${sport ? `?${new URLSearchParams({ sport })}` : ''}`),
+  sessionTypes: (user: string, sport?: string, since?: string) =>
+    get<{ type: string; count: number }[]>(`/api/users/${seg(user)}/session-types?${new URLSearchParams({
+      ...(sport ? { sport } : {}), ...(since ? { since } : {}) })}`),
   pmc: (user: string, days = 180) => get<PmcDay[]>(`/api/users/${seg(user)}/pmc?days=${days}`),
   health: (user: string, days = 90) => get<HealthDay[]>(`/api/users/${seg(user)}/health?days=${days}`),
   validation: (user: string) => get<Validation>(`/api/users/${seg(user)}/validation`),

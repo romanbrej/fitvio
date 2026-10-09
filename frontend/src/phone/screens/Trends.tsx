@@ -6,6 +6,7 @@ import { SportIcon, TrendPill } from '../../components/icons'
 import { Sparkline } from '../../components/Sparkline'
 import { SPORT_LABEL } from '../../format'
 import { SPORT_COLOR, tileContent } from '../../views/WallAmbient'
+import { useTrendPeriod } from '../../trendPeriod'
 import { weekState, weeklyLoads } from '../../weeks'
 import { AxisChart, dateAxis, dayLabel, niceTicks } from '../Chart'
 import { usePhone } from '../ctx'
@@ -93,6 +94,7 @@ function WeeksCard({ a }: { a: Ambient }) {
 
 export function Trends() {
   const { ambient } = usePhone()
+  const [picked] = useTrendPeriod()  // the period last picked on a sport page
   const a = ambient!
   return (
     <div className="ph-stack">
@@ -105,7 +107,7 @@ export function Trends() {
         <span className="ph-label" style={{ padding: '0 4px' }}>Am I improving?</span>
         {MAIN_SPORTS.map(sp => {
           const t = a.trends[sp]
-          const c = t ? tileContent(sp, t) : null
+          const c = t ? tileContent(sp, t, undefined, picked ?? undefined) : null
           const inner = (
             <>
               <div className="ph-grow">
