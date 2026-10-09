@@ -70,11 +70,14 @@ def refresh(conn: sqlite3.Connection, user_id: str, sessions: list[dict]) -> lis
     for sport in heat.SPORTS:
         fit = heat.fit_response(sessions, sport)
         old = _learned(conn, user_id, sport) or heat.PRIOR[sport]
-        if abs(fit["k"] - old["k"]) >= MIN_MOVE or abs(fit["d"] - old["d"]) >= MIN_MOVE or "n" not in old:
-            db.set_state(conn, STATE.format(user_id=user_id, sport=sport), json.dumps(
-                {k: fit[k] for k in ("k", "d", "n", "warm", "k_hat", "k_se", "d_hat", "d_se")}))
-            if abs(fit["k"] - old["k"]) >= MIN_MOVE or abs(fit["d"] - old["d"]) >= MIN_MOVE:
-                moved.append(sport)
+        stats = {k: fit[k] for k in ("n", "warm", "k_hat", "k_se", "d_hat", "d_se")}
+        if abs(fit["k"] - old["k"]) >= MIN_MOVE or abs(fit["d"] - old["d"]) >= MIN_MOVE:
+            moved.append(sport)
+            new = {"k": fit["k"], "d": fit["d"], **stats}
+        else:  # too small a change to redo the history for: the factors in use stay, every session alike
+            new = {"k": old["k"], "d": old["d"], **stats}
+        if new != old:
+            db.set_state(conn, STATE.format(user_id=user_id, sport=sport), json.dumps(new))
     return moved
 
 

@@ -195,3 +195,25 @@ def test_sessions_without_weather_are_left_out_and_counted():
     cov = heat.coverage(sessions, "running")
     assert sum(m["no_weather"] for m in cov) == len(sessions) - len(with_weather)
     assert sum(m["usable"] for m in cov) == len(with_weather)
+
+
+def test_a_small_first_fit_keeps_the_standard_for_every_session(client):  # noqa: F811
+    """A fit within 0.1 of the standard (e.g. 0.95 ± 1.3) changes nothing: old and new sessions keep the
+    same factor, and nothing claims a personal response."""
+    from fitvio import db, heat_response
+    from fitvio.api import main
+    conn = db.connect(main._cfg.db_path)
+    for sport in heat.SPORTS:
+        conn.execute("DELETE FROM wall_state WHERE key = ?", (f"heat_response:a:{sport}",))
+    sessions = _runs(conn)
+    near = heat.fit_response(sessions, "running")
+    near_k = near["k"]
+    import fitvio.analytics.heat as h
+    real = h.fit_response
+    try:
+        h.fit_response = lambda ss, sport: {**real(ss, sport), "k": heat.PRIOR[sport]["k"] - 0.05, "d": 0.0}
+        assert heat_response.refresh(conn, "a", sessions) == []
+    finally:
+        h.fit_response = real
+    used = heat_response.current(conn, "a")["running"]
+    assert used["k"] == 1.0 and used["n"] == near["n"] and near_k is not None
