@@ -180,6 +180,8 @@ export interface ActivityCheck {
 }
 
 export interface Ambient {
+  /** the period this person picked for "Am I improving?" (days), null = each sport's default */
+  trend_period?: number | null
   /** where this person's data comes from; Intervals.icu has no Body Battery */
   source: Source | null
   user_id: string; pmc: PmcDay[]; form: PmcDay | null
@@ -309,6 +311,8 @@ export const api = {
   setWeatherSetting: (user: string, open_meteo: boolean) =>
     send<{ open_meteo: boolean; job: Job | null }>('PUT', `/api/users/${seg(user)}/weather`, { open_meteo }),
   /** How much heat costs this person per sport (k × the standard table), learned or standard */
+  /** the period "Am I improving?" looks back over, for this person on every device */
+  setTrendPeriod: (user: string, days: number) => send<{ days: number }>('PUT', `/api/users/${seg(user)}/trend-period`, { days }),
   heatSetting: (user: string) => get<HeatResponse>(`/api/users/${seg(user)}/heat`),
   setHeatSetting: (user: string, learn: boolean) =>
     send<HeatResponse & { recomputed: number }>('PUT', `/api/users/${seg(user)}/heat`, { learn }),

@@ -49,13 +49,15 @@ export async function demoGet<T>(path: string): Promise<T> {
 
 async function sessions(user: string, q: URLSearchParams): Promise<ListRow[]> {
   const all = await load<ListRow[]>(fileFor(`/api/users/${user}/sessions`))
-  const sport = q.get('sport'), type = q.get('type')
+  const sport = q.get('sport'), type = q.get('type'), since = q.get('since')
   const offset = Number(q.get('offset') ?? 0), limit = Number(q.get('limit') ?? 60)
-  return all.filter(s => (!sport || s.sport === sport) && (!type || s.session_type === type)).slice(offset, offset + limit)
+  return all.filter(s => (!sport || s.sport === sport) && (!type || s.session_type === type)
+                        && (!since || s.start_time >= since)).slice(offset, offset + limit)
 }
 
 async function sessionTypes(user: string, q: URLSearchParams): Promise<{ type: string; count: number }[]> {
-  const rows = await sessions(user, new URLSearchParams({ ...(q.get('sport') ? { sport: q.get('sport')! } : {}), limit: '100000' }))
+  const rows = await sessions(user, new URLSearchParams({ ...(q.get('sport') ? { sport: q.get('sport')! } : {}),
+                                                          ...(q.get('since') ? { since: q.get('since')! } : {}), limit: '100000' }))
   const counts = new Map<string, number>()
   rows.forEach(s => counts.set(s.session_type, (counts.get(s.session_type) ?? 0) + 1))
   return [...counts].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count)
@@ -72,6 +74,8 @@ async function wall(): Promise<WallState> {
 
 export async function demoSend<T>(path: string, body: unknown): Promise<T> {
   const b = (body ?? {}) as Record<string, unknown>
+  // the period someone looks at: harmless, kept in the page like the other taps
+  if (/^\/api\/users\/[^/]+\/trend-period$/.test(path)) return { days: Number(b.days) } as T
   switch (path) {
     case '/api/wall/select': state.selected = String(b.user_id); return { ok: true } as T
     case '/api/wall/dismiss': state.dismissed = true; return { ok: true } as T

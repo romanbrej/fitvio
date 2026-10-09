@@ -94,8 +94,8 @@ function WeeksCard({ a }: { a: Ambient }) {
 
 export function Trends() {
   const { ambient } = usePhone()
-  const [picked] = useTrendPeriod()  // the period last picked on a sport page
   const a = ambient!
+  const [picked] = useTrendPeriod(a.user_id, a.trend_period)  // the period this person picked on a sport page
   return (
     <div className="ph-stack">
       <h1 className="ph-title">Trends</h1>

@@ -32,7 +32,7 @@ export function SportDetail() {
   const nav = useNavigate()
   const { data } = useFetch(() => api.sessions(user!, sport, 500), [user, sport])
   const { data: ambient } = useFetch(() => api.ambient(user!), [user])
-  const [picked, pick] = useTrendPeriod()
+  const [picked, pick] = useTrendPeriod(user, ambient?.trend_period)
   // running, cycling, strength: the same numbers as the wall card and the phone, over the picked period
   const trend = sport ? ambient?.trends[sport as Sport] : undefined
   const days = daysFor(sport as Sport, picked)

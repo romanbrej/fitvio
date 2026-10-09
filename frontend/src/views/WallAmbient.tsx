@@ -424,7 +424,7 @@ function tileBody(sport: Sport, t: SportTrend, days: number): { big: string; uni
 function SportTile({ a, sport }: { a: Ambient; sport: Sport }) {
   const nav = useNavigate()
   const t = a.trends[sport]
-  const [picked] = useTrendPeriod()
+  const [picked] = useTrendPeriod(a.user_id, a.trend_period)
   const c = t ? tileContent(sport, t, undefined, picked ?? undefined) : null
   return (
     <CardButton className="sport-tile" style={{ '--sc': SPORT_COLOR[sport] } as React.CSSProperties}
