@@ -41,11 +41,11 @@ const api = async (path, init) => (await fetch(ROOT + path.replace(/^\//, ''), i
 const detail = id => api(`/api/sessions/${encodeURIComponent(id)}`)
 const { chromium } = await import('playwright')
 const browser = await chromium.launch()
-async function newPage(phone) {
+async function newPage(phone, me = 'alex') {
   const ctx = await browser.newContext(phone
     ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }
     : { viewport: { width: 1280, height: 800 } })
-  if (phone) await ctx.addInitScript(() => localStorage.setItem('fitvio.me', 'alex'))
+  if (phone) await ctx.addInitScript(id => localStorage.setItem('fitvio.me', id), me)
   const p = await ctx.newPage()
   const tag = phone ? 'phone' : 'wall'
   p.on('pageerror', e => pageErrors.push(`${tag}: ${e.message}`))
@@ -184,6 +184,13 @@ try {
   await p.reload()
   await p.getByText(/12 months ago/i).waitFor()
   check('the pick survives a reload', await p.getByRole('group', { name: 'Period' }).getByRole('button', { name: '1 yr' }).getAttribute('aria-pressed') === 'true')
+  check('the pick is saved for the person', (await api('/api/users/alex/ambient')).trend_period === 365)
+  const partner = await newPage(true, 'sam')
+  await partner.goto(`${ROOT}trends/sport/running`)
+  await partner.getByRole('group', { name: 'Period' }).waitFor()
+  check('the partner keeps their own period', await partner.getByRole('group', { name: 'Period' })
+    .getByRole('button', { name: '6 wk' }).getAttribute('aria-pressed') === 'true')
+  await partner.close()
   // the list below follows the period: 2 weeks shows only the sessions from its first day on
   await p.getByRole('group', { name: 'Period' }).getByRole('button', { name: '2 wk' }).click()
   await p.getByText(/sessions · last 2 wks/i).waitFor()
@@ -202,7 +209,7 @@ try {
   await p.goto(`${ROOT}u/alex/sport/cycling`)
   const wallChips = p.getByRole('group', { name: 'Period' })
   await wallChips.waitFor()
-  check('the wall opens cycling at its own 3 months', await wallChips.getByRole('button', { name: '3 mo' }).getAttribute('aria-pressed') === 'true')
+  check('the wall shows the period the person picked on the phone', await wallChips.getByRole('button', { name: '2 wk' }).getAttribute('aria-pressed') === 'true')
   await wallChips.getByRole('button', { name: '4 wk' }).click()
   await p.getByText(/rides · last 4 wks/i).waitFor()
   const heroText = await p.locator('section.hero').innerText()

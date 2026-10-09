@@ -119,6 +119,16 @@ RUN_WEIGHT_CAP_S = 1200.0  # one long run counts at most 20 min, so it can't out
 PERIOD_DAYS = (14, 28, 42, 56, 91, 182, 365)  # the periods a person can pick ("Am I improving?" over …)
 DEFAULT_DAYS = {"running": 42, "cycling": 91, "strength": 42}
 MIN_RUNS, MIN_RIDES = 4, 3
+TREND_PERIOD = "trend_period:{user_id}"  # the period this person last picked (days), for every device
+
+
+def trend_period(conn: sqlite3.Connection, user_id: str) -> int | None:
+    v = db.get_state(conn, TREND_PERIOD.format(user_id=user_id))
+    return int(v) if v and v.isdigit() and int(v) in PERIOD_DAYS else None
+
+
+def set_trend_period(conn: sqlite3.Connection, user_id: str, days: int) -> None:
+    db.set_state(conn, TREND_PERIOD.format(user_id=user_id), str(days))
 
 
 def sport_status(sessions: list[dict], sport: str, ftp: float | None, weights: improvements.Weights,
@@ -403,6 +413,7 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
         "week": week_totals(0),
         "last_week": week_totals(1),
         "trends": trends,
+        "trend_period": trend_period(conn, user_id),  # null: each sport's own default
         "recent": [dict(r) for r in recent],
         "vo2max": vo2,
         "sync": sync_info(conn, cfg, user_id),

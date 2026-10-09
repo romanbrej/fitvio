@@ -182,7 +182,7 @@ export function SportHistory() {
   const { sport: param } = useParams()
   const { me, ambient } = usePhone()
   const [params, setParams] = useSearchParams()
-  const [picked, pick] = useTrendPeriod()
+  const [picked, pick] = useTrendPeriod(me.id, ambient?.trend_period)
   const all = param === 'all'
   const sport = MAIN_SPORTS.includes(param as Sport) ? param as Sport : undefined
   const type = params.get('type') ?? undefined

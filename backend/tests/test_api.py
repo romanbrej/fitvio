@@ -294,3 +294,26 @@ def test_sessions_since_a_day(client):
     assert sum(x["count"] for x in types) == len(recent)
     assert client.get("/api/users/a/sessions?since=yesterday").status_code == 422
     assert client.get("/api/users/a/session-types?since=2026-1-1").status_code == 422
+
+
+def test_trend_period_is_per_person(client):
+    """The period picked on a sport page belongs to the person, not the phone: the partner keeps theirs."""
+    assert client.put("/api/users/a/trend-period", json={"days": 14}).status_code == 403  # not from home
+    main.app.dependency_overrides[main.local_network_only] = lambda: None
+    try:
+        _trend_period_per_person(client)
+    finally:
+        main.app.dependency_overrides.clear()
+
+
+def _trend_period_per_person(client):
+    assert client.get("/api/users/a/ambient").json()["trend_period"] is None  # nothing picked: the defaults
+    assert client.put("/api/users/a/trend-period", json={"days": 14}).json() == {"days": 14}
+    assert client.get("/api/users/a/ambient").json()["trend_period"] == 14
+    assert client.get("/api/users/b/ambient").json()["trend_period"] is None
+    client.put("/api/users/b/trend-period", json={"days": 365})
+    assert (client.get("/api/users/a/ambient").json()["trend_period"],
+            client.get("/api/users/b/ambient").json()["trend_period"]) == (14, 365)
+    assert client.put("/api/users/a/trend-period", json={"days": 10}).status_code == 422
+    assert client.put("/api/users/a/trend-period", json={"days": "14"}).status_code == 422
+    assert client.put("/api/users/nope/trend-period", json={"days": 14}).status_code == 404

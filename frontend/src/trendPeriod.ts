@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { api } from './api'
 import type { Sport, SportTrend } from './api'
 
 /** The lengths a person can look back over ("Am I improving?" over …), as the API sends them (wall.PERIOD_DAYS). */
@@ -19,33 +20,34 @@ export function periodText(days: number): string {
   return PERIODS.find(p => p.days === days)?.text ?? `${days} days`
 }
 
-const KEY = 'fitvio.trendPeriod'
 const EVENT = 'fitvio-trend-period'
+/** Picks made on this page, per person, until the server's copy (ambient.trend_period) catches up. */
+const picked = new Map<string, number>()
 
-function stored(): number | null {
-  try {
-    const v = Number(localStorage.getItem(KEY))
-    return PERIODS.some(p => p.days === v) ? v : null
-  } catch {
-    return null  // private window, blocked storage: the defaults
-  }
-}
-
-/** The period picked on this device (one for every sport), or null for each sport's default. */
-export function useTrendPeriod(): [number | null, (days: number) => void] {
-  const [days, setDays] = useState<number | null>(stored)
+/** The period this person picked (one for every sport, kept on the server so it follows them to every
+ *  device and the partner keeps theirs), or null for each sport's default. `saved`: ambient.trend_period. */
+export function useTrendPeriod(user: string | undefined, saved: number | null | undefined): [number | null, (days: number) => void] {
+  const [, rerender] = useState(0)
   useEffect(() => {
-    const sync = () => setDays(stored())
+    const sync = () => rerender(n => n + 1)
     window.addEventListener(EVENT, sync)
-    window.addEventListener('storage', sync)
-    return () => { window.removeEventListener(EVENT, sync); window.removeEventListener('storage', sync) }
+    return () => window.removeEventListener(EVENT, sync)
   }, [])
-  const pick = (d: number) => {
-    try { localStorage.setItem(KEY, String(d)) } catch { /* kept for this page only */ }
-    setDays(d)
+  const pick = (days: number) => {
+    if (!user) return
+    const before = picked.get(user)
+    picked.set(user, days)
     window.dispatchEvent(new Event(EVENT))
+    api.setTrendPeriod(user, days).catch(() => {  // refused (not at home) or offline: back to what was saved
+      if (before == null) picked.delete(user)
+      else picked.set(user, before)
+      window.dispatchEvent(new Event(EVENT))
+    })
   }
-  return [days, pick]
+  // once the server's copy has it, it's the one to follow (a pick on another device shows on the next refresh)
+  useEffect(() => { if (user && saved != null && picked.get(user) === saved) picked.delete(user) }, [user, saved])
+  const days = (user ? picked.get(user) : undefined) ?? saved ?? null
+  return [PERIODS.some(p => p.days === days) ? days : null, pick]
 }
 
 export function daysFor(sport: Sport, picked: number | null): number {

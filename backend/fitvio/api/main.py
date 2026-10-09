@@ -388,6 +388,22 @@ def set_weather_setting(user_id: str, body: WeatherChoice, c: AppConfig = Depend
     return {"open_meteo": body.open_meteo, "job": job.public() if job else None}
 
 
+class TrendPeriodChoice(BaseModel):
+    model_config = {"extra": "forbid"}
+    days: int = Field(strict=True)
+
+
+@app.put("/api/users/{user_id}/trend-period", dependencies=[Depends(local_network_only)])
+def set_trend_period(user_id: str, body: TrendPeriodChoice, c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    """How far back this person's "Am I improving?" looks (days: 14 … 365), on every device."""
+    user = _user_or_404(c, user_id)
+    if body.days not in wall.PERIOD_DAYS:
+        raise HTTPException(422, f"days must be one of {', '.join(map(str, wall.PERIOD_DAYS))}")
+    wall.set_trend_period(cn, user.id, body.days)
+    cn.commit()
+    return {"days": body.days}
+
+
 class HeatChoice(BaseModel):
     model_config = {"extra": "forbid"}
     learn: bool = Field(strict=True)
