@@ -7,7 +7,8 @@ import time
 from datetime import date, datetime, timedelta
 from statistics import median
 
-from . import db, profile, weather
+from . import db, heat_response, profile, weather
+from .analytics import heat
 from .activity import ParsedActivity
 from .analytics.features import build_streams, compute_features
 from .config import UserConfig
@@ -24,6 +25,8 @@ def session_id(user_id: str, activity_id: str) -> str:
 def store_activity(conn: sqlite3.Connection, user: UserConfig, act: ParsedActivity) -> str:
     sid = session_id(user.id, act.activity_id)
     feats = compute_features(act, profile.resolve(conn, user))
+    heat.adjust([{"sport": act.sport, "indoor": act.indoor, "features": feats["features"]}],
+                heat_response.current(conn, user.id))
     db.upsert(conn, "sessions", {
         "id": sid, "user_id": user.id, "activity_id": act.activity_id, "name": act.name,
         "sport": act.sport, "raw_sport": act.raw_sport, "sub_sport": act.sub_sport,
@@ -155,7 +158,8 @@ def store_health(conn: sqlite3.Connection, user_id: str, days: list[dict]) -> No
 # 6: pace at the reference HR measured from steady seconds near it (every run type), smooth heat curve
 # 7: strength exercise names from the FIT profile (Garmin writes categories as numbers), set durations
 # 8: weather from Open-Meteo's hours over the session (dew point for everyone), start point stored
-ANALYSIS_VERSION = "8"
+# 9: heat load over the session's hours; heat response learned per person and sport; rides and drift too
+ANALYSIS_VERSION = "9"
 
 
 def reader_for(user: UserConfig):
@@ -237,7 +241,10 @@ def ingest(conn: sqlite3.Connection, user: UserConfig, full: bool = False,
     db.set_state(conn, version_key, ANALYSIS_VERSION)  # only once the history is up to date
     conn.commit()
     weather_result = fill_weather(conn, user, reader) if use_om else None
+    changed = stored or reprocess or (weather_result or {}).get("updated")
+    relearned = refresh_heat(conn, user.id) if changed or not heat_response.learned_yet(conn, user.id) else []
     return {"activities": n_new, "updated": n_updated, "reprocessed": reprocess, "weather": weather_result,
+            "heat_relearned": relearned,
             "profile": {k: v["value"] for k, v in profile.describe(conn, user).items()}}
 
 
@@ -280,6 +287,48 @@ def fill_weather(conn: sqlite3.Connection, user: UserConfig, reader,
         log.info("%s: Open-Meteo weather for %d sessions, %d verdicts recomputed", user.id, len(stored), n)
     return {"requests": fetched["requests"], "updated": len(stored), "pending": fetched["pending"],
             "error": fetched["error"]}
+
+
+def refresh_heat(conn: sqlite3.Connection, user_id: str) -> list[str]:
+    """Relearn the person's heat response from their stored sessions; where it moved, rewrite that
+    sport's adjusted values and work its verdicts out again (first_shown_at kept). Returns those sports."""
+    if not heat_response.enabled(conn, user_id):
+        return []
+    moved = heat_response.refresh(conn, user_id, user_sessions(conn, user_id))
+    if moved:
+        _reapply_heat(conn, user_id, moved)
+        log.info("%s: heat response relearned for %s", user_id, ", ".join(moved))
+    conn.commit()
+    return moved
+
+
+def set_heat_learning(conn: sqlite3.Connection, user_id: str, on: bool) -> int:
+    """Switch learning the heat response on or off (off = the standard factors) and redo the verdicts of
+    the sports it affects. Returns how many verdicts were recomputed."""
+    try:
+        heat_response.set_enabled(conn, user_id, on)
+        heat_response.refresh(conn, user_id, user_sessions(conn, user_id))
+        n = _reapply_heat(conn, user_id, list(heat.SPORTS))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return n
+
+
+def _reapply_heat(conn: sqlite3.Connection, user_id: str, sports: list[str]) -> int:
+    """Rewrite and re-judge under the write lock, from sessions read inside it: the sync runs in its own
+    process, and a session it stores meanwhile (new weather, a new run) must not be overwritten with an
+    older copy. No commit."""
+    conn.commit()
+    conn.execute("BEGIN IMMEDIATE")
+    sessions = user_sessions(conn, user_id)
+    ids = heat_response.rewrite(conn, user_id, sessions, sports)
+    first: dict[str, str] = {}
+    for s in sessions:  # oldest first: the first of each sport reaches all the others
+        if s["id"] in ids:
+            first.setdefault(s["sport"], s["id"])
+    return reevaluate_from(conn, user_id, list(first.values())) if first else 0
 
 
 ingest_from_garmindb = ingest  # the name before Intervals.icu existed

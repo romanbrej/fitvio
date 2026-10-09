@@ -7,7 +7,7 @@ from statistics import median, pstdev
 
 from ..activity import ParsedActivity
 from ..config import UserConfig
-from . import physio
+from . import heat, physio
 
 
 # Workout-name keywords (German + English), checked in this order: the planned workout says what the
@@ -94,15 +94,10 @@ def compute_features(act: ParsedActivity, user: UserConfig) -> dict:
         gap_all = physio.grade_adjusted_speeds(recs)
         gap = gap_all[len(recs) - len(steady):]
         ef = physio.efficiency_factor(steady, gap)
-        w = act.weather or {}
-        heat_pct = 0.0 if act.indoor else physio.heat_adjustment(w.get("temp_c"), w.get("dew_point_c"),
-                                                                 act.heat_acclimation)
         # pace you actually held at the reference HR (any kind of run), not a fit extrapolated to it
         v_ref, ref_secs = physio.steady_speed_at_hr(recs, gap_all, ref_hr(user), *ref_hr_band(user)) or (None, None)
         f.update({
-            "speed_at_ref_hr_adj": v_ref * (1 + heat_pct / 100) if v_ref else None,  # wall progress: pace at same HR
             "ef": ef,                                      # grade-adjusted m/min per beat
-            "ef_adj": ef * (1 + heat_pct / 100) if ef else None,  # also heat/humidity-normalised
             "decoupling": physio.decoupling(steady, gap),
             "speed_at_ref_hr": v_ref,
             "ref_hr_secs": round(ref_secs) if ref_secs else None,
@@ -110,7 +105,6 @@ def compute_features(act: ParsedActivity, user: UserConfig) -> dict:
             "avg_speed": act.distance_m / act.duration_s if act.distance_m and act.duration_s else None,
             "gap_speed": (sum(s for s in gap if s) / max(1, sum(1 for s in gap if s))) if gap else None,
             "avg_cadence": _avg([r.cadence for r in recs]),
-            "heat_adj_pct": heat_pct,
         })
         if session_type == "intervals":
             f.update(physio.interval_reps(act.laps) or {})
@@ -164,6 +158,9 @@ def compute_features(act: ParsedActivity, user: UserConfig) -> dict:
         f["total_volume"] = round(sum(d["volume"] for d in per_ex.values()), 1)
         f["total_sets"] = sum(d["sets"] for d in per_ex.values())
 
+    if act.sport in heat.SPORTS:  # the *_adj values follow from it and the person's heat response (pipeline)
+        f["heat_load_pct"] = heat.heat_load(act.weather, act.start_time, act.duration_s, act.heat_acclimation,
+                                            act.indoor)
     if act.weather:
         f["weather"] = act.weather
     if act.track:

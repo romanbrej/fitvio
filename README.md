@@ -56,6 +56,7 @@ docker run --rm -p 8765:8765 -e FITVIO_CONFIG=/tmp/demo/users.json -e FITVIO_DB=
 ## What you get
 
 - **A verdict after every workout** — *Better / In line / Worse* than your similar sessions from the last weeks, with the reasons in plain words: pace per heartbeat (grade- and heat-adjusted), HR drift, power, SWOLF, estimated 1-rep max.
+- **Weather that counts** — hourly temperature, dew point, humidity and wind for every outdoor run and ride from [Open-Meteo](https://open-meteo.com), along your rough route and for every hour of the session. Heat and humidity are corrected out of the verdict, and Fitvio learns from your own sessions how much heat costs *you*, per sport. A hot day no longer looks like a bad day.
 - **Today's mission** — one headline from Garmin's Training Readiness, and the week of your **Garmin Coach plan**: done ✓, missed ×, today, planned. Tap any day for its workout, step by step.
 - **Training load that makes sense** — fitness, fatigue and form on one chart, plus a weekly *sweet spot* that keeps you improving without overdoing it.
 - **Recovery at a glance** — readiness, HRV against your normal range, resting HR, sleep, Body Battery, VO₂max.
@@ -64,7 +65,7 @@ docker run --rm -p 8765:8765 -e FITVIO_CONFIG=/tmp/demo/users.json -e FITVIO_DB=
 - **Made for the wall** — big type, day and night screens, the newest activity takes over the screen, auto-scales to big tablets.
 - **For the whole household** — one Garmin login per person; tap an avatar to switch.
 - **On your phone too** — a personal app with Today, Plan, Trends and Me, plus every workout you ever did per sport (home Wi-Fi only).
-- **Private by design** — runs on your server, LAN only; your Garmin login and health data never leave your home.
+- **Private by design** — runs on your server, LAN only; your Garmin login and health data never leave your home. The weather lookup only sends a rough position (rounded to about 11 km) and the date.
 
 ## How it works
 
@@ -86,7 +87,7 @@ New activities show up on the wall about 2–3 minutes after your watch syncs: t
 
 **Can I see it outside my home?** No, by design — it's built for your home network only. Don't expose it to the internet.
 
-**Where does my data go?** Nowhere. Your Garmin login and data stay in the `data/` folder on your server. Details in [Security and privacy](docs/security.md).
+**Where does my data go?** Nowhere. Your Garmin login and data stay in the `data/` folder on your server. For the weather, Open-Meteo gets a rough position (a point every 30 minutes, rounded to about 11 km) and the dates, never your exact route or anything about you; it can be switched off per person. Details in [Security and privacy](docs/security.md).
 
 ## Feedback and contributing
 

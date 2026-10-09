@@ -155,6 +155,12 @@ export interface SyncInfo {
 }
 
 /** Auto-sync on new activity (backend: sync/activity_watch.py). */
+export interface HeatResponse {
+  available: boolean
+  learn: boolean
+  sports: Record<string, { k: number; d: number; warm: number; n: number; prior_k: number; learned: boolean }>
+}
+
 export interface ActivityCheck {
   enabled: boolean; interval_s: number; active_hours: string
   backoff_until: string | null; last_error: string | null
@@ -287,6 +293,10 @@ export const api = {
   weatherSetting: (user: string) => get<{ open_meteo: boolean }>(`/api/users/${seg(user)}/weather`),
   setWeatherSetting: (user: string, open_meteo: boolean) =>
     send<{ open_meteo: boolean; job: Job | null }>('PUT', `/api/users/${seg(user)}/weather`, { open_meteo }),
+  /** How much heat costs this person per sport (k × the standard table), learned or standard */
+  heatSetting: (user: string) => get<HeatResponse>(`/api/users/${seg(user)}/heat`),
+  setHeatSetting: (user: string, learn: boolean) =>
+    send<HeatResponse & { recomputed: number }>('PUT', `/api/users/${seg(user)}/heat`, { learn }),
   activityCheck: () => get<ActivityCheck>('/api/settings/activity-check'),
   setActivityCheck: (enabled: boolean) => post<ActivityCheck>('/api/settings/activity-check', { enabled }),
   buddySettings: () => get<BuddySettings>('/api/settings/buddy'),

@@ -299,6 +299,7 @@ def generate(conn: sqlite3.Connection, cfg: AppConfig, days: int = 150, seed: in
             })
         pipeline.store_health(conn, user.id, hdays)
         pipeline.evaluate_all(conn, user.id)
+        pipeline.refresh_heat(conn, user.id)  # made-up runs raise HR in the heat: their heat response is learned
         _demo_coach(conn, user.id, ui, now)
         db.upsert(conn, "sync_status", {"user_id": user.id, "last_attempt": now.isoformat(),
                                         "last_success": now.isoformat(), "last_error": None})

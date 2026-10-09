@@ -1,6 +1,6 @@
 # Security and privacy
 
-Fitvio is made for your home network. Your Garmin login and health data never leave your server, except for the requests to Garmin Connect that GarminDB and the app make on your behalf.
+Fitvio is made for your home network. Your Garmin login and health data never leave your server, except for the requests to Garmin Connect (or Intervals.icu) that the app makes on your behalf. For the weather, [Open-Meteo](https://open-meteo.com) gets a rough position of each outdoor session (a point every 30 minutes, rounded to 0.1°, about 11 km) and its dates, with no account, key or anything about you. It can be switched off per person in the phone's Me screen.
 
 ## What stays on your server
 

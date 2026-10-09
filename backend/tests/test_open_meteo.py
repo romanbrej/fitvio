@@ -1,7 +1,7 @@
 """Hourly weather from Open-Meteo: start point, cache, failures, which weather a session uses, backfill.
 Never calls Open-Meteo: answers come from a recorded response (fixtures/open_meteo)."""
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -226,7 +226,7 @@ def test_intervals_session_gets_a_real_dew_point(tmp_path):
     weather.apply(filled, tmp_path, True)
     assert filled.weather["dew_point_c"] is not None
     a, b = compute_features(guessed, USER)["features"], compute_features(filled, USER)["features"]
-    assert a["heat_adj_pct"] != b["heat_adj_pct"] and b["track"] == [[0, 52.4, 9.7]]
+    assert a["heat_load_pct"] != b["heat_load_pct"] and b["track"] == [[0, 52.4, 9.7]]
 
 
 @pytest.mark.parametrize("w, text", [({"source": "Open-Meteo"}, "Open-Meteo"),
@@ -306,3 +306,39 @@ def test_setting_api(client):  # noqa: F811
     assert client.put("/api/users/a/weather", json={"open_meteo": "no"}).status_code == 422
     assert client.put("/api/users/a/weather", json={"open_meteo": False}).json()["open_meteo"] is False
     assert client.get("/api/users/a/weather").json() == {"open_meteo": False}
+
+
+def test_sync_learns_the_heat_response_and_redoes_verdicts_when_it_moves(tmp_path, monkeypatch, gps_fit):
+    """Through a whole sync: the heat load comes from Open-Meteo's hours, the response is learned and saved,
+    and when a later sync moves it, every run is rewritten and judged again without popping up."""
+    from fitvio import heat_response
+    from fitvio.analytics import heat
+    api = FakeIntervals([activity("i1", "2026-07-14", has_weather=True, average_weather_temp=20.0),
+                         activity("i2", "2026-07-15", has_weather=True, average_weather_temp=21.0)])
+    user = make_user(tmp_path, monkeypatch, api)
+    conn = db.connect(tmp_path / "app.db")
+    monkeypatch.setattr(open_meteo, "_urlopen", FakeOpenMeteo())
+    ok, result = intervals_runner.sync_user(conn, user, full=True)
+    runs = pipeline.user_sessions(conn, "sam")
+    assert ok and all(s["features"]["heat_load_pct"] > 0 and s["features"]["weather"]["source"] == "Open-Meteo"
+                      for s in runs)
+    assert heat_response.learned_yet(conn, "sam")                       # saved once, still the standard
+    assert heat_response.current(conn, "sam")["running"]["k"] == 1.0
+    assert all(s["features"]["heat_adj_pct"] == s["features"]["heat_load_pct"] for s in runs)
+    conn.execute("UPDATE verdicts SET first_shown_at = '2026-07-15T09:00:00' WHERE user_id = 'sam'")
+    conn.commit()
+
+    # a later sync brings a run; this time the fit says heat costs this person twice the standard
+    api.activities.append(activity("i3", (date.today() - timedelta(days=1)).isoformat(), has_weather=True,
+                                   average_weather_temp=21.0))  # recent: a normal sync picks it up
+    real = heat.fit_response
+    monkeypatch.setattr(heat, "fit_response", lambda ss, sport: {**real(ss, sport), "k": 2.0}
+                        if sport == "running" else real(ss, sport))
+    ok, result = intervals_runner.sync_user(conn, user)
+    assert ok and result["activities"] == 1 and result["heat_relearned"] == ["running"], result
+    runs = pipeline.user_sessions(conn, "sam")
+    assert len(runs) == 3 and all(s["features"]["heat_adj_pct"] == round(2 * s["features"]["heat_load_pct"], 2)
+                                  for s in runs)                         # old and new runs alike
+    rows = conn.execute("SELECT session_id, first_shown_at FROM verdicts WHERE user_id = 'sam'").fetchall()
+    assert all(r["first_shown_at"] == "2026-07-15T09:00:00" for r in rows if not r["session_id"].endswith("i3"))
+    assert intervals_runner.sync_user(conn, user)[1]["heat_relearned"] == []  # nothing new: nothing relearned

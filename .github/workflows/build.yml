@@ -1,4 +1,4 @@
-# Pull requests: test (pytest + lint). main: build the multi-arch image (amd64 + arm64) and push it to GHCR;
+# Pull requests: test (pytest + lint + e2e). main: build the multi-arch image (amd64 + arm64) and push it to GHCR;
 # it was tested in its pull request, so it isn't tested again.
 # Servers update themselves: deploy/install-updater.sh pulls a newer image every few minutes.
 # (No self-hosted runner on purpose: on a public repo it would let pull requests run code on your server.)
@@ -48,6 +48,15 @@ jobs:
         env:
           NODE_OPTIONS: --dns-result-order=ipv4first
       - run: npm run lint
+        working-directory: frontend
+      # end to end through the real backend and UI on made-up data (scripts/e2e.mjs)
+      - run: npm run build
+        working-directory: frontend
+      - run: npm i --no-save --no-audit --no-fund playwright && npx playwright install --with-deps chromium
+        working-directory: frontend
+        env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
+      - run: node scripts/e2e.mjs
         working-directory: frontend
 
   image:

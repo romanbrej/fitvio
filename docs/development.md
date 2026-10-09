@@ -27,6 +27,8 @@ fitvio watch                       auto-sync: new-activity check every 2 min + h
 fitvio ingest [--user ID] [--full] ingest only
 fitvio evaluate [--user ID]        recompute all verdicts (e.g. after changing max_hr)
 fitvio backfill-extras [--user ID] Garmin weather, heat acclimation + VO₂max history for the past
+fitvio heat-report [--user ID]     how much heat costs each person per sport: measured, used, per heat level
+                                   (reads FITVIO_DB read-only, never users.json; prints numbers only)
 fitvio backtest [--user ID] [--sport S]
 fitvio demo [--days N]
 fitvio demo-export <dir> [--deny NAMES]  the GitHub Pages demo's data (made-up people only)

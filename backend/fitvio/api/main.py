@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .. import accounts, buddy, db, pipeline, profile, wall, weather
+from .. import accounts, buddy, db, heat_response, pipeline, profile, wall, weather
 from ..analytics import load as load_model
 from ..config import PROJECT_ROOT, AppConfig, env, load_config
 from ..pipeline import user_sessions
@@ -374,6 +374,29 @@ def set_weather_setting(user_id: str, body: WeatherChoice, c: AppConfig = Depend
         db.set_state(cn, f"analysis_version:{user.id}", "")  # → the next ingest reprocesses everything
     job = accounts.active_for(user.id) or (accounts.start_reprocess(user, c.db_path) if user.source else None)
     return {"open_meteo": body.open_meteo, "job": job.public() if job else None}
+
+
+class HeatChoice(BaseModel):
+    model_config = {"extra": "forbid"}
+    learn: bool = Field(strict=True)
+
+
+@app.get("/api/users/{user_id}/heat")
+def get_heat_setting(user_id: str, c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    """How much heat costs this person per sport (k × the standard table) and whether it's learned."""
+    _user_or_404(c, user_id)
+    return heat_response.describe(cn, user_id)
+
+
+@app.put("/api/users/{user_id}/heat", dependencies=[Depends(local_network_only)])
+def set_heat_setting(user_id: str, body: HeatChoice, c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    """Learn the heat response from this person's sessions (on) or use the standard factors (off). The
+    verdicts of runs and rides are worked out again right away from what's stored."""
+    user = _user_or_404(c, user_id)
+    if not heat_response.LEARN_HEAT_RESPONSE:
+        raise HTTPException(404, "Learning the heat response isn't available yet")
+    n = pipeline.set_heat_learning(cn, user.id, body.learn)
+    return {**heat_response.describe(cn, user.id), "recomputed": n}
 
 
 @app.put("/api/users/{user_id}/profile", dependencies=[Depends(local_network_only)])

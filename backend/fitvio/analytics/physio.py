@@ -74,6 +74,12 @@ def _interpolate(table: list[tuple[float, float]], x: float) -> float:
     return table[-1][1]
 
 
+def heat_table_pct(temp_c: float, dew_point_c: float | None) -> float:
+    """The table's % for one reading, unrounded (no dew point: temp − 10, a rough mid-humidity guess)."""
+    dew_c = dew_point_c if dew_point_c is not None else temp_c - 10
+    return _interpolate(HEAT_TABLE + [(HEAT_TABLE[-1][0] + 10, HEAT_MAX_PCT)], c_to_f(temp_c) + c_to_f(dew_c))
+
+
 def heat_adjustment(temp_c: float | None, dew_point_c: float | None, acclimation_pct: float | None = None) -> float:
     """% by which heat and humidity made the same effort harder (0 when unknown or cool).
 
@@ -82,9 +88,7 @@ def heat_adjustment(temp_c: float | None, dew_point_c: float | None, acclimation
     """
     if temp_c is None:
         return 0.0
-    dew_c = dew_point_c if dew_point_c is not None else temp_c - 10  # rough mid-humidity fallback
-    total = c_to_f(temp_c) + c_to_f(dew_c)
-    pct = _interpolate(HEAT_TABLE + [(HEAT_TABLE[-1][0] + 10, HEAT_MAX_PCT)], total)
+    pct = heat_table_pct(temp_c, dew_point_c)
     if acclimation_pct:
         pct *= 1 - 0.5 * max(0.0, min(100.0, acclimation_pct)) / 100
     return round(pct, 2)

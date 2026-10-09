@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../../api'
 import { DEMO, DEMO_LOCKED } from '../../demo/demo'
-import type { Account, ActivityCheck, BuddySettings } from '../../api'
+import type { Account, ActivityCheck, BuddySettings, HeatResponse } from '../../api'
 import { ANIMALS, Buddy } from '../../components/Buddy'
 import type { Animal } from '../../components/Buddy'
 import { HrSettings } from '../../components/HrSettings'
@@ -13,6 +13,17 @@ import { Avatar, Card } from '../parts'
 
 const errorText = (e: unknown) => String(e).replace(/^Error: /, '')
 
+const HEAT_SPORTS: [string, string][] = [['running', 'runs'], ['cycling', 'rides']]
+
+/** "Runs: heat costs you 1.4× the standard (38 warm runs)" */
+function heatLine(r: HeatResponse['sports'][string], noun: string) {
+  const what = noun[0].toUpperCase() + noun.slice(1)
+  if (!r.learned || Math.abs(r.k - r.prior_k) < 0.05) {
+    return `${what}: standard${r.prior_k !== 1 ? ` (${r.prior_k}× the run table)` : ''}${r.learned ? ` · ${r.warm} warm ${noun}` : ''}`
+  }
+  return `${what}: heat costs you ${(r.k / r.prior_k).toFixed(1)}× the standard (${r.warm} warm ${noun})`
+}
+
 /** Who uses this phone, their heart-rate values, their buddy, the accounts and auto-sync. */
 export function Me() {
   const { config, me, setMe, refresh } = usePhone()
@@ -20,6 +31,7 @@ export function Me() {
   const [buddies, setBuddies] = useState<BuddySettings | null>(null)
   const [check, setCheck] = useState<ActivityCheck | null>(null)
   const [openMeteo, setOpenMeteo] = useState<boolean | null>(null)
+  const [heat, setHeat] = useState<HeatResponse | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
 
   const load = useCallback(() => api.accounts().then(setAccounts).catch(e => setProblem(errorText(e))), [])
@@ -27,6 +39,7 @@ export function Me() {
   useEffect(() => { api.buddySettings().then(setBuddies).catch(() => setBuddies(null)) }, [])
   useEffect(() => { api.activityCheck().then(setCheck).catch(() => setCheck(null)) }, [])
   useEffect(() => { api.weatherSetting(me.id).then(r => setOpenMeteo(r.open_meteo)).catch(() => setOpenMeteo(null)) }, [me.id])
+  useEffect(() => { api.heatSetting(me.id).then(setHeat).catch(() => setHeat(null)) }, [me.id])
   useEffect(() => {
     // keep sync progress fresh while anything runs
     if (!accounts?.some(a => a.job)) return
@@ -51,6 +64,11 @@ export function Me() {
     if (openMeteo == null) return
     setProblem(null)
     try { setOpenMeteo((await api.setWeatherSetting(me.id, !openMeteo)).open_meteo); await load() } catch (e) { setProblem(errorText(e)) }
+  }
+  const toggleHeat = async () => {
+    if (!heat) return
+    setProblem(null)
+    try { setHeat(await api.setHeatSetting(me.id, !heat.learn)) } catch (e) { setProblem(errorText(e)) }
   }
   const mine = buddies?.users[me.id]
   const myAccount = accounts?.find(a => a.id === me.id)
@@ -98,6 +116,21 @@ export function Me() {
             <button role="switch" aria-checked={openMeteo} className={`switch ${openMeteo ? 'on' : ''}`}
                     onClick={toggleWeather} aria-label="Hourly weather from Open-Meteo"><span /></button>
           </div>
+          {heat?.available && (
+            <div className="ph-list-row">
+              <div className="ph-grow">
+                <span className="ph-strong">Learn my heat response</span>
+                <span className="ph-foot">{heat.learn
+                  ? 'How much heat slows you, from your own warm sessions compared with the cooler ones around them.'
+                  : 'Uses the standard heat adjustment for everyone.'}</span>
+                {HEAT_SPORTS.filter(([sport]) => heat.sports[sport]).map(([sport, noun]) => (
+                  <span key={sport} className="ph-foot" data-heat={sport}>{heatLine(heat.sports[sport], noun)}</span>
+                ))}
+              </div>
+              <button role="switch" aria-checked={heat.learn} className={`switch ${heat.learn ? 'on' : ''}`}
+                      onClick={toggleHeat} aria-label="Learn my heat response"><span /></button>
+            </div>
+          )}
         </Card>
       )}
 
