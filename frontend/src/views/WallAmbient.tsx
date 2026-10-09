@@ -9,6 +9,7 @@ import { Sparkline } from '../components/Sparkline'
 import { WeekStrip } from '../components/WeekStrip'
 import { formState, hoursMinutes, num, signed, SPORT_LABEL } from '../format'
 import { READINESS_LEVEL, feedbackText, headline, paceStr, readinessTitle } from '../mission'
+import { DEFAULT_DAYS, periodText, useTrendPeriod } from '../trendPeriod'
 import './Wall.css'
 
 const SPORTS: Sport[] = ['running', 'cycling', 'swimming', 'strength']
@@ -336,62 +337,68 @@ function toneOf(change: number | null | undefined, band: number): Tone {
   return change == null ? 'muted' : change >= band ? 'better' : change <= -band ? 'worse' : 'inline'
 }
 
-export function tileContent(sport: Sport, t: SportTrend, now = Date.now()): {
+export function tileContent(sport: Sport, t: SportTrend, now = Date.now(), days?: number): {
   big: string; unit?: string; caption: string; extra?: string; spark: number[]; tone: Tone
   /** the trend as better / in line / worse; null with too few sessions or none in 6 weeks (`stale`) */
   trend: VerdictKind | null; stale: boolean
 } {
   const stale = now - new Date(t.last_time).getTime() > STALE_DAYS * 86400000
-  const c = tileBody(sport, t)
+  const c = tileBody(sport, t, days ?? DEFAULT_DAYS[sport] ?? 42)
   return { ...c, trend: stale ? null : TREND_OF[c.tone], stale }
 }
 
-function tileBody(sport: Sport, t: SportTrend): { big: string; unit?: string; caption: string; extra?: string; spark: number[]; tone: Tone } {
+function tileBody(sport: Sport, t: SportTrend, days: number): { big: string; unit?: string; caption: string; extra?: string; spark: number[]; tone: Tone } {
   const st = t.status
+  // the change over the picked period; an older API without periods: the card's own length
+  const p = t.periods?.[String(days)]
+  const span = p ? periodText(days) : periodText(DEFAULT_DAYS[sport] ?? 42)
   if (sport === 'running' && st?.pace_s_per_km) {
-    const c = st.change_s_per_km
+    const c = p ? p.change : st.change_s_per_km
     const tone = toneOf(c, STEADY.run_s_per_km)
     const cad = t.cadence
     // the pill is heat-adjusted; when the pace as run moved but the weather explains it, say so
-    const raw = st.change_s_per_km_raw ?? null
+    const raw = (p ? p.change_raw : st.change_s_per_km_raw) ?? null
     const weather = tone === 'inline' && raw != null && toneOf(raw, STEADY.run_s_per_km) !== 'inline'
-    const trend = c == null ? 'not enough runs for a trend'
-      : weather ? `${raw! > 0 ? '▲' : '▼'} ${Math.abs(raw!).toFixed(0)} s/km, ${raw! > 0 ? 'cooler' : 'hotter'} weather`
-      : tone === 'inline' ? 'steady over 6 wks'
-      : `${c > 0 ? '▲' : '▼'} ${Math.abs(c).toFixed(0)} s/km ${c > 0 ? 'faster' : 'slower'} in 6 wks`
+    const trend = c == null ? `not enough runs in ${span} for a trend`
+      : weather ? `${raw! > 0 ? '▲' : '▼'} ${Math.abs(raw!).toFixed(0)} s/km in ${span}, ${raw! > 0 ? 'cooler' : 'hotter'} weather`
+      : tone === 'inline' ? `steady over ${span}`
+      : `${c > 0 ? '▲' : '▼'} ${Math.abs(c).toFixed(0)} s/km ${c > 0 ? 'faster' : 'slower'} in ${span}`
     return {
       big: paceStr(st.pace_s_per_km), unit: '/km',
       caption: `at ${num(st.ref_hr)} bpm · ${trend}`,
       extra: cad ? `Cadence ${cad.spm} spm${cad.change ? ` ${cad.change > 0 ? '▲' : '▼'}${Math.abs(cad.change)}` : ''}` : undefined,
-      spark: st.points.map(p => -p.value), tone,
+      spark: (p ?? st).points.map(x => -x.value), tone,
     }
   }
   if (sport === 'cycling' && st && st.w_per_beat != null) {
-    const c = st.w_per_beat_change_pct
+    const c = p ? p.change : st.w_per_beat_change_pct
     const tone = toneOf(c, STEADY.pct)
-    const trend = c == null ? 'too few power rides for a trend' : tone === 'inline' ? 'steady over 3 months'
-      : `${c > 0 ? '▲' : '▼'} ${Math.abs(c).toFixed(1)} % in 3 months`
+    const trend = c == null ? `too few power rides in ${span} for a trend` : tone === 'inline' ? `steady over ${span}`
+      : `${c > 0 ? '▲' : '▼'} ${Math.abs(c).toFixed(1)} % in ${span}`
     return {
       big: st.w_per_beat.toFixed(2), unit: 'W/beat',
       caption: trend,
       extra: st.ftp_wkg ? `FTP ${st.ftp_wkg.toFixed(1)} W/kg` : undefined,
-      spark: st.points.map(p => p.value), tone,
+      spark: (p ?? st).points.map(x => x.value), tone,
     }
   }
   if (sport === 'strength' && st?.sessions_6w != null) {
-    // circuits without weights: how often you go, the last 6 weeks vs the 6 before; with weights: e1RM
-    const n = st.sessions_6w, prev = st.sessions_prev_6w ?? 0
-    const perWeek = `${(n / 6).toFixed(1)}×/wk`
-    const spark = st.points.map(p => p.value)
-    if (st.e1rm_change_pct != null) {
-      return { big: signed(st.e1rm_change_pct, 1, '%'), caption: 'e1RM · 6 wks', extra: perWeek, spark,
-               tone: toneOf(st.e1rm_change_pct, STEADY.pct) }
+    // circuits without weights: how often you go, the period vs the same length before; with weights: e1RM
+    const weeks = (p ? days : 42) / 7
+    const n = p ? p.n : st.sessions_6w, prev = (p ? p.n_prev : st.sessions_prev_6w) ?? 0
+    const minutes = (p ? p.minutes : st.minutes_6w) ?? 0
+    const e1rm = p ? p.change : st.e1rm_change_pct
+    const perWeek = `${(n / weeks).toFixed(1)}×/wk`
+    const spark = (p ?? st).points.map(x => x.value)
+    if (e1rm != null) {
+      return { big: signed(e1rm, 1, '%'), caption: `e1RM · ${span}`, extra: perWeek, spark,
+               tone: toneOf(e1rm, STEADY.pct) }
     }
     const tone = toneOf(n - prev, STEADY.gym_sessions)
-    const trend = tone === 'inline' ? 'steady vs the 6 wks before'
-      : `${n > prev ? '▲' : '▼'} ${Math.abs(n - prev)} ${n > prev ? 'more' : 'fewer'} than the 6 wks before`
-    return { big: (n / 6).toFixed(1), unit: '×/wk', caption: `${n} in 6 wks · ${trend}`,
-             extra: n ? `${Math.round((st.minutes_6w ?? 0) / 6)} min/wk` : undefined, spark, tone }
+    const trend = tone === 'inline' ? `steady vs the ${span} before`
+      : `${n > prev ? '▲' : '▼'} ${Math.abs(n - prev)} ${n > prev ? 'more' : 'fewer'} than the ${span} before`
+    return { big: (n / weeks).toFixed(1), unit: '×/wk', caption: `${n} in ${span} · ${trend}`,
+             extra: n ? `${Math.round(minutes / weeks)} min/wk` : undefined, spark, tone }
   }
   // a trend this steep comes from too few sessions: don't show it on the wall
   const raw6 = t.pct_per_week == null ? null : t.pct_per_week * 6
@@ -417,7 +424,8 @@ function tileBody(sport: Sport, t: SportTrend): { big: string; unit?: string; ca
 function SportTile({ a, sport }: { a: Ambient; sport: Sport }) {
   const nav = useNavigate()
   const t = a.trends[sport]
-  const c = t ? tileContent(sport, t) : null
+  const [picked] = useTrendPeriod()
+  const c = t ? tileContent(sport, t, undefined, picked ?? undefined) : null
   return (
     <CardButton className="sport-tile" style={{ '--sc': SPORT_COLOR[sport] } as React.CSSProperties}
             onClick={() => nav(`/u/${a.user_id}/sport/${sport}`)}>

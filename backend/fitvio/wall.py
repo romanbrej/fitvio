@@ -116,6 +116,11 @@ HEADLINE_MIN_S = 600.0   # under 10 min at the reference HR in those runs → ol
 RUN_WEIGHT_CAP_S = 1200.0  # one long run counts at most 20 min, so it can't outvote the rest
 
 
+PERIOD_DAYS = (14, 28, 42, 56, 91, 182, 365)  # the periods a person can pick ("Am I improving?" over …)
+DEFAULT_DAYS = {"running": 42, "cycling": 91, "strength": 42}
+MIN_RUNS, MIN_RIDES = 4, 3
+
+
 def sport_status(sessions: list[dict], sport: str, ftp: float | None, weights: improvements.Weights,
                  today: date) -> dict | None:
     """The sport card's headline in real units, computed live from the sessions.
@@ -124,89 +129,162 @@ def sport_status(sessions: list[dict], sport: str, ftp: float | None, weights: i
              ones fading out, and how many s/km it changed over the 6 weeks up to the newest run
              (+ = faster, heat adjusted). Both are counted from the newest run, not from today, so
              the numbers change when a run comes in and never just because a day passed.
-    cycling: power per heartbeat of the rides with power in 3 months, plus W/kg of FTP and of the
-             power at the reference HR.
+    cycling: power per heartbeat of the newest ride with power, how it moved over 3 months (heat
+             adjusted), plus W/kg of FTP and of the power at the reference HR.
     strength: sessions per 6 weeks vs the 6 before, and the e1RM trend when weights are logged.
     Sessions someone excluded (bad data) count for how often they trained, never for a performance number.
+    The same change over other lengths is in `period_trend`.
     """
     perf = performance_sessions(sessions)
-
-    def recent(days, keep, pool=perf):
-        lo = (today - timedelta(days=days)).isoformat()
-        return sorted((s for s in pool if s["sport"] == sport and s["start_time"][:10] >= lo and keep(s)),
-                      key=lambda s: s["start_time"])
-
     if sport == "running":
-        # every outdoor run counts, for the steady seconds it spent at the reference HR (features.py)
-        measured = [s for s in perf if s["sport"] == "running" and not s.get("indoor")
-                    and (s.get("features") or {}).get("speed_at_ref_hr") and s["features"].get("ref_hr_secs")]
-        if not measured:
+        pts = _run_points(perf, DEFAULT_DAYS["running"])
+        if not pts:
             return None
-        newest = max(date.fromisoformat(s["start_time"][:10]) for s in measured)
-        lo = (newest - timedelta(days=42)).isoformat()
-        runs = sorted((s for s in perf if s["sport"] == "running" and not s.get("indoor")
-                       and s["start_time"][:10] >= lo), key=lambda s: s["start_time"])
-        pts = []  # (start, pace s/km, heat-adjusted pace, seconds, ref HR)
-        for s in runs:
-            f = s.get("features") or {}
-            v, secs = f.get("speed_at_ref_hr"), f.get("ref_hr_secs")
-            if v and secs:
-                pts.append((s["start_time"], 1000 / v, 1000 / (f.get("speed_at_ref_hr_adj") or v),
-                            min(secs, RUN_WEIGHT_CAP_S), f.get("ref_hr")))
-
         # the newest runs, faded by position: the run that leaves when a new one comes in barely counts
         head = []
         for rank, p in enumerate(reversed(pts)):
             if rank >= HEADLINE_RUNS and sum(h[0][3] for h in head) >= HEADLINE_MIN_S:
                 break
             head.append((p, (HEADLINE_RUNS - min(rank, HEADLINE_RUNS - 1)) / HEADLINE_RUNS))
-
-        def change(i):  # s/km faster over 6 weeks (+ = faster), from a slope weighted by seconds measured
-            if len(pts) < 4:
-                return None
-            x0 = datetime.fromisoformat(pts[0][0])
-            xs = [(datetime.fromisoformat(p[0]) - x0).total_seconds() / 86400 for p in pts]
-            slope = physio.weighted_linear_slope(xs, [p[i] for p in pts], [p[3] for p in pts])
-            return round(-slope * 42, 1) if slope is not None else None
-
         pace = sum(p[1] * p[3] * w for p, w in head) / sum(p[3] * w for p, w in head)
+        trend = period_trend(sessions, "running", DEFAULT_DAYS["running"], today, perf)
+        lo = (_newest_day(perf, _measured_run) - timedelta(days=DEFAULT_DAYS["running"])).isoformat()
+        runs_total = sum(1 for s in perf if s["sport"] == "running" and not s.get("indoor")
+                         and s["start_time"][:10] >= lo)
         return {"pace_s_per_km": round(pace, 1),
                 "ref_hr": pts[-1][4], "headline_runs": len(head),
-                "change_s_per_km": change(2),       # heat-adjusted: the fair trend
-                "change_s_per_km_raw": change(1),   # as run: tells when weather explains the difference
-                "runs": len(pts), "runs_total": len(runs),
-                "points": [{"day": p[0][:10], "value": round(p[1], 1)} for p in pts]}
-
+                "change_s_per_km": trend["change"],         # heat-adjusted: the fair trend
+                "change_s_per_km_raw": trend["change_raw"],  # as run: tells when weather explains the difference
+                "runs": len(pts), "runs_total": runs_total,
+                "points": [{"day": q["day"], "value": q["value"]} for q in trend["points"]]}
     if sport == "cycling":
-        rides = [s for s in recent(90, lambda s: s.get("has_power")) if (s.get("features") or {}).get("ef")]
+        rides = _ride_points(perf, DEFAULT_DAYS["cycling"])
         last = rides[-1] if rides else None
         lf = (last or {}).get("features") or {}
         today_kg = weights.at(today.isoformat())
         ride_kg = weights.at(last["start_time"][:10]) if last else None
-        efs = [s["features"]["ef"] for s in rides]
-        fair = [s["features"].get("ef_adj") or s["features"]["ef"] for s in rides]  # heat adjusted
-        change = round((fair[-1] - fair[0]) / fair[0] * 100, 1) if len(fair) >= 3 and fair[0] else None
-        return {"w_per_beat": round(efs[-1], 2) if efs else None, "w_per_beat_change_pct": change,
+        trend = period_trend(sessions, "cycling", DEFAULT_DAYS["cycling"], today, perf)
+        return {"w_per_beat": round(lf["ef"], 2) if last else None, "w_per_beat_change_pct": trend["change"],
                 "ftp_wkg": round(ftp / today_kg, 2) if ftp and today_kg else None,
                 "hr_wkg": round(lf["power_at_ref_hr"] / ride_kg, 2) if lf.get("power_at_ref_hr") and ride_kg else None,
-                "ref_hr": lf.get("ref_hr"),
-                "points": [{"day": s["start_time"][:10], "value": round(s["features"]["ef"], 3)} for s in rides]}
+                "ref_hr": lf.get("ref_hr"), "points": [{"day": q["day"], "value": q["value"]} for q in trend["points"]]}
     if sport == "strength":
-        return strength_status(recent(84, lambda s: True, pool=sessions), today)
+        return strength_status(sessions, today)
     return None
 
 
-def strength_status(gym: list[dict], today: date) -> dict:
-    """The gym card: how often (sessions and minutes, the last 6 weeks vs the 6 before), and, when
-    weights are logged, how the estimated 1RM moved. Circuits without weights only get the first."""
-    split = (today - timedelta(days=42)).isoformat()
-    now = [s for s in gym if s["start_time"][:10] >= split]
-    before = [s for s in gym if s["start_time"][:10] < split]
-    weeks = [0] * 12
-    for s in gym:
-        weeks[min(11, (today - date.fromisoformat(s["start_time"][:10])).days // 7)] += 1
+def period_trend(sessions: list[dict], sport: str, days: int, today: date,
+                 perf: list[dict] | None = None) -> dict:
+    """How a sport moved over the last `days`: {change, change_raw, n, points} (change None with too few
+    sessions). running: s/km faster at the reference HR (+ = faster); cycling: % more power per beat;
+    strength: % e1RM, plus how many sessions vs the same length before. Runs and rides count back from
+    the newest one, so a period never empties just because days passed; strength counts from today."""
+    perf = performance_sessions(sessions) if perf is None else perf
+    if sport == "running":
+        pts = _run_points(perf, days)
+        x0 = datetime.fromisoformat(pts[0][0]) if pts else None
+        xs = [(datetime.fromisoformat(p[0]) - x0).total_seconds() / 86400 for p in pts]
+        ws = [p[3] for p in pts]
+        fit = _weighted_fit(xs, [p[2] for p in pts], ws) if len(pts) >= MIN_RUNS else None  # heat-adjusted
+        raw = _weighted_fit(xs, [p[1] for p in pts], ws) if len(pts) >= MIN_RUNS else None
+        # s/km faster over the period (+ = faster); then/now: the trend line's pace at both ends
+        return {"change": round(-fit[0] * days, 1) if fit else None,
+                "change_raw": round(-raw[0] * days, 1) if raw else None, "n": len(pts),
+                "now": round(fit[1] + fit[0] * xs[-1], 1) if fit else None,
+                "then": round(fit[1] + fit[0] * (xs[-1] - days), 1) if fit else None,
+                "points": [{"day": p[0][:10], "value": round(p[1], 1),
+                            "trend": round(fit[1] + fit[0] * x, 1) if fit else None} for p, x in zip(pts, xs)]}
+    if sport == "cycling":
+        rides = _ride_points(perf, days)
+        fair = [s["features"].get("ef_adj") or s["features"]["ef"] for s in rides]  # heat adjusted
+        xs = []
+        fit = None
+        if rides:
+            x0 = datetime.fromisoformat(rides[0]["start_time"])
+            xs = [(datetime.fromisoformat(s["start_time"]) - x0).total_seconds() / 86400 for s in rides]
+        if len(rides) >= MIN_RIDES:
+            fit = _weighted_fit(xs, fair, [1.0] * len(rides))
+        mean = sum(fair) / len(fair) if fair else 0
+        return {"change": round(fit[0] * days / mean * 100, 1) if fit and mean else None,
+                "change_raw": None, "n": len(rides),
+                "now": round(fit[1] + fit[0] * xs[-1], 3) if fit else None,
+                "then": round(fit[1] + fit[0] * (xs[-1] - days), 3) if fit else None,
+                "points": [{"day": s["start_time"][:10], "value": round(s["features"]["ef"], 3),
+                            "trend": round(fit[1] + fit[0] * x, 3) if fit else None} for s, x in zip(rides, xs)]}
+    if sport == "strength":
+        st = strength_status(sessions, today, days)
+        return {"change": st["e1rm_change_pct"], "change_raw": None, "n": st["sessions"],
+                "n_prev": st["sessions_prev"], "minutes": st["minutes"], "now": None, "then": None,
+                "points": st["points"]}
+    return {"change": None, "change_raw": None, "n": 0, "now": None, "then": None, "points": []}
 
-    # per exercise with 3+ weighted sessions in 6 weeks: e1RM slope over 6 weeks in % of its mean
+
+def _weighted_fit(xs: list[float], ys: list[float], ws: list[float]) -> tuple[float, float] | None:
+    """(slope, intercept) of the least-squares line where each point counts by its weight."""
+    slope = physio.weighted_linear_slope(xs, ys, ws)
+    if slope is None:
+        return None
+    sw = sum(ws)
+    return slope, (sum(w * y for y, w in zip(ys, ws)) - slope * sum(w * x for x, w in zip(xs, ws))) / sw
+
+
+def _measured_run(s: dict) -> bool:
+    """An outdoor run with steady time at the reference HR (features.py): every one counts."""
+    f = s.get("features") or {}
+    return s["sport"] == "running" and not s.get("indoor") and bool(f.get("speed_at_ref_hr")) \
+        and bool(f.get("ref_hr_secs"))
+
+
+def _ride_with_power(s: dict) -> bool:
+    return s["sport"] == "cycling" and bool(s.get("has_power")) and bool((s.get("features") or {}).get("ef"))
+
+
+def _newest_day(perf: list[dict], keep) -> date | None:
+    days = [date.fromisoformat(s["start_time"][:10]) for s in perf if keep(s)]
+    return max(days) if days else None
+
+
+def _within(perf: list[dict], keep, days: int) -> list[dict]:
+    """The sessions `keep` takes from the `days` up to the newest of them, oldest first."""
+    newest = _newest_day(perf, keep)
+    if newest is None:
+        return []
+    lo = (newest - timedelta(days=days)).isoformat()
+    return sorted((s for s in perf if keep(s) and s["start_time"][:10] >= lo), key=lambda s: s["start_time"])
+
+
+def _run_points(perf: list[dict], days: int) -> list[tuple]:
+    """(start, pace s/km, heat-adjusted pace, seconds counted, ref HR) of the measured runs in the period."""
+    out = []
+    for s in _within(perf, _measured_run, days):
+        f = s["features"]
+        v = f["speed_at_ref_hr"]
+        out.append((s["start_time"], 1000 / v, 1000 / (f.get("speed_at_ref_hr_adj") or v),
+                    min(f["ref_hr_secs"], RUN_WEIGHT_CAP_S), f.get("ref_hr")))
+    return out
+
+
+def _ride_points(perf: list[dict], days: int) -> list[dict]:
+    return _within(perf, _ride_with_power, days)
+
+
+def strength_status(sessions: list[dict], today: date, days: int = 42) -> dict:
+    """The gym card: how often (sessions and minutes, the last `days` vs the same length before), and,
+    when weights are logged, how the estimated 1RM moved. Circuits without weights only get the first.
+    Excluded sessions count for how often, never for the e1RM."""
+    split = today - timedelta(days=days)
+    gym = [s for s in sessions if s["sport"] == "strength"
+           and (split - timedelta(days=days)).isoformat() <= s["start_time"][:10]]
+    now = [s for s in gym if s["start_time"][:10] >= split.isoformat()]
+    before = [s for s in gym if s["start_time"][:10] < split.isoformat()]
+    n_weeks = max(4, -(-days // 7)) * 2  # bars over both halves
+    weeks = [0] * n_weeks
+    for s in gym:
+        age = (today - date.fromisoformat(s["start_time"][:10])).days // 7
+        if age < n_weeks:
+            weeks[age] += 1
+
+    # per exercise with 3+ weighted sessions in the period: e1RM slope over the period in % of its mean
     by_ex: dict[str, list[tuple[float, float]]] = {}
     for s in performance_sessions(now):
         day = (date.fromisoformat(s["start_time"][:10]) - today).days
@@ -218,11 +296,12 @@ def strength_status(gym: list[dict], today: date) -> dict:
         slope = physio.linear_slope([p[0] for p in pts], [p[1] for p in pts]) if len(pts) >= 3 else None
         mean = sum(p[1] for p in pts) / len(pts)
         if slope is not None and mean:
-            changes.append(slope * 42 / mean * 100)
-    return {"sessions_6w": len(now), "sessions_prev_6w": len(before),
-            "minutes_6w": round(sum(s.get("duration_s") or 0 for s in now) / 60),
+            changes.append(slope * days / mean * 100)
+    minutes = round(sum(s.get("duration_s") or 0 for s in now) / 60)
+    return {"sessions": len(now), "sessions_prev": len(before), "minutes": minutes,
+            "sessions_6w": len(now), "sessions_prev_6w": len(before), "minutes_6w": minutes,  # the wall card (days=42)
             "e1rm_change_pct": round(median(changes), 1) if changes else None,
-            "points": [{"day": (today - timedelta(weeks=11 - i)).isoformat(), "value": n}
+            "points": [{"day": (today - timedelta(weeks=n_weeks - 1 - i)).isoformat(), "value": n}
                        for i, n in enumerate(reversed(weeks))]}
 
 
@@ -284,6 +363,8 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
             if sport in trends:
                 trends[sport]["status"] = sport_status(sessions, sport, (prof.get("ftp") or {}).get("value"),
                                                        weights, today)
+                perf = performance_sessions(sessions)
+                trends[sport]["periods"] = {str(n): period_trend(sessions, sport, n, today, perf) for n in PERIOD_DAYS}
         if "running" in trends:
             trends["running"]["cadence"] = coach.running_cadence(performance_sessions(sessions), today)
 

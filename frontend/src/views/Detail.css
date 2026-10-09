@@ -36,6 +36,9 @@
 .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
 .tabs .btn { background: transparent; color: var(--muted); font-size: 17px; letter-spacing: 0.1em; min-height: 46px; }
 .tabs .btn[aria-pressed='true'] { background: var(--surface-2); color: var(--text); border-color: var(--volt); }
+.period-tabs { gap: 6px; margin: 4px 0 6px; }
+.period-tabs .btn { min-width: 72px; min-height: 48px; letter-spacing: 0.04em; }
+.period-tabs .btn[aria-pressed='true'] { background: var(--volt); color: var(--volt-ink, #0b0e13); border-color: var(--volt); }
 .segmented { display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); }
 .segmented .btn { min-height: 40px; border: 0; background: transparent; color: var(--muted); font-size: 16px; padding: 0 14px; }
 .segmented .btn[aria-pressed='true'] { background: var(--volt); color: var(--volt-ink); }
@@ -195,3 +198,12 @@ table.data tr.clickable:active { background: var(--surface-2); }
   .plan-days { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .weeks-chart :focus { outline: none; }
+
+/* sport page: a period ago → now, and the change in the verdict's colour (same as the phone) */
+.compare-block { display: flex; flex-direction: column; gap: 14px; padding: 20px 24px; border-radius: 18px; background: var(--surface-2); min-width: 520px; }
+.compare { display: flex; align-items: flex-end; gap: 22px; }
+.compare .label { white-space: nowrap; }
+.compare .v { font: 600 52px/1.1 var(--mono); }
+.compare-arrow { margin-bottom: 12px; flex: none; }
+.compare-foot { display: flex; align-items: center; gap: 16px; font-size: 20px; }
+.compare-change { padding: 8px 16px; border-radius: 12px; font: 600 30px var(--mono); }
