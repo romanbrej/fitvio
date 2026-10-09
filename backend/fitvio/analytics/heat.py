@@ -233,14 +233,15 @@ def priors() -> dict[str, dict]:
 
 
 def adjust(sessions: list[dict], response: dict[str, dict]) -> None:
-    """Heat-adjusted values on the sessions' features, in memory (never stored: a new k only needs a
-    re-evaluation): heat_adj_pct, ef_adj, speed_at_ref_hr_adj, power_at_ref_hr_adj, decoupling_adj."""
+    """Heat-adjusted values on the sessions' features, from the raw ones: heat_adj_pct, ef_adj,
+    speed_at_ref_hr_adj, power_at_ref_hr_adj, decoupling_adj (the pipeline stores them with the session)."""
     for s in sessions:
         r = response.get(s["sport"])
         f = s.get("features")
         if not r or f is None:
             continue
-        load = 0.0 if s.get("indoor") else session_load(s)
+        # nothing to adjust without an efficiency (a ride without power is judged on load only)
+        load = 0.0 if s.get("indoor") or f.get("ef") is None else session_load(s)
         pct = round(r["k"] * load, 2)
         up = 1 + pct / 100
         f["heat_adj_pct"] = pct

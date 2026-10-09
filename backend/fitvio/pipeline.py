@@ -317,6 +317,11 @@ def set_heat_learning(conn: sqlite3.Connection, user_id: str, on: bool) -> int:
 
 
 def _reapply_heat(conn: sqlite3.Connection, user_id: str, sports: list[str]) -> int:
+    """Rewrite and re-judge under the write lock, from sessions read inside it: the sync runs in its own
+    process, and a session it stores meanwhile (new weather, a new run) must not be overwritten with an
+    older copy. No commit."""
+    conn.commit()
+    conn.execute("BEGIN IMMEDIATE")
     sessions = user_sessions(conn, user_id)
     ids = heat_response.rewrite(conn, user_id, sessions, sports)
     first: dict[str, str] = {}

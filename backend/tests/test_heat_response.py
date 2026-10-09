@@ -217,3 +217,44 @@ def test_a_small_first_fit_keeps_the_standard_for_every_session(client):  # noqa
         h.fit_response = real
     used = heat_response.current(conn, "a")["running"]
     assert used["k"] == 1.0 and used["n"] == near["n"] and near_k is not None
+
+
+def test_rides_without_power_get_no_heat_adjustment():
+    ride = {"sport": "cycling", "indoor": 0, "start_time": "2026-07-14T09:00:00", "duration_s": 3600,
+            "features": {"avg_speed": 8.0, "weather": {"temp_c": 30, "dew_point_c": 20}}}
+    heat.adjust([ride], heat.priors())
+    assert ride["features"]["heat_adj_pct"] == 0  # judged on load only: no "Heat adjustment" row
+
+
+def test_rewrite_reads_the_sessions_under_the_write_lock(tmp_path):
+    """A heat rewrite holds the write lock from reading the sessions to storing them, so a sync in the
+    other process can't store a session in between (it would be overwritten with an older copy)."""
+    import sqlite3
+
+    from fitvio import db, pipeline
+    path = tmp_path / "app.db"
+    conn = db.connect(path)
+    conn.execute("INSERT INTO sessions (id, user_id, activity_id, sport, session_type, start_time, features) "
+                 "VALUES ('u:1', 'u', '1', 'running', 'easy', '2026-07-14T09:00:00', '{\"ef\": 1.5}')")
+    conn.commit()
+    other = sqlite3.connect(path, timeout=0)
+    seen = {}
+    real = pipeline.user_sessions
+
+    def reading(c, uid):
+        if "blocked" in seen:  # only the read the rewrite works from (re-judging reads again later)
+            return real(c, uid)
+        try:  # the sync's write while the rewrite has read the sessions
+            other.execute("UPDATE sessions SET name = 'x' WHERE id = 'u:1'")
+            other.commit()
+            seen["blocked"] = False
+        except sqlite3.OperationalError:
+            seen["blocked"] = True
+        return real(c, uid)
+    pipeline.user_sessions = reading
+    try:
+        pipeline._reapply_heat(conn, "u", ["running"])
+    finally:
+        pipeline.user_sessions = real
+    conn.commit()
+    assert seen["blocked"]
