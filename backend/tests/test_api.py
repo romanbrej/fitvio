@@ -227,7 +227,11 @@ def test_period_trend_over_picked_lengths():
     # the 6-week period is exactly the wall card's number
     st = wall.sport_status(runs, "running", None, w, today)
     assert st["change_s_per_km"] == six["change"]
-    assert st["points"] == [{"day": q["day"], "value": q["value"]} for q in six["points"]]
+    assert [q["day"] for q in st["points"]] == [q["day"] for q in six["points"]]
+    # a hot run: the card's sparkline shows it as run, the period chart heat-adjusted like its trend line
+    hot = runs[:-1] + [run(42, 420, heat_pct=5.0)]
+    st, per = wall.sport_status(hot, "running", None, w, today), wall.period_trend(hot, "running", 42, today)
+    assert st["points"][-1]["value"] == 420 and per["points"][-1]["value"] == pytest.approx(420 / 1.05, abs=0.1)
     # the trend line's ends: then − now is the change (s/km faster), now is about the newest runs' pace
     assert two["then"] - two["now"] == pytest.approx(two["change"], abs=0.2) and 390 < two["now"] < 402
     assert two["points"][-1]["trend"] == pytest.approx(two["now"], abs=0.1)

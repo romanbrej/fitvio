@@ -156,7 +156,7 @@ def sport_status(sessions: list[dict], sport: str, ftp: float | None, weights: i
                 "change_s_per_km": trend["change"],         # heat-adjusted: the fair trend
                 "change_s_per_km_raw": trend["change_raw"],  # as run: tells when weather explains the difference
                 "runs": len(pts), "runs_total": runs_total,
-                "points": [{"day": q["day"], "value": q["value"]} for q in trend["points"]]}
+                "points": [{"day": p[0][:10], "value": round(p[1], 1)} for p in pts]}
     if sport == "cycling":
         rides = _ride_points(perf, DEFAULT_DAYS["cycling"])
         last = rides[-1] if rides else None
@@ -167,7 +167,8 @@ def sport_status(sessions: list[dict], sport: str, ftp: float | None, weights: i
         return {"w_per_beat": round(lf["ef"], 2) if last else None, "w_per_beat_change_pct": trend["change"],
                 "ftp_wkg": round(ftp / today_kg, 2) if ftp and today_kg else None,
                 "hr_wkg": round(lf["power_at_ref_hr"] / ride_kg, 2) if lf.get("power_at_ref_hr") and ride_kg else None,
-                "ref_hr": lf.get("ref_hr"), "points": [{"day": q["day"], "value": q["value"]} for q in trend["points"]]}
+                "ref_hr": lf.get("ref_hr"),
+                "points": [{"day": s["start_time"][:10], "value": round(s["features"]["ef"], 3)} for s in rides]}
     if sport == "strength":
         return strength_status(sessions, today)
     return None
@@ -192,7 +193,8 @@ def period_trend(sessions: list[dict], sport: str, days: int, today: date,
                 "change_raw": round(-raw[0] * days, 1) if raw else None, "n": len(pts),
                 "now": round(fit[1] + fit[0] * xs[-1], 1) if fit else None,
                 "then": round(fit[1] + fit[0] * (xs[-1] - days), 1) if fit else None,
-                "points": [{"day": p[0][:10], "value": round(p[1], 1),
+                # heat-adjusted like the line through them, so a hot run sits where it is judged
+                "points": [{"day": p[0][:10], "value": round(p[2], 1),
                             "trend": round(fit[1] + fit[0] * x, 1) if fit else None} for p, x in zip(pts, xs)]}
     if sport == "cycling":
         rides = _ride_points(perf, days)
@@ -209,8 +211,8 @@ def period_trend(sessions: list[dict], sport: str, days: int, today: date,
                 "change_raw": None, "n": len(rides),
                 "now": round(fit[1] + fit[0] * xs[-1], 3) if fit else None,
                 "then": round(fit[1] + fit[0] * (xs[-1] - days), 3) if fit else None,
-                "points": [{"day": s["start_time"][:10], "value": round(s["features"]["ef"], 3),
-                            "trend": round(fit[1] + fit[0] * x, 3) if fit else None} for s, x in zip(rides, xs)]}
+                "points": [{"day": s["start_time"][:10], "value": round(v, 3),  # heat adjusted, like the line
+                            "trend": round(fit[1] + fit[0] * x, 3) if fit else None} for s, v, x in zip(rides, fair, xs)]}
     if sport == "strength":
         st = strength_status(sessions, today, days)
         return {"change": st["e1rm_change_pct"], "change_raw": None, "n": st["sessions"],

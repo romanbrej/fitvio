@@ -16,7 +16,7 @@ const PRIMARY: Record<string, { label: string; get: (f: Record<string, any>) => 
   // pace held at the reference HR in s/km (grade & heat adjusted, so runs compare fairly) — lower is faster
   running: { label: 'Pace at fixed HR (/km, grade & heat adjusted) — steady time at that HR in any run, lower is faster',
              get: f => { const v = f.speed_at_ref_hr_adj ?? f.speed_at_ref_hr; return v ? 1000 / v : null }, fmt: v => duration(v) },
-  cycling: { label: 'Power per heartbeat (W/beat)', get: f => f.ef, fmt: v => v.toFixed(2) },
+  cycling: { label: 'Power per heartbeat (W/beat, heat adjusted)', get: f => f.ef_adj ?? f.ef, fmt: v => v.toFixed(2) },
   swimming: { label: 'Pace per 100 m (s) — lower is better', get: f => f.pace_100m_s, fmt: v => duration(v) },
   strength: { label: 'Session volume (kg)', get: f => f.total_volume, fmt: v => num(v) },
   other: { label: 'Training load', get: () => null, fmt: v => num(v) },
@@ -30,7 +30,7 @@ const VCOLOR: Record<VerdictKind, string> = {
 export function SportDetail() {
   const { user, sport } = useParams()
   const nav = useNavigate()
-  const { data } = useFetch(() => api.sessions(user!, sport, 200), [user, sport])
+  const { data } = useFetch(() => api.sessions(user!, sport, 500), [user, sport])
   const { data: ambient } = useFetch(() => api.ambient(user!), [user])
   const [picked, pick] = useTrendPeriod()
   // running, cycling, strength: the same numbers as the wall card and the phone, over the picked period

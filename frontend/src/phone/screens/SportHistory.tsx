@@ -136,7 +136,7 @@ function PeriodCard({ sport, t, days }: { sport: Sport; t: SportTrend; days: num
   const { lo, hi, ticks } = niceTicks(sport === 'strength' ? [0, ...vals] : [...vals, ...trend],
                                       v => fmt(running ? -v : v), '', running ? 5 : sport === 'cycling' ? 0.05 : 1)
   const what = sport === 'strength' ? 'Sessions per week' : running ? 'Pace at your reference HR' : 'Power per heartbeat'
-  const label = sport === 'strength' ? 'Sessions per week' : running ? `Pace at ${t.status?.ref_hr ?? '—'} bpm` : 'Power per heartbeat'
+  const label = sport === 'strength' ? 'Sessions per week' : running ? `Pace at ${t.status?.ref_hr ?? '—'} bpm, heat-adjusted` : 'Power per heartbeat, heat-adjusted'
   return (
     <Card style={{ borderTop: `3px solid ${SPORT_COLOR[sport]}` }}>
       {answer && (
@@ -171,8 +171,8 @@ function PeriodCard({ sport, t, days }: { sport: Sport; t: SportTrend; days: num
                    picked={at} onPick={k => setPickedDay(k == null ? null : keys[k])} />
       )}
       <span className="ph-caption">{running
-        ? 'Steady time at your reference HR in every outdoor run. Dashed: the trend, heat-adjusted. Up is faster.'
-        : sport === 'cycling' ? 'Rides with power. Dashed: the trend, heat-adjusted.' : 'Compared with the same length before.'}</span>
+        ? 'Steady time at your reference HR in every outdoor run. Dashed: the trend. Up is faster.'
+        : sport === 'cycling' ? 'Rides with power. Dashed: the trend.' : 'Compared with the same length before.'}</span>
     </Card>
   )
 }
