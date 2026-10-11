@@ -138,7 +138,8 @@ def sport_status(sessions: list[dict], sport: str, ftp: float | None, weights: i
     running: pace held at the reference HR (grade and weather adjusted, like every comparison) over the
              newest outdoor runs, older ones fading out, and how many s/km it changed over the 6 weeks up
              to the newest run (+ = faster). Both are counted from the newest run, not from today, so
-             the numbers change when a run comes in and never just because a day passed.
+             the numbers change when a run comes in and never just because a day passed. The pace is the
+             "now" of every period too.
     cycling: power per heartbeat of the newest ride with power, how it moved over 3 months (heat
              adjusted), plus W/kg of FTP and of the power at the reference HR.
     strength: sessions per 6 weeks vs the 6 before, and the e1RM trend when weights are logged.
@@ -150,19 +151,13 @@ def sport_status(sessions: list[dict], sport: str, ftp: float | None, weights: i
         pts = _run_points(perf, DEFAULT_DAYS["running"])
         if not pts:
             return None
-        # the newest runs, faded by position: the run that leaves when a new one comes in barely counts
-        head = []
-        for rank, p in enumerate(reversed(pts)):
-            if rank >= HEADLINE_RUNS and sum(h[0][3] for h in head) >= HEADLINE_MIN_S:
-                break
-            head.append((p, (HEADLINE_RUNS - min(rank, HEADLINE_RUNS - 1)) / HEADLINE_RUNS))
-        pace = sum(p[2] * p[3] * w for p, w in head) / sum(p[3] * w for p, w in head)  # weather adjusted
+        pace, n_head = _end_pace(list(reversed(pts)), HEADLINE_RUNS)
         trend = period_trend(sessions, "running", DEFAULT_DAYS["running"], today, perf)
         lo = (_newest_day(perf, _measured_run) - timedelta(days=DEFAULT_DAYS["running"])).isoformat()
         runs_total = sum(1 for s in perf if s["sport"] == "running" and not s.get("indoor")
                          and s["start_time"][:10] >= lo)
         return {"pace_s_per_km": round(pace, 1),
-                "ref_hr": pts[-1][4], "headline_runs": len(head),
+                "ref_hr": pts[-1][4], "headline_runs": n_head,
                 "change_s_per_km": trend["change"],         # weather adjusted, like every comparison
                 "runs": len(pts), "runs_total": runs_total,
                 "points": [{"day": p[0][:10], "value": round(p[2], 1)} for p in pts]}
@@ -188,21 +183,34 @@ def period_trend(sessions: list[dict], sport: str, days: int, today: date,
     """How a sport moved over the last `days`: {change, n, points} (change None with too few
     sessions). running: s/km faster at the reference HR (+ = faster); cycling: % more power per beat;
     strength: % e1RM, plus how many sessions vs the same length before. Runs and rides count back from
-    the newest one, so a period never empties just because days passed; strength counts from today."""
+    the newest one, so a period never empties just because days passed; strength counts from today.
+    running: now is the card's pace in every period, then the card's pace as it was on the period's first
+    day (the period's oldest runs when nothing came before), so both are paces you ran; a straight line
+    through every run would land off both ends of a dip."""
     perf = performance_sessions(sessions) if perf is None else perf
     if sport == "running":
         pts = _run_points(perf, days)
-        x0 = datetime.fromisoformat(pts[0][0]) if pts else None
-        xs = [(datetime.fromisoformat(p[0]) - x0).total_seconds() / 86400 for p in pts]
-        ws = [p[3] for p in pts]
-        fit = _weighted_fit(xs, [p[2] for p in pts], ws) if len(pts) >= MIN_RUNS else None  # weather-adjusted
-        # s/km faster over the period (+ = faster); then/now: the trend line's pace at both ends
-        return {"change": round(-fit[0] * days, 1) if fit else None, "n": len(pts),
-                "now": round(fit[1] + fit[0] * xs[-1], 1) if fit else None,
-                "then": round(fit[1] + fit[0] * (xs[-1] - days), 1) if fit else None,
-                # weather-adjusted like the line through them, so a hot or windy run sits where it is judged
-                "points": [{"day": p[0][:10], "value": round(p[2], 1),
-                            "trend": round(fit[1] + fit[0] * x, 1) if fit else None} for p, x in zip(pts, xs)]}
+        now = round(_end_pace(list(reversed(_run_points(perf, DEFAULT_DAYS["running"]))), HEADLINE_RUNS)[0], 1) \
+            if pts else None
+        then = None
+        if len(pts) >= MIN_RUNS:
+            # the card on the period's first day: its newest runs then, from the card's 6 weeks before it
+            first = (date.fromisoformat(pts[-1][0][:10]) - timedelta(days=days)).isoformat()
+            before = [p for p in _run_points(perf, days + DEFAULT_DAYS["running"]) if p[0][:10] <= first]
+            then = round(_end_pace(list(reversed(before)), HEADLINE_RUNS)[0] if before
+                         # nothing that early (a break, or not a year of runs yet): the period's oldest runs
+                         else _end_pace(pts, min(HEADLINE_RUNS, len(pts) // 2))[0], 1)
+        end = datetime.fromisoformat(pts[-1][0]) if pts else None
+
+        def line(start: str) -> float | None:  # then (a period before the newest run) → now, like the wall chart
+            if then is None:
+                return None
+            left = (end - datetime.fromisoformat(start)).total_seconds() / 86400
+            return round(now + (then - now) * left / days, 1)
+        return {"change": round(then - now, 1) if then is not None else None, "n": len(pts),
+                "now": now, "then": then,
+                # weather-adjusted like then and now, so a hot or windy run sits where it is judged
+                "points": [{"day": p[0][:10], "value": round(p[2], 1), "trend": line(p[0])} for p in pts]}
     if sport == "cycling":
         rides = _ride_points(perf, days)
         fair = [s["features"].get("ef_adj") or s["features"]["ef"] for s in rides]  # heat adjusted
@@ -226,6 +234,18 @@ def period_trend(sessions: list[dict], sport: str, days: int, today: date,
                 "n_prev": st["sessions_prev"], "minutes": st["minutes"], "now": None, "then": None,
                 "points": st["points"]}
     return {"change": None, "n": 0, "now": None, "then": None, "points": []}
+
+
+def _end_pace(pts: list[tuple], runs: int) -> tuple[float, int]:
+    """(weather-adjusted pace, runs counted) over the first `runs` of `pts`, faded by position and weighted
+    by time at the reference HR, adding more while they hold under 10 min there. Newest first, it's the
+    card's pace: the run that leaves when a new one comes in barely counts."""
+    head = []
+    for rank, p in enumerate(pts):
+        if rank >= runs and sum(h[0][3] for h in head) >= HEADLINE_MIN_S:
+            break
+        head.append((p, (runs - min(rank, runs - 1)) / runs))
+    return sum(p[2] * p[3] * w for p, w in head) / sum(p[3] * w for p, w in head), len(head)
 
 
 def _weighted_fit(xs: list[float], ys: list[float], ws: list[float]) -> tuple[float, float] | None:

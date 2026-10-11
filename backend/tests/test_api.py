@@ -127,7 +127,7 @@ def test_sport_status_running_pace_and_cycling_wkg():
     assert st["headline_runs"] == 5
     w = [(400, 120, 6), (405, 900, 5), (410, 200, 4), (415, 1200, 3), (420, 900, 2)]
     assert st["pace_s_per_km"] == pytest.approx(sum(p * s * k for p, s, k in w) / sum(s * k for _, s, k in w), abs=0.1)
-    assert st["change_s_per_km"] > 15 and "change_s_per_km_raw" not in st   # only ever weather adjusted
+    assert st["change_s_per_km"] > 5 and "change_s_per_km_raw" not in st    # only ever weather adjusted
 
     # a long run counts at most 20 min: it can't outvote the others
     st = wall.sport_status([run(20, 400, secs=600), run(22, 400, secs=600), run(24, 440, "long", secs=7200)],
@@ -222,8 +222,11 @@ def test_period_trend_over_picked_lengths():
             run(30, 415), run(33, 405), run(36, 398), run(40, 397), run(42, 398)]
     today = d(2026, 10, 9)
     six = wall.period_trend(runs, "running", 42, today)
+    four = wall.period_trend(runs, "running", 28, today)
     two = wall.period_trend(runs, "running", 14, today)
-    assert two["change"] > 15 and two["change"] > abs(six["change"]) and two["n"] == 5
+    assert two["change"] > 5 and two["change"] > abs(six["change"]) and two["n"] == 5
+    # then is what the card showed on the period's first day: 4 weeks back was before the dip, so holding
+    assert four["then"] == pytest.approx(401, abs=2) and abs(four["change"]) < 4
     # the 6-week period is exactly the wall card's number
     st = wall.sport_status(runs, "running", None, w, today)
     assert st["change_s_per_km"] == six["change"]
@@ -232,11 +235,23 @@ def test_period_trend_over_picked_lengths():
     hot = runs[:-1] + [run(42, 420, heat_pct=5.0)]
     st, per = wall.sport_status(hot, "running", None, w, today), wall.period_trend(hot, "running", 42, today)
     assert st["points"][-1]["value"] == pytest.approx(420 / 1.05, abs=0.1) == per["points"][-1]["value"]
-    # the trend line's ends: then − now is the change (s/km faster), now is about the newest runs' pace
-    assert two["then"] - two["now"] == pytest.approx(two["change"], abs=0.2) and 390 < two["now"] < 402
-    assert two["points"][-1]["trend"] == pytest.approx(two["now"], abs=0.1)
-    # too few runs in a period: no trend, but its points still show
-    assert wall.period_trend(runs[:3], "running", 14, today)["change"] is None
+    # now is the card's pace in every period, so switching periods only moves then and the change
+    st = wall.sport_status(runs, "running", None, w, today)
+    assert two["now"] == four["now"] == six["now"] == st["pace_s_per_km"]
+    # then is a pace that was run: the 6 weeks start where they end, so they hold
+    assert six["then"] == pytest.approx(401, abs=5) and abs(six["change"]) < 5
+    # an odd run early in the 2 weeks moves only the chart: then is what the card showed before it
+    odd = runs[:6] + [run(29, 470)] + runs[6:]
+    assert wall.period_trend(odd, "running", 14, today)["then"] == two["then"]
+    # no runs before the period (a year, with 6 weeks of runs): then falls back to the period's oldest runs
+    year = wall.period_trend(runs, "running", 365, today)
+    assert 400 < year["then"] < 410 and year["n"] == 11  # the oldest 5, the earliest counting most
+    assert two["then"] - two["now"] == pytest.approx(two["change"], abs=0.2)
+    # the line runs from then to now, the same line the wall chart draws
+    assert two["points"][-1]["trend"] == two["now"] and two["points"][0]["trend"] > two["points"][-1]["trend"]
+    # too few runs in a period: no trend, but its points and now still show
+    few = wall.period_trend(runs[:3], "running", 14, today)
+    assert few["change"] is None and few["then"] is None and few["now"] is not None
     # nothing at all
     assert wall.period_trend([], "running", 14, today) == {"change": None, "n": 0,
                                                            "now": None, "then": None, "points": []}
