@@ -369,19 +369,6 @@ def mad(values: list[float]) -> float:
     return median(abs(v - m) for v in values)
 
 
-def weighted_linear_slope(xs: list[float], ys: list[float], ws: list[float]) -> float | None:
-    """Least-squares slope where each point counts by its weight (e.g. seconds measured)."""
-    if len(xs) < 3 or sum(ws) <= 0:
-        return None
-    sw = sum(ws)
-    mx = sum(w * x for x, w in zip(xs, ws)) / sw
-    my = sum(w * y for y, w in zip(ys, ws)) / sw
-    sxx = sum(w * (x - mx) ** 2 for x, w in zip(xs, ws))
-    if sxx == 0:
-        return None
-    return sum(w * (x - mx) * (y - my) for x, y, w in zip(xs, ys, ws)) / sxx
-
-
 def linear_slope(xs: list[float], ys: list[float]) -> float | None:
     if len(xs) < 3:
         return None

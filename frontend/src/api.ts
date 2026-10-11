@@ -78,7 +78,8 @@ export interface SportTrend {
      *  Counted from the newest run, so it changes only when a run comes in. */
     pace_s_per_km?: number; change_s_per_km?: number | null
     runs?: number; runs_total?: number; headline_runs?: number
-    w_per_beat?: number | null; w_per_beat_change_pct?: number | null; ftp_wkg?: number | null; hr_wkg?: number | null
+    /** cycling: power per beat over the newest rides with power (heat adjusted, older ones fading out) */
+    headline_rides?: number; w_per_beat?: number | null; w_per_beat_change_pct?: number | null; ftp_wkg?: number | null; hr_wkg?: number | null
     ref_hr?: number | null
     /** strength: sessions in the last 6 weeks and the 6 before, minutes, e1RM trend when weights are logged */
     sessions_6w?: number; sessions_prev_6w?: number; minutes_6w?: number; e1rm_change_pct?: number | null
@@ -93,10 +94,11 @@ export interface SportTrend {
 
 export interface PeriodTrend {
   change: number | null; n: number
-  /** running s/km, cycling W/beat: the trend line at the newest session and one period before it */
+  /** running s/km, cycling W/beat: now is the sport card's number (the same on every period), then what
+   *  that card showed on the period's first day */
   now?: number | null; then?: number | null
   n_prev?: number; minutes?: number  // strength
-  /** `trend`: the trend line at that session (running, cycling) */
+  /** `trend`: the straight line from then to now at that session (running, cycling) */
   points: { day: string; value: number; trend?: number | null }[]
 }
 

@@ -171,8 +171,8 @@ function PeriodCard({ sport, t, days }: { sport: Sport; t: SportTrend; days: num
                    picked={at} onPick={k => setPickedDay(k == null ? null : keys[k])} />
       )}
       <span className="ph-caption">{running
-        ? 'Steady time at your reference HR in every outdoor run. Dashed: the trend. Up is faster.'
-        : sport === 'cycling' ? 'Rides with power. Dashed: the trend.' : 'Compared with the same length before.'}</span>
+        ? 'Steady time at your reference HR in every outdoor run. Dashed: then → now. Up is faster.'
+        : sport === 'cycling' ? 'Rides with power, heat-adjusted. Dashed: then → now.' : 'Compared with the same length before.'}</span>
     </Card>
   )
 }

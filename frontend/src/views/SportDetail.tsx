@@ -156,7 +156,7 @@ export function SportDetail() {
                   <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']} scale="time" tickFormatter={v => shortDay(new Date(v).toISOString())} minTickGap={40} />
                   <YAxis width={52} domain={['auto', 'auto']} reversed={sport === 'swimming' || sport === 'running'} tickFormatter={p.fmt} />
-                  <Tooltip labelFormatter={v => shortDay(new Date(Number(v)).toISOString())} formatter={(v, k) => [p.fmt(Number(v)), k === 'trend' ? (line ? 'Trend' : 'Trend (5-session median)') : 'Session']} />
+                  <Tooltip labelFormatter={v => shortDay(new Date(Number(v)).toISOString())} formatter={(v, k) => [p.fmt(Number(v)), k === 'trend' ? (line ? 'Then → now' : 'Trend (5-session median)') : 'Session']} />
                   <Line dataKey="trend" stroke="var(--volt)" strokeWidth={line ? 3 : 2.5} strokeDasharray={line ? '10 7' : undefined} dot={false} isAnimationActive={false} />
                   <Scatter dataKey="v" isAnimationActive={false} onClick={(d: any) => d?.payload?.id && nav(`/session/${encodeURIComponent(d.payload.id)}`)}
                            shape={(props: any) => <circle cx={props.cx} cy={props.cy} r={6} fill={VCOLOR[props.payload.verdict as VerdictKind] ?? 'var(--na)'} style={{ cursor: 'pointer' }} />} />
@@ -164,7 +164,7 @@ export function SportDetail() {
               </ResponsiveContainer>
             </div>
             <div className="row muted" style={{ fontSize: 14 }}>
-              Dots = sessions, coloured by verdict ({(['better', 'in_line', 'worse', 'not_comparable'] as VerdictKind[]).map(k => <span key={k} style={{ color: VCOLOR[k] }}>● {VERDICT_LABEL[k]} </span>)}) · {line ? 'dashed line = the trend over the period' : 'line = 5-session median'} · tap a dot to open it
+              Dots = sessions, coloured by verdict ({(['better', 'in_line', 'worse', 'not_comparable'] as VerdictKind[]).map(k => <span key={k} style={{ color: VCOLOR[k] }}>● {VERDICT_LABEL[k]} </span>)}) · {line ? 'dashed line = then → now' : 'line = 5-session median'} · tap a dot to open it
             </div>
           </div>
         )}
