@@ -164,6 +164,16 @@ def store_health(conn: sqlite3.Connection, user_id: str, days: list[dict]) -> No
 ANALYSIS_VERSION = "11"
 
 
+def reprocess_key(user_id: str) -> str:
+    """wall_state key holding "done/total" while a person's history is being reprocessed."""
+    return f"reprocessing:{user_id}"
+
+
+def _clear_reprocess_progress(conn: sqlite3.Connection, user_id: str) -> None:
+    conn.execute("DELETE FROM wall_state WHERE key = ?", (reprocess_key(user_id),))
+    conn.commit()
+
+
 def reader_for(user: UserConfig):
     """The reader for this person's downloaded data (GarminDB or Intervals.icu)."""
     if user.source == "intervals":
@@ -195,6 +205,8 @@ def ingest(conn: sqlite3.Connection, user: UserConfig, full: bool = False,
     version_key = f"analysis_version:{user.id}"
     outdated = db.get_state(conn, version_key) != ANALYSIS_VERSION
     reprocess = full or ((thresholds_changed or outdated) and bool(known))
+    if not reprocess:  # a reprocess that was killed (restart, out of memory) must not leave the label behind
+        _clear_reprocess_progress(conn, user.id)
     new_ids = [aid for aid, _ in reader.activity_ids(None if full else default_since()) if full or aid not in known]
     edited = set()
     if changed_since and not full:
@@ -237,10 +249,18 @@ def ingest(conn: sqlite3.Connection, user: UserConfig, full: bool = False,
             log.info("%s: %s — reprocessing %d activities", user.id, why, len(known))
             started = time.monotonic()
             done = set(new_ids) | edited
-            for aid, _ in reader.activity_ids(None):
-                if aid in known and aid not in done and (act := reader.load_activity(aid)) is not None:
-                    weather.apply(act, wx_dir, use_om)
-                    store_activity(conn, user, act)
+            # Newest first: the recent runs people look at are right within seconds, not after the whole
+            # history. The wall shows the progress (sync_info) while it runs.
+            todo = [aid for aid, _ in reversed(reader.activity_ids(None)) if aid in known and aid not in done]
+            try:
+                for i, aid in enumerate(todo):
+                    if i % 25 == 0:
+                        db.set_state(conn, reprocess_key(user.id), f"{i}/{len(todo)}")
+                    if (act := reader.load_activity(aid)) is not None:
+                        weather.apply(act, wx_dir, use_om)
+                        store_activity(conn, user, act)
+            finally:
+                _clear_reprocess_progress(conn, user.id)
         evaluate_all(conn, user.id)
         if not full:
             log.info("%s: reprocessed %d activities in %.0fs", user.id, len(known), time.monotonic() - started)

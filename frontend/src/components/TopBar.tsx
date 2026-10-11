@@ -14,6 +14,13 @@ function SyncButton({ sync, job, outcome, onSync, onFix }: {
   let text = sync.stale ? `Last sync ${ago(sync.last_success)}` : `Synced ${ago(sync.last_success)}`
   let tone = sync.stale ? 'stale' : ''
   let onClick = onSync
+  if (sync.reprocessing && !job) {
+    // after an update the whole history is recalculated (newest first): old values until it's done
+    const { done, total } = sync.reprocessing
+    icon = <RefreshCw size={18} className="spin" />
+    text = `Updating history · ${total ? Math.round(100 * done / total) : 0}%`
+    tone = 'busy'
+  }
   if (sync.login_expired && !job) {
     // the auto-sync check stopped because the cached Garmin login expired — fix it in Accounts
     icon = <AlertTriangle size={18} />

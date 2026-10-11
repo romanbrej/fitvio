@@ -168,6 +168,7 @@ export interface SyncInfo {
   last_success: string | null; last_attempt: string | null; last_error: string | null
   age_hours: number | null; stale: boolean
   login_expired?: boolean  // the auto-sync check found the cached Garmin login expired
+  reprocessing?: { done: number; total: number } | null  // history recalculated after an update, newest first
 }
 
 /** Auto-sync on new activity (backend: sync/activity_watch.py). */

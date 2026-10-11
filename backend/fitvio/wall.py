@@ -96,12 +96,17 @@ def sync_info(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
     if last:
         age_h = (_now() - datetime.fromisoformat(last)).total_seconds() / 3600
         stale = age_h > cfg.wall.stale_sync_hours
+    from .pipeline import reprocess_key
     from .sync.activity_watch import paused_for_login
 
+    progress = db.get_state(conn, reprocess_key(user_id))
+    done, _, total = (progress or "").partition("/")
     return {"last_success": last, "last_attempt": r.get("last_attempt"), "last_error": r.get("last_error"),
             "age_hours": round(age_h, 1) if age_h is not None else None, "stale": stale,
             # the auto-sync check found the cached Garmin login expired (it never uses the password itself)
-            "login_expired": paused_for_login(conn, user_id)}
+            "login_expired": paused_for_login(conn, user_id),
+            # history being reprocessed after an update: {done, total} activities, newest first
+            "reprocessing": {"done": int(done), "total": int(total)} if done.isdigit() and total.isdigit() else None}
 
 
 def health_series(conn: sqlite3.Connection, user_id: str, days: int) -> list[dict]:
