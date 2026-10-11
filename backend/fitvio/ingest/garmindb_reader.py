@@ -2,7 +2,9 @@
 
 Layout (per GarminDB):  <base_dir>/DBs/garmin.db, garmin_activities.db
                         <base_dir>/FitFiles/Activities/<activity_id>*.fit
-The generated GarminDB config uses metric units, so distance is km and speed km/h.
+GarminDB stores values in the Garmin account's own units, whatever its config says: km, km/h, m, kg
+and °C for a metric account, but mi, mph, ft, lb and °F for a US ("statute") one. It records which in
+garmin.db's `attributes` table; everything read here is turned back into SI. FIT files are always SI.
 """
 from __future__ import annotations
 
@@ -10,10 +12,12 @@ import json
 import logging
 import sqlite3
 from datetime import datetime, timedelta
+from functools import cached_property
 from pathlib import Path
 
 from ..activity import Lap, ParsedActivity, Record, normalize_sport, plausible_temp
 from ..sync import garmin_extras, open_meteo
+from ..units import KG_PER_LB, M_PER_FT, M_PER_MI
 from .fit_parser import parse_fit
 
 log = logging.getLogger(__name__)
@@ -63,6 +67,37 @@ class GarminDbReader:
     @property
     def available(self) -> bool:
         return (self.db_dir / "garmin_activities.db").exists()
+
+    @cached_property
+    def statute(self) -> bool:
+        """True when GarminDB imported this account in US units (Garmin Connect set to statute)."""
+        path = self.db_dir / "garmin.db"
+        if not path.exists():
+            return False
+        try:
+            with _ro(path) as c:
+                row = c.execute("SELECT value FROM attributes WHERE key = 'measurement_system'").fetchone()
+        except sqlite3.OperationalError:  # no attributes table yet
+            return False
+        return bool(row and "statute" in str(row["value"]).lower())  # GarminDB's own fuzzy match
+
+    def _m(self, v):
+        """GarminDB's short distances (ascent, altitude): m, or ft for a statute account."""
+        return v * M_PER_FT if v is not None and self.statute else v
+
+    def _km_m(self, v):
+        """GarminDB's long distances: km, or mi for a statute account → m."""
+        return v * (M_PER_MI if self.statute else 1000) if v is not None else None
+
+    def _kph_ms(self, v):
+        """GarminDB's speeds: km/h, or mph for a statute account → m/s."""
+        return v * (M_PER_MI / 3600 if self.statute else 1 / 3.6) if v is not None else None
+
+    def _c(self, v):
+        return (v - 32) * 5 / 9 if v is not None and self.statute else v
+
+    def _kg(self, v):
+        return v * KG_PER_LB if v is not None and self.statute else v
 
     def profile(self) -> dict[str, tuple[object, str]]:
         from ..profile import derive
@@ -127,10 +162,10 @@ class GarminDbReader:
             sub_sport=a.get("sub_sport"),
             name=a.get("name"),
             duration_s=_secs(a.get("moving_time")) or _secs(a.get("elapsed_time")),
-            distance_m=(a["distance"] * 1000) if a.get("distance") else None,
+            distance_m=self._km_m(a["distance"]) if a.get("distance") else None,
             avg_hr=a.get("avg_hr"),
             max_hr=a.get("max_hr"),
-            ascent_m=a.get("ascent") if a.get("ascent") is not None else fs.get("ascent"),
+            ascent_m=self._m(a["ascent"]) if a.get("ascent") is not None else fs.get("ascent"),
             # Heat comes from Garmin's weather for the activity, not the wrist sensor (body heat skews
             # it, and GarminDB stores the FIT "no value" marker 127 as if it were °C).
             avg_temp_c=weather["temp_c"] if weather else None,
@@ -149,8 +184,7 @@ class GarminDbReader:
         )
         return act
 
-    @staticmethod
-    def _records_from_db(c: sqlite3.Connection, activity_id: str, start: datetime) -> dict:
+    def _records_from_db(self, c: sqlite3.Connection, activity_id: str, start: datetime) -> dict:
         recs = []
         for r in c.execute("SELECT * FROM activity_records WHERE activity_id = ? ORDER BY record", (activity_id,)):
             if not r["timestamp"]:
@@ -158,20 +192,20 @@ class GarminDbReader:
             recs.append(Record(
                 t=(_dt(r["timestamp"]) - start).total_seconds(),
                 hr=r["hr"],
-                speed=r["speed"] / 3.6 if r["speed"] is not None else None,
-                distance=r["distance"] * 1000 if r["distance"] is not None else None,
-                altitude=r["altitude"],
+                speed=self._kph_ms(r["speed"]),
+                distance=self._km_m(r["distance"]),
+                altitude=self._m(r["altitude"]),
                 cadence=r["cadence"],
-                temperature=plausible_temp(r["temperature"]),
+                temperature=plausible_temp(self._c(r["temperature"])),
             ))
         laps = []
         for lap in c.execute("SELECT * FROM activity_laps WHERE activity_id = ? ORDER BY lap", (activity_id,)):
             laps.append(Lap(
                 start_s=(_dt(lap["start_time"]) - start).total_seconds() if lap["start_time"] else 0.0,
                 duration_s=_secs(lap["moving_time"]) or _secs(lap["elapsed_time"]),
-                distance_m=lap["distance"] * 1000 if lap["distance"] else None,
+                distance_m=self._km_m(lap["distance"]) if lap["distance"] else None,
                 avg_hr=lap["avg_hr"],
-                avg_speed=lap["avg_speed"] / 3.6 if lap["avg_speed"] else None,
+                avg_speed=self._kph_ms(lap["avg_speed"]) if lap["avg_speed"] else None,
             ))
         return {"records": recs, "laps": laps, "lengths": [], "sets": [], "session": {}}
 
@@ -211,7 +245,7 @@ class GarminDbReader:
                         hrv_status=r["status"])
             if "weight" in tables:
                 for r in c.execute("SELECT day, weight FROM weight WHERE day >= ?", (day0,)):
-                    put(r["day"], weight_kg=r["weight"])
+                    put(r["day"], weight_kg=self._kg(r["weight"]))
         precise = garmin_extras.read_vo2max(self.extras_dir)
         # Fallback only: GarminDB's rounded VO2max on the activity (44 instead of 44.1). Never mixed
         # with the precise history — that would create false jumps like 44.1 → 44 → 44.2.
