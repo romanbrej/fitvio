@@ -280,6 +280,9 @@ def test_period_trend_cycling_and_strength():
     assert t["points"][-1]["trend"] == t["now"] and t["points"][0]["trend"] == t["then"]
     # the card is heat adjusted too: a hot newest ride counts as the cooler effort it was
     warm = rides[:-1] + [ride(0, 1.40, 1.54)]
+    # no rides before the period (a year, with 4 weeks of rides): then falls back to the period's oldest
+    year = wall.period_trend(rides, "cycling", 365, today)
+    assert year["then"] == pytest.approx((1.40 * 2 + 1.43) / 3, abs=0.001) and year["now"] == t["now"]
     assert wall.sport_status(warm, "cycling", None, improvements.Weights([], 85), today)["w_per_beat"] == card["w_per_beat"]
     hot = [ride(28, 1.40, 1.50), ride(14, 1.47, 1.50), ride(0, 1.54, 1.50)]  # faster only because it cooled down
     assert wall.period_trend(hot, "cycling", 28, today)["change"] == 0
