@@ -18,7 +18,7 @@ export function deltaTone(d: Delta): string {
  *  outdoor runs only, and what every comparison uses. */
 export function adjustedPace(s: Session): number | null {
   const f = s.features || {}
-  return s.sport === 'running' && !s.indoor && f.avg_speed && f.avg_speed_adj ? f.avg_speed_adj : null
+  return s.sport === 'running' && !s.indoor && f.weather && f.avg_speed && f.avg_speed_adj ? f.avg_speed_adj : null
 }
 
 export function facts(s: Session): [string, string][] {

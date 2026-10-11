@@ -63,6 +63,8 @@ class WindAt:
 
     def __call__(self, t: float) -> Vector:
         pts = self.points
+        if not pts:
+            return 0.0, 0.0
         if t <= pts[0][0]:
             return pts[0][1]
         for (t0, a), (t1, b) in zip(pts, pts[1:]):

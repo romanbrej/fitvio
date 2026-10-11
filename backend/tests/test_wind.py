@@ -256,3 +256,62 @@ def test_interval_reps_are_compared_weather_adjusted():
     assert f["work_speed_adj"] == pytest.approx(f["wind"]["work_speed"] * (1 + f["heat_adj_pct"] / 100), abs=1e-4)
     specs = {m.key: m for m in RunningModel().interval_metrics}
     assert specs["work_speed"].value(s) == f["work_speed_adj"] and specs["work_ef"].value(s) == f["work_ef_adj"]
+
+
+def test_no_wind_data_is_calm():
+    assert wind.WindAt(None, START)(600) == (0.0, 0.0)
+
+
+def test_reps_from_lap_distance_are_corrected_too():
+    """Laps that carry only distance and time (no average speed) get their still-air pace like the others."""
+    from fitvio.activity import Lap
+    act = out_and_back(weather=_hourly(25, 0))
+    act.name = "Intervals 6x3'"
+    for r in act.records:
+        r.speed *= 1.25 if 300 <= r.t < 2700 and int((r.t - 300) // 180) % 2 == 0 else 1.0
+    act.laps = []
+    for start, dur in [(0, 300), *[(300 + i * 180, 180) for i in range(13)], (2640, 360)]:
+        seg = [r for r in act.records if start <= r.t < start + dur]
+        act.laps.append(Lap(start_s=start, duration_s=dur, distance_m=sum(r.speed for r in seg), avg_hr=145))
+    f = compute_features(act, USER)["features"]
+    assert f["work_speed"] and f["wind"]["work_speed"] != pytest.approx(f["work_speed"], rel=1e-4)
+
+
+def test_reports_read_an_old_database_without_changing_it(tmp_path, monkeypatch, capsys):
+    """A copy from before baseline_exclusions / wall_state existed: both reports run, read-only, and print
+    numbers only — never a name or id."""
+    import hashlib
+    import json as js
+    import sqlite3
+
+    from fitvio import cli, db, pipeline
+    from fitvio.config import load_config
+    from fitvio.demo import generate
+    cfg_path = tmp_path / "users.json"
+    cfg_path.write_text(js.dumps({"users": [{"id": "alex", "name": "Alex", "max_hr": 190, "rest_hr": 48}]}))
+    cfg = load_config(cfg_path)
+    cfg.db_path = tmp_path / "app.db"
+    generate(db.connect(cfg.db_path), cfg, days=60)
+    c = sqlite3.connect(cfg.db_path)
+    c.execute("DROP TABLE baseline_exclusions")
+    c.execute("DROP TABLE wall_state")
+    c.commit()
+    c.close()
+    before = hashlib.sha256(cfg.db_path.read_bytes()).hexdigest()
+
+    class Reader:  # every run as a windy out-and-back; no files, no network
+        weather_dir = None
+
+        def load_activity(self, aid):
+            return out_and_back(weather=_hourly(20, 0))
+    monkeypatch.setattr(pipeline, "reader_for", lambda user: Reader())
+    assert cli.wind_report(cfg, None) == 0
+    monkeypatch.setenv("FITVIO_DB", str(cfg.db_path))
+    assert cli.heat_report(None) == 0
+    out = capsys.readouterr().out
+    import re
+    read = re.search(r"running: (\d+) steady outdoor runs read, (\d+) with headings and wind data", out)
+    assert "== person 1 ==" in out and read and int(read[1]) > 5 and read[1] == read[2]
+    assert "efficiency spread" in out
+    assert "alex" not in out.lower()
+    assert hashlib.sha256(cfg.db_path.read_bytes()).hexdigest() == before

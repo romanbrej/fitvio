@@ -118,9 +118,9 @@ def compute_features(act: ParsedActivity, user: UserConfig) -> dict:
                          "avg_speed": f["avg_speed"] * wind.ratio(recs, gap_all, windy) if f["avg_speed"] else None,
                          "pct": (w_ef / ef - 1) * 100 if w_ef and ef else None}
             if f.get("work_speed"):  # the reps, each lap at its own still-air pace
-                still = [replace(lap, avg_speed=lap.avg_speed * wind.ratio(recs, gap_all, windy, lap.start_s,
-                                                                           lap.start_s + lap.duration_s))
-                         if lap.avg_speed else lap for lap in act.laps]
+                still = [replace(lap, avg_speed=v * wind.ratio(recs, gap_all, windy, lap.start_s,
+                                                                 lap.start_s + lap.duration_s))
+                         if (v := physio.lap_speed(lap)) else lap for lap in act.laps]
                 reps = physio.interval_reps(still) or {}
                 f["wind"].update(work_speed=reps.get("work_speed"), work_ef=reps.get("work_ef"))
     elif act.sport == "cycling":

@@ -319,12 +319,12 @@ def interval_reps(laps: list[Lap], min_lap_s: float = 20.0) -> dict | None:
     midpoint between the slowest and fastest lap. Judging reps only keeps the recovery jogs out of pace
     and efficiency, which is what made intervals look "worse" with the steady-run metrics.
     """
-    laps = [lap for lap in laps if lap.duration_s >= min_lap_s and _lap_speed(lap)]
+    laps = [lap for lap in laps if lap.duration_s >= min_lap_s and lap_speed(lap)]
     if len(laps) >= 5:
         laps = laps[1:-1]
     if len(laps) < 3:
         return None
-    speeds = [_lap_speed(lap) for lap in laps]
+    speeds = [lap_speed(lap) for lap in laps]
     cut = (min(speeds) + max(speeds)) / 2
     work = [lap for lap, v in zip(laps, speeds) if v > cut]
     rest = [lap for lap, v in zip(laps, speeds) if v <= cut]
@@ -335,13 +335,13 @@ def interval_reps(laps: list[Lap], min_lap_s: float = 20.0) -> dict | None:
         pts = [(get(lap), lap.duration_s) for lap in ls if get(lap)]
         return sum(v * d for v, d in pts) / sum(d for _, d in pts) if pts else None
 
-    work_speed = weighted(work, _lap_speed)
+    work_speed = weighted(work, lap_speed)
     work_hr = weighted(work, lambda lap: lap.avg_hr)
     rest_hr = weighted(rest, lambda lap: lap.avg_hr)
     rep_fade = None
     if len(work) >= 4:  # pace lost from the first to the last third of the reps (+ = slowed down)
         third = max(1, len(work) // 3)
-        first, last = weighted(work[:third], _lap_speed), weighted(work[-third:], _lap_speed)
+        first, last = weighted(work[:third], lap_speed), weighted(work[-third:], lap_speed)
         rep_fade = (first - last) / first * 100 if first and last else None
     return {
         "rep_count": len(work),
@@ -354,7 +354,7 @@ def interval_reps(laps: list[Lap], min_lap_s: float = 20.0) -> dict | None:
     }
 
 
-def _lap_speed(lap: Lap) -> float | None:
+def lap_speed(lap: Lap) -> float | None:
     if lap.avg_speed:
         return lap.avg_speed
     return lap.distance_m / lap.duration_s if lap.distance_m and lap.duration_s else None
