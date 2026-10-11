@@ -127,7 +127,7 @@ def test_sport_status_running_pace_and_cycling_wkg():
     assert st["headline_runs"] == 5
     w = [(400, 120, 6), (405, 900, 5), (410, 200, 4), (415, 1200, 3), (420, 900, 2)]
     assert st["pace_s_per_km"] == pytest.approx(sum(p * s * k for p, s, k in w) / sum(s * k for _, s, k in w), abs=0.1)
-    assert st["change_s_per_km"] > 15 and st["change_s_per_km_raw"] == st["change_s_per_km"]
+    assert st["change_s_per_km"] > 15 and "change_s_per_km_raw" not in st   # only ever weather adjusted
 
     # a long run counts at most 20 min: it can't outvote the others
     st = wall.sport_status([run(20, 400, secs=600), run(22, 400, secs=600), run(24, 440, "long", secs=7200)],
@@ -135,10 +135,10 @@ def test_sport_status_running_pace_and_cycling_wkg():
     assert st["pace_s_per_km"] == pytest.approx(                                   # 2 h counted as 20 min
         (440 * 1200 * 6 + 400 * 600 * 5 + 400 * 600 * 4) / (1200 * 6 + 600 * 5 + 600 * 4), abs=0.1)
 
-    # cooler weeks: faster as run, but the heat-adjusted trend stays steady
+    # cooler weeks: faster as run, but the weather-adjusted pace and trend stay steady
     hot = [run(1 + 7 * i, 420 - 3 * i, heat_pct=3.0 - 0.75 * i) for i in range(5)]
     st = wall.sport_status(hot, "running", None, improvements.Weights([], 85), today)
-    assert st["change_s_per_km_raw"] > 10 and abs(st["change_s_per_km"]) < 4
+    assert abs(st["change_s_per_km"]) < 4 and max(p["value"] for p in st["points"]) - min(p["value"] for p in st["points"]) < 4
 
     ride = {"sport": "cycling", "session_type": "easy", "has_power": 1, "start_time": "2026-09-20T07:00:00",
             "features": {"ef": 1.14, "power_at_ref_hr": 170.0, "ref_hr": 151}}
@@ -228,17 +228,17 @@ def test_period_trend_over_picked_lengths():
     st = wall.sport_status(runs, "running", None, w, today)
     assert st["change_s_per_km"] == six["change"]
     assert [q["day"] for q in st["points"]] == [q["day"] for q in six["points"]]
-    # a hot run: the card's sparkline shows it as run, the period chart heat-adjusted like its trend line
+    # a hot run: the card and the period chart both compare it weather adjusted, like their trend line
     hot = runs[:-1] + [run(42, 420, heat_pct=5.0)]
     st, per = wall.sport_status(hot, "running", None, w, today), wall.period_trend(hot, "running", 42, today)
-    assert st["points"][-1]["value"] == 420 and per["points"][-1]["value"] == pytest.approx(420 / 1.05, abs=0.1)
+    assert st["points"][-1]["value"] == pytest.approx(420 / 1.05, abs=0.1) == per["points"][-1]["value"]
     # the trend line's ends: then − now is the change (s/km faster), now is about the newest runs' pace
     assert two["then"] - two["now"] == pytest.approx(two["change"], abs=0.2) and 390 < two["now"] < 402
     assert two["points"][-1]["trend"] == pytest.approx(two["now"], abs=0.1)
     # too few runs in a period: no trend, but its points still show
     assert wall.period_trend(runs[:3], "running", 14, today)["change"] is None
     # nothing at all
-    assert wall.period_trend([], "running", 14, today) == {"change": None, "change_raw": None, "n": 0,
+    assert wall.period_trend([], "running", 14, today) == {"change": None, "n": 0,
                                                            "now": None, "then": None, "points": []}
 
 

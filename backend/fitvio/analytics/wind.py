@@ -129,3 +129,15 @@ def halves_headwind_kmh(steady: list[Record], weather: dict | None, start: datet
             return None
         means.append(num / den * 3.6)
     return means[1] - means[0]
+
+
+def ratio(records: list[Record], speeds: list[float | None], windy: list[float | None],
+          lo: float = -math.inf, hi: float = math.inf) -> float:
+    """Still-air ÷ actual over the moving records from `lo` to `hi` s (time-weighted): how much faster the
+    run, or one lap of it, would have been without the wind."""
+    num = den = 0.0
+    for r, s, w, dt in zip(records, speeds, windy, physio._dt(records)):
+        if dt and s and w and lo <= r.t < hi:
+            num += w * dt
+            den += s * dt
+    return num / den if den else 1.0

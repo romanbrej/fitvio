@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import re
+from dataclasses import replace
 from statistics import median, pstdev
 
 from ..activity import ParsedActivity
@@ -109,12 +110,19 @@ def compute_features(act: ParsedActivity, user: UserConfig) -> dict:
         if session_type == "intervals":
             f.update(physio.interval_reps(act.laps) or {})
         windy = None if act.indoor else wind.adjusted_speeds(recs, gap_all, act.weather, act.start_time)
-        if windy:  # efficiency and pace at the reference HR on still-air speeds; whether they count is the
-            # person's choice (heat.adjust). HR drift stays as run (analytics/wind).
+        if windy:  # efficiency and paces on still-air speeds; whether they count is the person's choice
+            # (heat.adjust). HR drift stays as run (analytics/wind).
             w_ef = physio.efficiency_factor(steady, windy[len(recs) - len(steady):])
             w_ref = physio.steady_speed_at_hr(recs, windy, ref_hr(user), *ref_hr_band(user))
             f["wind"] = {"ef": w_ef, "speed_at_ref_hr": w_ref[0] if w_ref else None,
+                         "avg_speed": f["avg_speed"] * wind.ratio(recs, gap_all, windy) if f["avg_speed"] else None,
                          "pct": (w_ef / ef - 1) * 100 if w_ef and ef else None}
+            if f.get("work_speed"):  # the reps, each lap at its own still-air pace
+                still = [replace(lap, avg_speed=lap.avg_speed * wind.ratio(recs, gap_all, windy, lap.start_s,
+                                                                           lap.start_s + lap.duration_s))
+                         if lap.avg_speed else lap for lap in act.laps]
+                reps = physio.interval_reps(still) or {}
+                f["wind"].update(work_speed=reps.get("work_speed"), work_ef=reps.get("work_ef"))
     elif act.sport == "cycling":
         if act.has_power:
             p1 = physio.power_series_1hz(recs)

@@ -217,3 +217,42 @@ def test_switch_off_and_on_rewrites_without_reading_files(client, monkeypatch): 
         f = s["features"]
         assert f["ef_adj"] == pytest.approx(f["wind"]["ef"] * (1 + f["heat_adj_pct"] / 100), abs=1e-4)
 
+
+
+def test_activity_has_real_and_weather_adjusted_pace():
+    """Real pace stays as run; the adjusted one is what the same effort would have given in cool still air."""
+    f = compute_features(out_and_back(weather={**_hourly(25, 0), "temp_c": 26, "dew_point_c": 20,
+                                               "hourly": [{**h, "temp_c": 26, "dew_point_c": 20}
+                                                          for h in _hourly(25, 0)["hourly"]]}), USER)["features"]
+    s = {"sport": "running", "indoor": 0, "start_time": START.isoformat(), "duration_s": 3000, "features": f}
+    heat.adjust([s], heat.priors(), wind=True)
+    assert f["heat_adj_pct"] > 1
+    assert f["wind"]["avg_speed"] > f["avg_speed"]             # the wind cost pace overall
+    assert f["avg_speed_adj"] == pytest.approx(f["wind"]["avg_speed"] * (1 + f["heat_adj_pct"] / 100), abs=1e-4)
+    heat.adjust([s], heat.priors(), wind=False)
+    assert f["avg_speed_adj"] == pytest.approx(f["avg_speed"] * (1 + f["heat_adj_pct"] / 100), abs=1e-4)
+
+
+def test_interval_reps_are_compared_weather_adjusted():
+    """Reps out into the wind and back: rep pace and rep efficiency get each lap's still-air pace, and the
+    interval verdict compares only the adjusted values."""
+    from fitvio.activity import Lap
+    act = out_and_back(weather=_hourly(25, 0))
+    act.name = "Intervals 6x3'"
+    for r in act.records:  # 3 min hard / 3 min easy, the lap's speed from its records
+        r.speed *= 1.25 if 300 <= r.t < 2700 and int((r.t - 300) // 180) % 2 == 0 else 1.0
+    act.laps = []
+    for start, dur in [(0, 300), *[(300 + i * 180, 180) for i in range(13)], (2640, 360)]:
+        seg = [r for r in act.records if start <= r.t < start + dur]
+        act.laps.append(Lap(start_s=start, duration_s=dur, avg_speed=sum(r.speed for r in seg) / len(seg),
+                            avg_hr=145))
+    feats = compute_features(act, USER)
+    f = feats["features"]
+    assert feats["session_type"] == "intervals" and f["work_speed"]
+    assert f["wind"]["work_speed"] != pytest.approx(f["work_speed"], rel=1e-4)
+    s = {"sport": "running", "indoor": 0, "start_time": START.isoformat(), "duration_s": 3000,
+         "session_type": "intervals", "features": f}
+    heat.adjust([s], heat.priors(), wind=True)
+    assert f["work_speed_adj"] == pytest.approx(f["wind"]["work_speed"] * (1 + f["heat_adj_pct"] / 100), abs=1e-4)
+    specs = {m.key: m for m in RunningModel().interval_metrics}
+    assert specs["work_speed"].value(s) == f["work_speed_adj"] and specs["work_ef"].value(s) == f["work_ef_adj"]

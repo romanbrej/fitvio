@@ -242,8 +242,8 @@ def priors() -> dict[str, dict]:
 
 def adjust(sessions: list[dict], response: dict[str, dict], wind: bool = True) -> None:
     """Weather-adjusted values on the sessions' features, from the stored ones: heat_adj_pct, wind_adj_pct,
-    ef_adj, speed_at_ref_hr_adj, power_at_ref_hr_adj, decoupling_adj (the pipeline stores them with the
-    session). With `wind`, they start from the still-air values (runs with GPS and wind data), so switching
+    ef_adj, speed_at_ref_hr_adj, power_at_ref_hr_adj, avg_speed_adj, work_speed_adj, work_ef_adj,
+    decoupling_adj (the pipeline stores them with the session; comparisons use only these). With `wind`, they start from the still-air values (runs with GPS and wind data), so switching
     the wind correction off or on is a rewrite like the heat response, without reading a file again."""
     for s in sessions:
         r = response.get(s["sport"])
@@ -257,7 +257,7 @@ def adjust(sessions: list[dict], response: dict[str, dict], wind: bool = True) -
         f["heat_adj_pct"] = pct
         if "wind" in f:  # what the wind correction changed, for the verdict's note (0 when it's off)
             f["wind_adj_pct"] = round((f["wind"].get("pct") or 0.0) if wind else 0.0, 2)
-        for key in ("ef", "speed_at_ref_hr", "power_at_ref_hr"):
+        for key in ("ef", "speed_at_ref_hr", "power_at_ref_hr", "avg_speed", "work_speed", "work_ef"):
             if (v := base(f, key, wind)) is not None:
                 f[f"{key}_adj"] = round(v * up, 4)
         if (v := base(f, "decoupling", wind)) is not None:

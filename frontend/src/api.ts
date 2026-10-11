@@ -76,7 +76,7 @@ export interface SportTrend {
     /** running: pace held at ref_hr over the newest runs (older ones fading out), change over the 6 weeks up
      *  to the newest run, heat-adjusted (and as run); runs with steady time at ref_hr of all outdoor runs then.
      *  Counted from the newest run, so it changes only when a run comes in. */
-    pace_s_per_km?: number; change_s_per_km?: number | null; change_s_per_km_raw?: number | null
+    pace_s_per_km?: number; change_s_per_km?: number | null
     runs?: number; runs_total?: number; headline_runs?: number
     w_per_beat?: number | null; w_per_beat_change_pct?: number | null; ftp_wkg?: number | null; hr_wkg?: number | null
     ref_hr?: number | null
@@ -85,14 +85,14 @@ export interface SportTrend {
     points: { day: string; value: number }[]
   } | null
   /** the same change over every length a person can pick, by days ("14" … "365"): running s/km faster
-   *  (heat-adjusted, `change_raw` as run), cycling % power per beat, strength % e1RM and sessions vs before */
+   *  (weather adjusted), cycling % power per beat, strength % e1RM and sessions vs before */
   periods?: Record<string, PeriodTrend>
   /** running only: median cadence of easy/long runs in 6 weeks vs the 6 before */
   cadence?: { spm: number; change: number | null; runs: number } | null
 }
 
 export interface PeriodTrend {
-  change: number | null; change_raw: number | null; n: number
+  change: number | null; n: number
   /** running s/km, cycling W/beat: the trend line at the newest session and one period before it */
   now?: number | null; then?: number | null
   n_prev?: number; minutes?: number  // strength

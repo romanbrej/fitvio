@@ -10,11 +10,12 @@ import { PeriodChips } from '../components/PeriodChips'
 import { periodAnswer, TONE_BG, TONE_COLOR } from '../periodAnswer'
 import { daysFor, periodSince, periodText, useTrendPeriod } from '../trendPeriod'
 import { useFetch } from '../useFetch'
+import { adjustedPace } from './WallVerdict'
 import './Detail.css'
 
 const PRIMARY: Record<string, { label: string; get: (f: Record<string, any>) => number | null | undefined; fmt: (v: number) => string }> = {
   // pace held at the reference HR in s/km (grade & heat adjusted, so runs compare fairly) — lower is faster
-  running: { label: 'Pace at fixed HR (/km, grade & heat adjusted) — steady time at that HR in any run, lower is faster',
+  running: { label: 'Pace at fixed HR (/km, grade & weather adjusted) — steady time at that HR in any run, lower is faster',
              get: f => { const v = f.speed_at_ref_hr_adj ?? f.speed_at_ref_hr; return v ? 1000 / v : null }, fmt: v => duration(v) },
   cycling: { label: 'Power per heartbeat (W/beat, heat adjusted)', get: f => f.ef_adj ?? f.ef, fmt: v => v.toFixed(2) },
   swimming: { label: 'Pace per 100 m (s) — lower is better', get: f => f.pace_100m_s, fmt: v => duration(v) },
@@ -120,7 +121,7 @@ export function SportDetail() {
               {periodAns ? <><span className="hl" style={{ color: TONE_COLOR[periodAns.tone] }}>{periodAns.word}</span> {periodAns.text}</>
                 : answer ? <><span className="hl">{answer.word}</span> {answer.text}</> : 'Not enough sessions yet.'}
             </h1>
-            {periodAns && trend?.status && <div className="hero-sub">{sport === 'running' ? `Pace at ${trend.status.ref_hr ?? '—'} bpm, heat-adjusted`
+            {periodAns && trend?.status && <div className="hero-sub">{sport === 'running' ? `Pace at ${trend.status.ref_hr ?? '—'} bpm, weather-adjusted`
               : sport === 'cycling' ? 'Power per heartbeat, heat-adjusted · rides with power' : `Sessions against the ${periodText(days)} before`}</div>}
           </div>
           {periodAns ? (
@@ -213,7 +214,7 @@ export function SportDetail() {
           <div className="card-title">Sessions{since ? ` · last ${periodText(days)} · ${rows.length}` : ''}</div>
           <div className="table-wrap">
             <table className="data">
-              <thead><tr><th>When</th><th>Session</th><th>Type</th><th className="num">Duration</th><th className="num">Distance</th>{sport === 'running' && <th className="num">Pace</th>}<th className="num">Key metric</th><th>Verdict</th></tr></thead>
+              <thead><tr><th>When</th><th>Session</th><th>Type</th><th className="num">Duration</th><th className="num">Distance</th>{sport === 'running' && <><th className="num">Pace</th><th className="num">Weather-adj.</th></>}<th className="num">Key metric</th><th>Verdict</th></tr></thead>
               <tbody>
                 {rows.slice(0, all ? undefined : 30).map(s => {
                   const v = p.get(s.features ?? {})
@@ -221,7 +222,8 @@ export function SportDetail() {
                     <tr key={s.id} className="clickable" onClick={() => nav(`/session/${encodeURIComponent(s.id)}`)}>
                       <td>{when(s.start_time)}</td><td>{s.name ?? '—'}</td><td>{TYPE_LABEL[s.session_type] ?? s.session_type}</td>
                       <td className="num">{duration(s.duration_s)}</td><td className="num">{distance(s.distance_m, s.sport)}</td>
-                      {sport === 'running' && <td className="num">{pace(s.features?.avg_speed)}</td>}
+                      {sport === 'running' && <><td className="num">{pace(s.features?.avg_speed)}</td>
+                        <td className="num">{pace(adjustedPace(s) ?? undefined)}</td></>}
                       <td className="num">{v != null ? p.fmt(v) : '—'}</td>
                       <td><VerdictPill verdict={s.verdict as VerdictKind | null} /></td>
                     </tr>

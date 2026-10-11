@@ -136,7 +136,7 @@ function PeriodCard({ sport, t, days }: { sport: Sport; t: SportTrend; days: num
   const { lo, hi, ticks } = niceTicks(sport === 'strength' ? [0, ...vals] : [...vals, ...trend],
                                       v => fmt(running ? -v : v), '', running ? 5 : sport === 'cycling' ? 0.05 : 1)
   const what = sport === 'strength' ? 'Sessions per week' : running ? 'Pace at your reference HR' : 'Power per heartbeat'
-  const label = sport === 'strength' ? 'Sessions per week' : running ? `Pace at ${t.status?.ref_hr ?? '—'} bpm, heat-adjusted` : 'Power per heartbeat, heat-adjusted'
+  const label = sport === 'strength' ? 'Sessions per week' : running ? `Pace at ${t.status?.ref_hr ?? '—'} bpm, weather-adjusted` : 'Power per heartbeat, heat-adjusted'
   return (
     <Card style={{ borderTop: `3px solid ${SPORT_COLOR[sport]}` }}>
       {answer && (
