@@ -18,6 +18,7 @@ from ..weather import label as weather_label
 MIN_SIMILAR = 3
 WINDOWS_DAYS = (56, 84, 120)
 SCORE_THRESHOLD = 0.6
+WIND_NOTE_PCT = 0.5  # smaller wind corrections are not worth a line
 
 
 @dataclass
@@ -226,6 +227,13 @@ class SportModel:
             if f.get("heat_acclimation") is not None:
                 text += f"; heat acclimation {f['heat_acclimation']:.0f} %"
             notes.append({"kind": "heat", "text": text})
+        wind = f.get("wind_adj_pct") or 0
+        if abs(wind) >= WIND_NOTE_PCT and w.get("wind_kmh") is not None:
+            text = f"Windy: {w['wind_kmh']:.0f} km/h" + (f" from {w['wind_dir']}" if w.get("wind_dir") else "")
+            if (source := weather_label(w)):
+                text += f" ({source})"
+            text += f" — efficiency adjusted {wind:+.1f} %".replace("-", "−") + " for head- and tailwind"
+            notes.append({"kind": "wind", "text": text})
         if session.get("ascent_m") and session.get("distance_m") and self.sport == "running":
             per_km = session["ascent_m"] / (session["distance_m"] / 1000)
             if per_km >= 15:

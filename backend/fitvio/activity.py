@@ -16,6 +16,7 @@ class Record:
     power: float | None = None    # W
     cadence: float | None = None
     temperature: float | None = None  # °C
+    heading: float | None = None  # ° (0 = north, 90 = east), direction of travel; the position itself is never kept
 
 
 @dataclass

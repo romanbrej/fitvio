@@ -356,16 +356,13 @@ function tileBody(sport: Sport, t: SportTrend, days: number): { big: string; uni
     const c = p ? p.change : st.change_s_per_km
     const tone = toneOf(c, STEADY.run_s_per_km)
     const cad = t.cadence
-    // the pill is heat-adjusted; when the pace as run moved but the weather explains it, say so
-    const raw = (p ? p.change_raw : st.change_s_per_km_raw) ?? null
-    const weather = tone === 'inline' && raw != null && toneOf(raw, STEADY.run_s_per_km) !== 'inline'
+    // pace, sparkline and trend: weather adjusted, never the pace as run
     const trend = c == null ? `not enough runs in ${span} for a trend`
-      : weather ? `${raw! > 0 ? '▲' : '▼'} ${Math.abs(raw!).toFixed(0)} s/km in ${span}, ${raw! > 0 ? 'cooler' : 'hotter'} weather`
       : tone === 'inline' ? `steady over ${span}`
       : `${c > 0 ? '▲' : '▼'} ${Math.abs(c).toFixed(0)} s/km ${c > 0 ? 'faster' : 'slower'} in ${span}`
     return {
       big: paceStr(st.pace_s_per_km), unit: '/km',
-      caption: `at ${num(st.ref_hr)} bpm · ${trend}`,
+      caption: `at ${num(st.ref_hr)} bpm, weather-adj. · ${trend}`,
       extra: cad ? `Cadence ${cad.spm} spm${cad.change ? ` ${cad.change > 0 ? '▲' : '▼'}${Math.abs(cad.change)}` : ''}` : undefined,
       spark: (p ?? st).points.map(x => -x.value), tone,
     }

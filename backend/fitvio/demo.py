@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta
 
 from . import db, pipeline, profile
 from .activity import ExerciseSet, Lap, ParsedActivity, Record, SwimLength
+from .analytics import wind
 from .config import AppConfig, UserConfig
 from .sync import open_meteo
 
@@ -30,9 +31,13 @@ def _run(rng: random.Random, uid: str, start: datetime, fitness: float, kind: st
     if showcase:  # the run the demo wall opens on: a good day (flat, cool, steady), so the first verdict is "better"
         hilly, drift, heat, fitness = False, 0.015, 1.0, fitness * 1.06
     lap_start, lap_dist = 0.0, 0.0
+    weather = _weather(start, n * STEP, temp)
+    wind_at = wind.WindAt(weather, start)
+    out_heading = (start.toordinal() * 73) % 360  # out and back: the wind helps one way and costs the other
     for i in range(n):
         t = i * STEP
         frac = i / n
+        heading = out_heading if frac < 0.5 else (out_heading + 180) % 360
         if kind == "easy" or kind == "long":
             target_hr = user.rest_hr + 0.62 * (user.max_hr - user.rest_hr)
         elif kind == "tempo":
@@ -49,9 +54,10 @@ def _run(rng: random.Random, uid: str, start: datetime, fitness: float, kind: st
         alt = 200 + (40 * math.sin(dist / 900) if hilly else 3 * math.sin(dist / 500))
         grade = (40 / 900 * math.cos(dist / 900)) if hilly else 0
         speed /= (1 + 3 * max(-0.1, grade))
+        speed /= wind.still_air_factor(speed, heading, wind_at(t))
         dist += speed * STEP
         recs.append(Record(t=t, hr=round(hr), speed=speed, distance=dist, altitude=alt, cadence=170 + rng.gauss(0, 3),
-                           temperature=temp + 4))
+                           temperature=temp + 4, heading=heading))
         if dist - lap_dist >= 1000:
             laps.append(Lap(start_s=lap_start, duration_s=t - lap_start, distance_m=dist - lap_dist,
                             avg_speed=(dist - lap_dist) / max(1, t - lap_start)))
@@ -73,7 +79,7 @@ def _run(rng: random.Random, uid: str, start: datetime, fitness: float, kind: st
                                    "intervals": "Intervals 3' on/off"}[kind],
         duration_s=n * STEP, distance_m=dist, avg_hr=sum(hrs) / len(hrs), max_hr=max(hrs),
         ascent_m=320 * (minutes / 60) if hilly else 20, avg_temp_c=round(temp, 1), records=recs, laps=laps,
-        weather=_weather(start, n * STEP, temp), track=[(0, 52.4, 9.7)],
+        weather=weather, track=[(0, 52.4, 9.7)],
     )
 
 

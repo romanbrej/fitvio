@@ -19,7 +19,7 @@ def test_faster_at_same_hr_in_seconds_per_km():
     # usual 2.40 m/s = 6:57 /km, today 2.50 m/s = 6:40 /km
     d = {"key": "speed_at_ref_hr", "label": "Pace at fixed HR", "value": 2.5, "baseline": 2.4, "z": 1.4}
     [item] = delta_items(run(), [d], None)
-    assert item["label"] == "Pace @151 bpm" and item["value_fmt"] == "6:40 /km"
+    assert item["label"] == "Pace @151 bpm (weather-adj.)" and item["value_fmt"] == "6:40 /km"
     assert item["change_fmt"] == "17 s/km faster than usual" and item["tone"] == "improving"
     d.update(value=2.4, baseline=2.41, z=0.1)
     assert delta_items(run(), [d], None)[0]["change_fmt"] == "like usual"
@@ -47,7 +47,7 @@ def test_longest_and_fastest_in_90_days_are_bests():
     history = [run(f"2026-09-{d:02d}", dist=8000, speed=2.4, sid=str(d)) for d in (5, 10, 15, 20)]
     today = run(dist=14200, speed=2.6)
     labels = [i["label"] for i in best_items(today, history, ["New all-time 5-min power best: 250 W (previous 240 W)"])]
-    assert labels == ["New best", "Longest run in 90 days", "Fastest at 151 bpm in 90 days"]
+    assert labels == ["New best", "Longest run in 90 days", "Fastest at 151 bpm in 90 days (weather-adj.)"]
     assert best_items(today, history[:2], []) == []  # too little history to call it a best
 
 

@@ -22,6 +22,11 @@ def fmt_num(dp: int, unit: str = ""):
     return lambda v: f"{v:.{dp}f}{unit}"
 
 
+def _adj(key: str):
+    """The weather-adjusted value (heat and wind, analytics/heat.adjust): runs are only ever compared on it."""
+    return lambda f: f.get(f"{key}_adj") or f.get(key)
+
+
 def _drift(f: dict) -> float | None:
     """HR drift less the extra drift this person's heat response expects for the session's heat."""
     return f["decoupling_adj"] if f.get("decoupling_adj") is not None else f.get("decoupling")
@@ -32,22 +37,22 @@ class RunningModel(SportModel):
     primary = "ef_adj"
     metrics = [
         MetricSpec("ef_adj", "Aerobic efficiency", +1, 0.45, fmt_num(2, " m/beat")),
-        MetricSpec("speed_at_ref_hr", "Pace at fixed HR", +1, 0.35, fmt_pace_km,
-                   get=lambda f: f.get("speed_at_ref_hr_adj") or f.get("speed_at_ref_hr")),  # heat-adjusted
+        MetricSpec("speed_at_ref_hr", "Pace at fixed HR (weather-adj.)", +1, 0.35, fmt_pace_km,
+                   get=_adj("speed_at_ref_hr")),
         MetricSpec("decoupling", "HR drift", -1, 0.20, fmt_num(1, " %"), mode="abs", noise=1.5, get=_drift),
     ]
 
     # intervals: only the work reps count — the recovery jogs would dilute pace and efficiency,
     # and HR drift across reps is noise
     interval_metrics = [
-        MetricSpec("work_speed", "Rep pace", +1, 0.4, fmt_pace_km),
-        MetricSpec("work_ef", "Rep efficiency", +1, 0.4, fmt_num(2, " m/beat")),
+        MetricSpec("work_speed", "Rep pace (weather-adj.)", +1, 0.4, fmt_pace_km, get=_adj("work_speed")),
+        MetricSpec("work_ef", "Rep efficiency", +1, 0.4, fmt_num(2, " m/beat"), get=_adj("work_ef")),
         MetricSpec("hr_recovery", "HR recovery between reps", +1, 0.2, fmt_num(0, " bpm"), mode="abs", noise=2.0),
     ]
     # short reps: HR can't catch up within a rep, so pace per beat and HR drop say nothing —
     # judge the pace and how well it held from the first to the last reps
     short_interval_metrics = [
-        MetricSpec("work_speed", "Rep pace", +1, 0.6, fmt_pace_km),
+        MetricSpec("work_speed", "Rep pace (weather-adj.)", +1, 0.6, fmt_pace_km, get=_adj("work_speed")),
         MetricSpec("rep_fade", "Pace held across reps", -1, 0.4, fmt_num(1, " %"), mode="abs", noise=2.0),
     ]
     SHORT_REP_S = 120

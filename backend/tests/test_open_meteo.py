@@ -332,7 +332,7 @@ def test_sync_learns_the_heat_response_and_redoes_verdicts_when_it_moves(tmp_pat
     api.activities.append(activity("i3", (date.today() - timedelta(days=1)).isoformat(), has_weather=True,
                                    average_weather_temp=21.0))  # recent: a normal sync picks it up
     real = heat.fit_response
-    monkeypatch.setattr(heat, "fit_response", lambda ss, sport: {**real(ss, sport), "k": 2.0}
+    monkeypatch.setattr(heat, "fit_response", lambda ss, sport, wind=True: {**real(ss, sport, wind), "k": 2.0}
                         if sport == "running" else real(ss, sport))
     ok, result = intervals_runner.sync_user(conn, user)
     assert ok and result["activities"] == 1 and result["heat_relearned"] == ["running"], result

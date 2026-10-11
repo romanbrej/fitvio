@@ -32,6 +32,7 @@ export function Me() {
   const [check, setCheck] = useState<ActivityCheck | null>(null)
   const [openMeteo, setOpenMeteo] = useState<boolean | null>(null)
   const [heat, setHeat] = useState<HeatResponse | null>(null)
+  const [wind, setWind] = useState<boolean | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
 
   const load = useCallback(() => api.accounts().then(setAccounts).catch(e => setProblem(errorText(e))), [])
@@ -40,6 +41,7 @@ export function Me() {
   useEffect(() => { api.activityCheck().then(setCheck).catch(() => setCheck(null)) }, [])
   useEffect(() => { api.weatherSetting(me.id).then(r => setOpenMeteo(r.open_meteo)).catch(() => setOpenMeteo(null)) }, [me.id])
   useEffect(() => { api.heatSetting(me.id).then(setHeat).catch(() => setHeat(null)) }, [me.id])
+  useEffect(() => { api.windSetting(me.id).then(r => setWind(r.wind)).catch(() => setWind(null)) }, [me.id])
   useEffect(() => {
     // keep sync progress fresh while anything runs
     if (!accounts?.some(a => a.job)) return
@@ -69,6 +71,14 @@ export function Me() {
     if (!heat) return
     setProblem(null)
     try { setHeat(await api.setHeatSetting(me.id, !heat.learn)) } catch (e) { setProblem(errorText(e)) }
+  }
+  const toggleWind = async () => {
+    if (wind == null) return
+    setProblem(null)
+    try {
+      setWind((await api.setWindSetting(me.id, !wind)).wind)
+      api.heatSetting(me.id).then(setHeat).catch(() => {})  // the heat response is relearned on what now counts
+    } catch (e) { setProblem(errorText(e)) }
   }
   const mine = buddies?.users[me.id]
   const myAccount = accounts?.find(a => a.id === me.id)
@@ -129,6 +139,18 @@ export function Me() {
               </div>
               <button role="switch" aria-checked={heat.learn} className={`switch ${heat.learn ? 'on' : ''}`}
                       onClick={toggleHeat} aria-label="Learn my heat response"><span /></button>
+            </div>
+          )}
+          {wind != null && (
+            <div className="ph-list-row">
+              <div className="ph-grow">
+                <span className="ph-strong">Correct runs for wind</span>
+                <span className="ph-foot">{wind
+                  ? 'Pace into a headwind counts for more, with a tailwind for less, from your direction and the hourly wind.'
+                  : 'Runs are judged as run, whatever the wind.'}</span>
+              </div>
+              <button role="switch" aria-checked={wind} className={`switch ${wind ? 'on' : ''}`}
+                      onClick={toggleWind} aria-label="Correct runs for wind"><span /></button>
             </div>
           )}
         </Card>

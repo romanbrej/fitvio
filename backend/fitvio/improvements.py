@@ -82,7 +82,7 @@ def delta_items(session: dict, deltas: list[dict], weight_kg: float | None) -> l
         key = d["key"]
         if key in ("speed_at_ref_hr", "work_speed"):
             sec = round(1000 / base - 1000 / v)  # + = faster
-            label = f"Pace {at}" if key == "speed_at_ref_hr" else "Rep pace"
+            label = (f"Pace {at}" if key == "speed_at_ref_hr" else "Rep pace") + " (weather-adj.)"  # as compared
             out.append(_item(key, label, _pace_km(v), _vs_usual(tone, sec, "s/km", "faster", "slower"), tone))
         elif key == "hr_recovery":
             text = _vs_usual(tone, round(v - base), "bpm", "more", "less")
@@ -160,7 +160,8 @@ def best_items(session: dict, history: list[dict], reasons: list[str]) -> list[d
         if v and len(prev) >= MIN_PRIOR and v > max(prev):
             what = "Fastest" if sport == "running" else "Most power"
             ref = f.get("ref_hr")
-            out.append(_item("best", f"{what} at {ref:.0f} bpm in 90 days" if ref else f"{what} at fixed HR in 90 days",
+            label = f"{what} at {ref:.0f} bpm in 90 days" if ref else f"{what} at fixed HR in 90 days"
+            out.append(_item("best", label + (" (weather-adj.)" if sport == "running" else ""),
                              _pace_km(v) if sport == "running" else f"{v:.0f} W", "", "best"))
     return out
 

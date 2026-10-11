@@ -14,17 +14,26 @@ export function deltaTone(d: Delta): string {
   return d.z >= 0.6 ? 'better' : d.z <= -0.6 ? 'worse' : 'inline'
 }
 
+/** The pace the same effort would have given in cool, still air (heat and wind), next to the real one:
+ *  outdoor runs only, and what every comparison uses. */
+export function adjustedPace(s: Session): number | null {
+  const f = s.features || {}
+  return s.sport === 'running' && !s.indoor && f.weather && f.avg_speed && f.avg_speed_adj ? f.avg_speed_adj : null
+}
+
 export function facts(s: Session): [string, string][] {
   const f = s.features || {}
+  const adj = adjustedPace(s)
   const out: [string, string][] = [['Duration', duration(s.duration_s)]]
   if (s.distance_m) out.push(['Distance', distance(s.distance_m, s.sport)])
   if (s.sport === 'running' && f.avg_speed) out.push(['Avg pace', `${pace(f.avg_speed)} /km`])
+  if (adj) out.push(['Weather-adj. pace', `${pace(adj)} /km`])
   if (s.sport === 'cycling' && f.np) out.push(['Norm. power', `${num(f.np)} W`])
   else if (s.sport === 'cycling' && f.avg_speed) out.push(['Avg speed', `${kmh(f.avg_speed)} km/h`])
   if (s.sport === 'swimming' && f.swolf) out.push(['SWOLF', num(f.swolf)])
   if (s.sport === 'strength' && f.total_sets) out.push(['Sets', String(f.total_sets)], ['Volume', `${num(f.total_volume)} kg`])
   if (s.avg_hr) out.push(['Avg HR', `${num(s.avg_hr)} bpm`])
-  if (s.sport === 'running' && f.avg_cadence) out.push(['Cadence', `${num(f.avg_cadence * (f.avg_cadence < 120 ? 2 : 1))} spm`])
+  if (s.sport === 'running' && f.avg_cadence && !adj) out.push(['Cadence', `${num(f.avg_cadence * (f.avg_cadence < 120 ? 2 : 1))} spm`])
   out.push(['Load', `${num(s.load)}`])
   return out.slice(0, 6)
 }

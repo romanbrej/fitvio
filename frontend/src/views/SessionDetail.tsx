@@ -9,7 +9,7 @@ import { Improvements } from '../components/Improvements'
 import { SetList } from '../components/SetList'
 import { distance, duration, feelLabel, kmh, num, pace, SPORT_LABEL, TYPE_LABEL, VERDICT_LABEL, weatherSource, when } from '../format'
 import { useFetch } from '../useFetch'
-import { deltaTone } from './WallVerdict'
+import { adjustedPace, deltaTone } from './WallVerdict'
 import './Detail.css'
 
 function ZBar({ z }: { z: number | null }) {
@@ -48,14 +48,16 @@ interface FactGroups { key: Row[]; groups: { title: string; rows: Row[] }[] }
 export function factGroups(s: SessionDetail): FactGroups {
   const f = s.features || {}
   const spm = f.avg_cadence ? `${num(f.avg_cadence * (f.avg_cadence < 120 ? 2 : 1))} spm` : null
+  const adj = adjustedPace(s)
   const key: Row[] = [['Duration', duration(s.duration_s)]]
   if (s.distance_m) key.push(['Distance', distance(s.distance_m, s.sport)])
   if (s.sport === 'running' && f.avg_speed) key.push(['Avg pace', `${pace(f.avg_speed)} /km`])
+  if (adj) key.push(['Weather-adj. pace', `${pace(adj)} /km`])
   if (s.sport === 'cycling') key.push(f.avg_power ? ['Avg power', `${num(f.avg_power)} W`] : ['Avg speed', `${kmh(f.avg_speed)} km/h`])
   if (s.sport === 'swimming' && f.pace_100m_s) key.push(['Pace', `${duration(f.pace_100m_s)} /100 m`])
   if (s.sport === 'strength') key.push(['Volume', `${num(f.total_volume)} kg`])
   if (s.avg_hr) key.push(['Avg HR', `${num(s.avg_hr)} bpm`])
-  if (s.sport === 'running' && spm) key.push(['Cadence', spm])
+  if (s.sport === 'running' && spm && !adj) key.push(['Cadence', spm])
   key.push(['Load', num(s.load)])
 
   const groups: { title: string; rows: Row[] }[] = []
@@ -65,15 +67,19 @@ export function factGroups(s: SessionDetail): FactGroups {
   }
   if (s.sport === 'running') {
     add('Performance', [
-      [`Pace @ ${f.ref_hr ?? ''} bpm`, f.speed_at_ref_hr ? `${pace(f.speed_at_ref_hr)} /km` : '—'],
+      // weather-adjusted, as compared; the real one beside it
+      [`Pace @ ${f.ref_hr ?? ''} bpm (weather-adj.)`, f.speed_at_ref_hr ? `${pace(f.speed_at_ref_hr_adj ?? f.speed_at_ref_hr)} /km` : '—'],
+      !!adj && !!f.speed_at_ref_hr && [`Pace @ ${f.ref_hr ?? ''} bpm, as run`, `${pace(f.speed_at_ref_hr)} /km`],
       ['Grade-adj. pace', f.gap_speed ? `${pace(f.gap_speed)} /km` : '—'],
+      !!adj && !!spm && ['Cadence', spm],
       ['Efficiency', num(f.ef_adj, 2)],
       ['HR drift', f.decoupling != null ? `${num(f.decoupling, 1)} %` : '—'],
     ])
     if (f.work_speed) {
       add('Intervals', [
         ['Reps', f.rep_s ? `${f.rep_count} × ${duration(f.rep_s)}` : num(f.rep_count)],
-        ['Rep pace', `${pace(f.work_speed)} /km`],
+        ['Rep pace (weather-adj.)', `${pace(f.work_speed_adj ?? f.work_speed)} /km`],
+        !!adj && ['Rep pace, as run', `${pace(f.work_speed)} /km`],
         ['Rep HR', `${num(f.work_hr)} bpm`],
         // short reps: HR can't keep up, so the HR drop says little — show how well the pace held instead
         f.rep_s && f.rep_s < 120 ? ['Pace held', f.rep_fade != null ? (f.rep_fade > 0 ? `−${num(f.rep_fade, 1)} %` : 'held') : '—']
@@ -102,18 +108,14 @@ export function factGroups(s: SessionDetail): FactGroups {
     w && w.dew_point_c != null ? ['Dew point', `${num(w.dew_point_c)} °C`] : null,
     w && w.humidity != null ? ['Humidity', `${num(w.humidity)} %`] : null,
     w && w.wind_kmh != null ? ['Wind', `${num(w.wind_kmh)} km/h${w.wind_dir ? ` ${w.wind_dir}` : ''}`] : null,
-    f.heat_adj_pct ? ['Heat adjustment', `+${num(f.heat_adj_pct, 1)} %${heatFactor(f.heat_response, s.sport)}`] : null,
+    // what the run is credited: efficiency and pace at fixed HR count this much better than measured
+    f.heat_adj_pct ? ['Heat credit', `+${num(f.heat_adj_pct, 1)} %`] : null,
+    f.wind_adj_pct ? ['Wind credit', `${f.wind_adj_pct > 0 ? '+' : '−'}${num(Math.abs(f.wind_adj_pct), 1)} %`] : null,
     f.decoupling != null && f.decoupling_adj != null && f.decoupling - f.decoupling_adj >= 0.1
       ? ['Heat drift', `−${num(f.decoupling - f.decoupling_adj, 1)} points`] : null,
     source ? ['Weather from', source] : null,
   ])
   return { key: key.slice(0, 6), groups }
-}
-
-/** " · your 1.4×" when the person's learned heat response differs from the standard for the sport */
-function heatFactor(r: { k?: number; warm?: number } | undefined, sport: string) {
-  const standard = sport === 'cycling' ? 0.5 : 1
-  return r?.k != null && r.warm && Math.abs(r.k - standard) >= 0.05 ? ` · you ${num(r.k / standard, 1)}×` : ''
 }
 
 const ZONE_COLORS = ['#64748b', '#38bdf8', '#3ddc84', '#f5b83d', '#f87171']
