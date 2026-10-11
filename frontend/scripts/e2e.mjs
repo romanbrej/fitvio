@@ -383,6 +383,15 @@ try {
   await p.getByText(/Am I improving/).waitFor()
   await p.waitForLoadState('networkidle')
   check('sam (metric) still sees km on the same wall', /\/km/.test(await p.locator('body').innerText()))
+  await p.goto(`${ROOT}accounts`)
+  const samUnits = p.getByRole('group', { name: 'Units for Sam' })
+  await samUnits.getByRole('button', { name: /^Imperial/ }).click()
+  await samUnits.getByRole('button', { name: /^Imperial/, pressed: true }).waitFor()
+  check('the wall\'s Accounts page switches units per person', (await api('/api/users/sam/units')).units === 'imperial'
+    && (await api('/api/users/alex/units')).units === 'imperial')
+  await samUnits.getByRole('button', { name: /^Metric/ }).click()
+  await samUnits.getByRole('button', { name: /^Metric/, pressed: true }).waitFor()
+  check('… and back', (await api('/api/users/sam/units')).units === 'metric')
   await p.close()
 
   p = await newPage(true)
