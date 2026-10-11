@@ -21,6 +21,13 @@ function SyncButton({ sync, job, outcome, onSync, onFix }: {
     tone = 'stale'
     onClick = onFix
   }
+  if (sync.reprocessing && !job) {
+    // after an update the whole history is recalculated (newest first): old values until it's done
+    const { done, total } = sync.reprocessing
+    icon = <RefreshCw size={18} className="spin" />
+    text = `Updating history · ${total ? Math.round(100 * done / total) : 0}%`
+    tone = 'busy'
+  }
   if (job) {
     icon = <RefreshCw size={18} className="spin" />
     text = job.phase === 'importing' ? 'Analysing…' : job.step ? `Syncing · ${job.step}` : 'Syncing…'

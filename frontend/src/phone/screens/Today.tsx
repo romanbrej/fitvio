@@ -29,7 +29,9 @@ function Header() {
       <button className={`ph-sync${sync?.stale || sync?.login_expired ? ' warn' : ''}`} onClick={syncNow} disabled={!!syncJob}
               aria-label={syncJob ? 'Syncing with Garmin' : `Sync now — last synced ${ago(sync?.last_success ?? null)}`}>
         {syncJob ? <Loader2 size={16} className="spin" aria-hidden /> : <RefreshCw size={16} aria-hidden />}
-        {syncJob ? 'Syncing' : sync?.login_expired ? 'Login expired' : ago(sync?.last_success ?? null)}
+        {syncJob ? 'Syncing' : sync?.login_expired ? 'Login expired'
+          : sync?.reprocessing ? `Updating ${sync.reprocessing.total ? Math.round(100 * sync.reprocessing.done / sync.reprocessing.total) : 0}%`
+          : ago(sync?.last_success ?? null)}
       </button>
     </header>
   )

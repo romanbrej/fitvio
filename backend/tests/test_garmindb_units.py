@@ -96,3 +96,54 @@ def test_new_analysis_version_rereads_every_stored_health_day(tmp_path, monkeypa
     assert conn.execute("SELECT weight_kg FROM health_days WHERE user_id = 'u'").fetchone()[0] == 75.0
     pipeline.ingest_from_garmindb(conn, user)  # up to date again: back to the recent days only
     assert asked[-1].date() > datetime.date.today() - datetime.timedelta(days=15)
+
+
+def test_update_reprocesses_newest_first_and_shows_the_progress(tmp_path, monkeypatch):
+    """#32 follow-up: the first sync after an update recalculates the whole history. Oldest first, today's
+    run kept its old distance until the very end (minutes on a small server) while the weight was already
+    fixed, so it looked like the fix had broken distances. Newest first, with the progress on the wall."""
+    from fitvio import wall
+    from fitvio.config import AppConfig
+
+    conn = db.connect(tmp_path / "app.db")
+    user = UserConfig(id="u", garmindb_config_dir=str(tmp_path / "cfg"), max_hr=190, rest_hr=50)
+    now = datetime.datetime.now().replace(microsecond=0)
+    starts = {str(i): now - datetime.timedelta(days=30 - i) for i in range(1, 31)}
+
+    def act(aid, distance_m):
+        return ParsedActivity(activity_id=aid, start_time=starts[aid], sport="running", name="Run", duration_s=2700,
+                              distance_m=distance_m, records=steady_records(minutes=45, hr=137))
+
+    for aid in starts:  # stored by the old version: miles read as km
+        pipeline.store_activity(conn, user, act(aid, 5906))
+    db.set_state(conn, "analysis_version:u", "10")
+    order, progress = [], []
+
+    class FakeReader:
+        def __init__(self, base):
+            self.base, self.db_dir, self.available = base, base, True
+
+        def activity_ids(self, since):
+            return [(aid, str(s)) for aid, s in starts.items()]
+
+        def changed_activity_ids(self, since):
+            return set()
+
+        def load_activity(self, aid):
+            order.append(aid)
+            progress.append(wall.sync_info(conn, AppConfig(users=[user]), "u")["reprocessing"])
+            return act(aid, 9511)
+
+        def health_days(self, since):
+            return []
+
+    import fitvio.ingest.garmindb_reader as reader_mod
+    monkeypatch.setattr(reader_mod, "GarminDbReader", FakeReader)
+    monkeypatch.setattr(reader_mod, "base_dir_from_config", lambda d: tmp_path)
+    monkeypatch.setattr(pipeline.profile, "refresh", lambda conn, user, base: False)
+
+    assert pipeline.ingest_from_garmindb(conn, user)["reprocessed"] is True
+    assert order == sorted(starts, key=int, reverse=True)  # today's run first
+    assert progress[0] == {"done": 0, "total": 30} and progress[25] == {"done": 25, "total": 30}
+    assert wall.sync_info(conn, AppConfig(users=[user]), "u")["reprocessing"] is None  # done: back to "Synced …"
+    assert {r[0] for r in conn.execute("SELECT distance_m FROM sessions")} == {9511}
