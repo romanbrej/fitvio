@@ -160,7 +160,8 @@ def store_health(conn: sqlite3.Connection, user_id: str, days: list[dict]) -> No
 # 8: weather from Open-Meteo's hours over the session (dew point for everyone), start point stored
 # 9: heat load over the session's hours; heat response learned per person and sport; rides and drift too
 # 10: runs corrected for head- and tailwind (direction of travel from the FIT file, Open-Meteo's wind)
-ANALYSIS_VERSION = "10"
+# 11: GarminDB data of US-unit Garmin accounts turned into SI (weight, distance, ascent); health re-read
+ANALYSIS_VERSION = "11"
 
 
 def reader_for(user: UserConfig):
@@ -219,6 +220,10 @@ def ingest(conn: sqlite3.Connection, user: UserConfig, full: bool = False,
         else:
             n_new += 1
     health_since = default_since(400 if full or not known else 14)
+    if outdated and known:  # the analysis changed: re-read every stored health day too, not just recent ones
+        first = conn.execute("SELECT MIN(day) FROM health_days WHERE user_id = ?", (user.id,)).fetchone()[0]
+        if first:
+            health_since = min(health_since, datetime.fromisoformat(first))
     store_health(conn, user.id, reader.health_days(health_since))
     if not full:
         # Baselines only use earlier sessions, so only the new ones need a verdict.
