@@ -271,7 +271,16 @@ def test_period_trend_cycling_and_strength():
     rides = [ride(28, 1.40), ride(21, 1.43), ride(14, 1.47), ride(7, 1.50), ride(0, 1.54)]
     t = wall.period_trend(rides, "cycling", 28, today)
     assert 8 < t["change"] < 11 and t["n"] == 5
-    assert t["now"] == pytest.approx(1.54, abs=0.01) and t["then"] == pytest.approx(1.40, abs=0.01)
+    # now: the card, the newest 3 rides faded (1.54·3 + 1.50·2 + 1.47) / 6; then: the card 4 weeks back
+    assert t["now"] == pytest.approx(1.515, abs=0.001) and t["then"] == pytest.approx(1.40, abs=0.001)
+    card = wall.sport_status(rides, "cycling", None, improvements.Weights([], 85), today)
+    assert card["w_per_beat"] == pytest.approx(t["now"], abs=0.006) and card["headline_rides"] == 3
+    # the same now on every period, so switching periods only moves then and the change
+    assert len({wall.period_trend(rides, "cycling", n, today)["now"] for n in (28, 56, 91)}) == 1
+    assert t["points"][-1]["trend"] == t["now"] and t["points"][0]["trend"] == t["then"]
+    # the card is heat adjusted too: a hot newest ride counts as the cooler effort it was
+    warm = rides[:-1] + [ride(0, 1.40, 1.54)]
+    assert wall.sport_status(warm, "cycling", None, improvements.Weights([], 85), today)["w_per_beat"] == card["w_per_beat"]
     hot = [ride(28, 1.40, 1.50), ride(14, 1.47, 1.50), ride(0, 1.54, 1.50)]  # faster only because it cooled down
     assert wall.period_trend(hot, "cycling", 28, today)["change"] == 0
     assert wall.sport_status(rides, "cycling", None, improvements.Weights([], 85), today)["w_per_beat_change_pct"] \

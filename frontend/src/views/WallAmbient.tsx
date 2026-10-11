@@ -374,7 +374,7 @@ function tileBody(sport: Sport, t: SportTrend, days: number): { big: string; uni
       : `${c > 0 ? '▲' : '▼'} ${Math.abs(c).toFixed(1)} % in ${span}`
     return {
       big: st.w_per_beat.toFixed(2), unit: 'W/beat',
-      caption: trend,
+      caption: `heat-adj. · ${trend}`,
       extra: st.ftp_wkg ? `FTP ${st.ftp_wkg.toFixed(1)} W/kg` : undefined,
       spark: (p ?? st).points.map(x => x.value), tone,
     }
