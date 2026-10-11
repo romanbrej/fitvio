@@ -17,7 +17,8 @@ export function setUnits(u: Units | null | undefined) {
   const next = u === 'imperial' ? 'imperial' : 'metric'
   if (next === current) return
   current = next
-  listeners.forEach(l => l())
+  // the shells call this while rendering: tell subscribers after that render, not during it
+  queueMicrotask(() => listeners.forEach(l => l()))
 }
 
 export const units = (): Units => current

@@ -20,13 +20,16 @@ M_PER_FT = 0.3048
 M_PER_YD = 0.9144
 KG_PER_LB = 0.45359237
 KM_PER_MI = M_PER_MI / 1000
+_warned: set[str] = set()
 
 
 def default() -> str:
     """FITVIO_UNITS from the environment; anything else than metric/imperial is ignored (metric)."""
     v = (env("UNITS") or METRIC).strip().lower()
     if v not in CHOICES:
-        log.warning("FITVIO_UNITS=%r is not metric or imperial: using metric", v)
+        if v not in _warned:  # read on every request: say it once, not per request
+            _warned.add(v)
+            log.warning("FITVIO_UNITS=%r is not metric or imperial: using metric", v)
         return METRIC
     return v
 
