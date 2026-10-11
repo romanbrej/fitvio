@@ -427,6 +427,26 @@ def set_heat_setting(user_id: str, body: HeatChoice, c: AppConfig = Depends(cfg)
     return {**heat_response.describe(cn, user.id), "recomputed": n}
 
 
+class WindChoice(BaseModel):
+    model_config = {"extra": "forbid"}
+    wind: bool = Field(strict=True)
+
+
+@app.get("/api/users/{user_id}/wind")
+def get_wind_setting(user_id: str, c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    _user_or_404(c, user_id)
+    return {"wind": weather.wind_enabled(cn, user_id)}
+
+
+@app.put("/api/users/{user_id}/wind", dependencies=[Depends(local_network_only)])
+def set_wind_setting(user_id: str, body: WindChoice, c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    """Correct outdoor runs for head- and tailwind (on) or judge them as run (off). The runs' verdicts are
+    worked out again right away from what's stored."""
+    user = _user_or_404(c, user_id)
+    n = pipeline.set_wind_adjust(cn, user.id, body.wind) if weather.wind_enabled(cn, user.id) != body.wind else 0
+    return {"wind": body.wind, "recomputed": n}
+
+
 @app.put("/api/users/{user_id}/profile", dependencies=[Depends(local_network_only)])
 def set_profile(user_id: str, body: ProfileOverride, c: AppConfig = Depends(cfg), cn=Depends(conn)):
     """Your own max/resting HR (null = use the data source again). Zones, load and the reference HR of

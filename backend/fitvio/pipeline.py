@@ -26,7 +26,7 @@ def store_activity(conn: sqlite3.Connection, user: UserConfig, act: ParsedActivi
     sid = session_id(user.id, act.activity_id)
     feats = compute_features(act, profile.resolve(conn, user))
     heat.adjust([{"sport": act.sport, "indoor": act.indoor, "features": feats["features"]}],
-                heat_response.current(conn, user.id))
+                heat_response.current(conn, user.id), weather.wind_enabled(conn, user.id))
     db.upsert(conn, "sessions", {
         "id": sid, "user_id": user.id, "activity_id": act.activity_id, "name": act.name,
         "sport": act.sport, "raw_sport": act.raw_sport, "sub_sport": act.sub_sport,
@@ -159,7 +159,8 @@ def store_health(conn: sqlite3.Connection, user_id: str, days: list[dict]) -> No
 # 7: strength exercise names from the FIT profile (Garmin writes categories as numbers), set durations
 # 8: weather from Open-Meteo's hours over the session (dew point for everyone), start point stored
 # 9: heat load over the session's hours; heat response learned per person and sport; rides and drift too
-ANALYSIS_VERSION = "9"
+# 10: runs corrected for head- and tailwind (direction of travel from the FIT file, Open-Meteo's wind)
+ANALYSIS_VERSION = "10"
 
 
 def reader_for(user: UserConfig):
@@ -309,6 +310,21 @@ def set_heat_learning(conn: sqlite3.Connection, user_id: str, on: bool) -> int:
         heat_response.set_enabled(conn, user_id, on)
         heat_response.refresh(conn, user_id, user_sessions(conn, user_id))
         n = _reapply_heat(conn, user_id, list(heat.SPORTS))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return n
+
+
+def set_wind_adjust(conn: sqlite3.Connection, user_id: str, on: bool) -> int:
+    """Switch the head/tailwind correction of runs on or off: relearn the heat response on the values that
+    now count, rewrite the runs' adjusted values and redo their verdicts, from what's stored (no file is
+    read again). Returns how many verdicts were recomputed."""
+    try:
+        weather.set_wind_enabled(conn, user_id, on)
+        moved = heat_response.refresh(conn, user_id, user_sessions(conn, user_id))
+        n = _reapply_heat(conn, user_id, sorted({"running", *moved}))
         conn.commit()
     except Exception:
         conn.rollback()

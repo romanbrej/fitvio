@@ -65,12 +65,45 @@ def exercise_key(category, subtype) -> tuple[str, str]:
 SEMICIRCLE_DEG = 180 / 2**31
 
 
+HEADING_M = 25.0  # direction of travel over the last 25 m: GPS jitter cancels out, a turn shows within seconds
+
+
+def _exact(frame) -> tuple[float, float] | None:
+    lat, lon = _num(_get(frame, "position_lat")), _num(_get(frame, "position_long"))
+    if lat is None or lon is None or (lat == 0 and lon == 0):
+        return None
+    return lat * SEMICIRCLE_DEG, lon * SEMICIRCLE_DEG
+
+
 def _position(frame) -> tuple[float, float] | None:
     """A record's position, rounded to 0.1° right away: the exact route is never kept (open_meteo.add_to_track)."""
-    lat, lon = _num(_get(frame, "position_lat")), _num(_get(frame, "position_long"))
-    if lat is None or lon is None:
-        return None
-    return open_meteo.rounded(lat * SEMICIRCLE_DEG, lon * SEMICIRCLE_DEG)
+    pos = _exact(frame)
+    return open_meteo.rounded(*pos) if pos else None
+
+
+def _metres(a: tuple[float, float], b: tuple[float, float]) -> tuple[float, float]:
+    """(east, north) in metres from a to b — flat-earth, fine over a few dozen metres."""
+    return (math.radians(b[1] - a[1]) * 6371000 * math.cos(math.radians((a[0] + b[0]) / 2)),
+            math.radians(b[0] - a[0]) * 6371000)
+
+
+class _Heading:
+    """The direction of travel from the exact positions, which are held only for the last HEADING_M and
+    then dropped: only the heading leaves the parser (the wind correction needs it), never a position."""
+
+    def __init__(self):
+        self.recent: list[tuple[float, float]] = []
+
+    def push(self, pos: tuple[float, float] | None) -> float | None:
+        if pos is None:
+            return None
+        while len(self.recent) > 1 and math.hypot(*_metres(self.recent[1], pos)) >= HEADING_M:
+            self.recent.pop(0)
+        self.recent.append(pos)
+        east, north = _metres(self.recent[0], pos)
+        if math.hypot(east, north) < HEADING_M:
+            return None  # standing, or just started
+        return round(math.degrees(math.atan2(east, north)) % 360, 1)
 
 
 def parse_fit(path: str | Path) -> dict:
@@ -82,6 +115,7 @@ def parse_fit(path: str | Path) -> dict:
     session: dict = {}
     t0: datetime | None = None
     track: list = []
+    heading = _Heading()
 
     with fitdecode.FitReader(str(path)) as fit:
         for frame in fit:
@@ -93,7 +127,8 @@ def parse_fit(path: str | Path) -> dict:
                 if ts is None:
                     continue
                 t0 = t0 or ts
-                open_meteo.add_to_track(track, (ts - t0).total_seconds(), _position(frame))
+                exact = _exact(frame)
+                open_meteo.add_to_track(track, (ts - t0).total_seconds(), open_meteo.rounded(*exact) if exact else None)
                 records.append(Record(
                     t=(ts - t0).total_seconds(),
                     hr=_num(_get(frame, "heart_rate")),
@@ -103,6 +138,7 @@ def parse_fit(path: str | Path) -> dict:
                     power=_num(_get(frame, "power")),
                     cadence=_num(_get(frame, "cadence")),
                     temperature=plausible_temp(_num(_get(frame, "temperature"))),
+                    heading=heading.push(exact),
                 ))
             elif name == "lap":
                 start = _get(frame, "start_time")

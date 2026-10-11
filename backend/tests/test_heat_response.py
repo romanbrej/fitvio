@@ -163,8 +163,8 @@ def test_switch_off_gives_the_standard_factors(client):  # noqa: F811
     assert heat_response.current(conn, "a") == heat.priors()
     for s in _runs(conn):
         assert s["features"]["heat_adj_pct"] == round(heat.session_load(s), 2)  # the table, as before part 2
-        if s["features"].get("decoupling") is not None:
-            assert s["features"]["decoupling_adj"] == s["features"]["decoupling"]
+        if s["features"].get("decoupling") is not None:  # no extra heat drift: only the wind correction
+            assert s["features"]["decoupling_adj"] == heat.base(s["features"], "decoupling")
 
 
 def test_heat_api(client, monkeypatch):  # noqa: F811
@@ -211,7 +211,7 @@ def test_a_small_first_fit_keeps_the_standard_for_every_session(client):  # noqa
     import fitvio.analytics.heat as h
     real = h.fit_response
     try:
-        h.fit_response = lambda ss, sport: {**real(ss, sport), "k": heat.PRIOR[sport]["k"] - 0.05, "d": 0.0}
+        h.fit_response = lambda ss, sport, wind=True: {**real(ss, sport, wind), "k": heat.PRIOR[sport]["k"] - 0.05, "d": 0.0}
         assert heat_response.refresh(conn, "a", sessions) == []
     finally:
         h.fit_response = real

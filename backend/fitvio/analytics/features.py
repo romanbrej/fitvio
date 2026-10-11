@@ -7,7 +7,7 @@ from statistics import median, pstdev
 
 from ..activity import ParsedActivity
 from ..config import UserConfig
-from . import heat, physio
+from . import heat, physio, wind
 
 
 # Workout-name keywords (German + English), checked in this order: the planned workout says what the
@@ -108,6 +108,13 @@ def compute_features(act: ParsedActivity, user: UserConfig) -> dict:
         })
         if session_type == "intervals":
             f.update(physio.interval_reps(act.laps) or {})
+        windy = None if act.indoor else wind.adjusted_speeds(recs, gap_all, act.weather, act.start_time)
+        if windy:  # efficiency and pace at the reference HR on still-air speeds; whether they count is the
+            # person's choice (heat.adjust). HR drift stays as run (analytics/wind).
+            w_ef = physio.efficiency_factor(steady, windy[len(recs) - len(steady):])
+            w_ref = physio.steady_speed_at_hr(recs, windy, ref_hr(user), *ref_hr_band(user))
+            f["wind"] = {"ef": w_ef, "speed_at_ref_hr": w_ref[0] if w_ref else None,
+                         "pct": (w_ef / ef - 1) * 100 if w_ef and ef else None}
     elif act.sport == "cycling":
         if act.has_power:
             p1 = physio.power_series_1hz(recs)

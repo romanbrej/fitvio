@@ -81,6 +81,13 @@ def heat_load(weather: dict | None, start: datetime, duration_s: float | None,
     return round(pct, 2)
 
 
+def base(f: dict, key: str, wind: bool = True) -> float | None:
+    """The value the weather adjustment starts from: the still-air one (analytics/wind) when the person has
+    the wind correction on and the session has one, else as measured."""
+    w = f.get("wind") or {}
+    return w[key] if wind and w.get(key) is not None else f.get(key)
+
+
 def session_load(s: dict) -> float:
     """A stored session's heat load: the stored one, else worked out from its stored weather."""
     f = s.get("features") or {}
@@ -100,15 +107,16 @@ def _usable(s: dict, sport: str) -> bool:
             and (sport != "cycling" or s.get("has_power")))
 
 
-def residuals(sessions: list[dict], sport: str) -> list[dict]:
+def residuals(sessions: list[dict], sport: str, wind: bool = True) -> list[dict]:
     """Per usable session: how its efficiency (and drift) differed from its similar neighbours within
-    ±21 days, next to how much hotter it was than they were."""
+    ±21 days, next to how much hotter it was than they were. With `wind`, on still-air values."""
     pool = []
     for s in sessions:
         if _usable(s, sport):
             f = s["features"]
-            pool.append({"t": datetime.fromisoformat(s["start_time"]), "type": s["session_type"],
-                         "dur": s.get("duration_s") or 0, "y": math.log(f["ef"]), "dec": f.get("decoupling"),
+            pool.append({"id": s.get("id"), "t": datetime.fromisoformat(s["start_time"]), "type": s["session_type"],
+                         "dur": s.get("duration_s") or 0, "y": math.log(base(f, "ef", wind)),
+                         "dec": base(f, "decoupling", wind),
                          "load": session_load(s)})
     pool.sort(key=lambda p: p["t"])
     times = [p["t"] for p in pool]
@@ -122,7 +130,7 @@ def residuals(sessions: list[dict], sport: str) -> list[dict]:
             continue
         x = a["load"] - sum(b["load"] for b in nb) / len(nb)
         decs = [b["dec"] for b in nb if b["dec"] is not None]
-        out.append({"load": a["load"], "x": x, "r": a["y"] - sum(b["y"] for b in nb) / len(nb),
+        out.append({"id": a["id"], "load": a["load"], "x": x, "r": a["y"] - sum(b["y"] for b in nb) / len(nb),
                     "rd": a["dec"] - sum(decs) / len(decs) if a["dec"] is not None and len(decs) >= MIN_NEIGHBOURS
                     else None})
     return out
@@ -160,11 +168,11 @@ def _shrink(est: float | None, se: float | None, prior: float, prior_sd: float, 
     return round(max(lo, min(hi, (est * w_data + prior * w_prior) / (w_data + w_prior))), 2)
 
 
-def fit_response(sessions: list[dict], sport: str) -> dict:
+def fit_response(sessions: list[dict], sport: str, wind: bool = True) -> dict:
     """This person's heat response for a sport: k (× the table) and d (extra HR drift points per % of
     load), each the data's estimate pulled towards the prior by how uncertain it is."""
     prior = PRIOR[sport]
-    res = residuals(sessions, sport)
+    res = residuals(sessions, sport, wind)
     eff = _slope(_trimmed([(p["x"], p["r"]) for p in res]))
     drift = _slope(_trimmed([(p["x"], p["rd"]) for p in res if p["rd"] is not None]))
     k_hat, k_se = (-eff[0] * 100, eff[1] * 100) if eff else (None, None)
@@ -181,9 +189,9 @@ def fit_response(sessions: list[dict], sport: str) -> dict:
     }
 
 
-def binned(sessions: list[dict], sport: str, k: float) -> list[dict]:
+def binned(sessions: list[dict], sport: str, k: float, wind: bool = True) -> list[dict]:
     """Mean residual per heat-load bin, as measured and after the k correction: flat after = k fits."""
-    res = residuals(sessions, sport)
+    res = residuals(sessions, sport, wind)
     out = []
     for lo, hi in BINS:
         pts = [p for p in res if (p["load"] == 0 if hi == 0 else lo < p["load"] <= hi)]
@@ -232,9 +240,11 @@ def priors() -> dict[str, dict]:
     return {sport: dict(PRIOR[sport]) for sport in SPORTS}
 
 
-def adjust(sessions: list[dict], response: dict[str, dict]) -> None:
-    """Heat-adjusted values on the sessions' features, from the raw ones: heat_adj_pct, ef_adj,
-    speed_at_ref_hr_adj, power_at_ref_hr_adj, decoupling_adj (the pipeline stores them with the session)."""
+def adjust(sessions: list[dict], response: dict[str, dict], wind: bool = True) -> None:
+    """Weather-adjusted values on the sessions' features, from the stored ones: heat_adj_pct, wind_adj_pct,
+    ef_adj, speed_at_ref_hr_adj, power_at_ref_hr_adj, decoupling_adj (the pipeline stores them with the
+    session). With `wind`, they start from the still-air values (runs with GPS and wind data), so switching
+    the wind correction off or on is a rewrite like the heat response, without reading a file again."""
     for s in sessions:
         r = response.get(s["sport"])
         f = s.get("features")
@@ -245,9 +255,11 @@ def adjust(sessions: list[dict], response: dict[str, dict]) -> None:
         pct = round(r["k"] * load, 2)
         up = 1 + pct / 100
         f["heat_adj_pct"] = pct
+        if "wind" in f:  # what the wind correction changed, for the verdict's note (0 when it's off)
+            f["wind_adj_pct"] = round((f["wind"].get("pct") or 0.0) if wind else 0.0, 2)
         for key in ("ef", "speed_at_ref_hr", "power_at_ref_hr"):
-            if f.get(key) is not None:
-                f[f"{key}_adj"] = round(f[key] * up, 4)
-        if f.get("decoupling") is not None:
-            f["decoupling_adj"] = round(f["decoupling"] - r["d"] * load, 4)
+            if (v := base(f, key, wind)) is not None:
+                f[f"{key}_adj"] = round(v * up, 4)
+        if (v := base(f, "decoupling", wind)) is not None:
+            f["decoupling_adj"] = round(v - r["d"] * load, 4)
         f["heat_response"] = {"k": r["k"], "d": r["d"], "warm": r.get("warm")}

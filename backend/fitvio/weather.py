@@ -24,6 +24,17 @@ def set_enabled(conn: sqlite3.Connection, user_id: str, on: bool) -> None:
     db.set_state(conn, SETTING.format(user_id=user_id), "on" if on else "off")
 
 
+WIND_SETTING = "wind_adjust:{user_id}"  # "off" = runs judged without the head/tailwind correction
+
+
+def wind_enabled(conn: sqlite3.Connection, user_id: str) -> bool:
+    return db.get_state(conn, WIND_SETTING.format(user_id=user_id)) != "off"
+
+
+def set_wind_enabled(conn: sqlite3.Connection, user_id: str, on: bool) -> None:
+    db.set_state(conn, WIND_SETTING.format(user_id=user_id), "on" if on else "off")
+
+
 def wants_lookup(act: ParsedActivity) -> bool:
     """Outdoors with a position: the only sessions weather can mean anything for."""
     return not act.indoor and bool(act.track) and act.sport != "strength"

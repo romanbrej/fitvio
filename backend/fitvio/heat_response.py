@@ -11,7 +11,7 @@ import json
 import logging
 import sqlite3
 
-from . import db
+from . import db, weather
 from .analytics import heat
 
 log = logging.getLogger(__name__)
@@ -67,8 +67,9 @@ def refresh(conn: sqlite3.Connection, user_id: str, sessions: list[dict]) -> lis
     if not enabled(conn, user_id):
         return []
     moved = []
+    wind = weather.wind_enabled(conn, user_id)
     for sport in heat.SPORTS:
-        fit = heat.fit_response(sessions, sport)
+        fit = heat.fit_response(sessions, sport, wind)
         old = _learned(conn, user_id, sport) or heat.PRIOR[sport]
         stats = {k: fit[k] for k in ("n", "warm", "k_hat", "k_se", "d_hat", "d_se")}
         if abs(fit["k"] - old["k"]) >= MIN_MOVE or abs(fit["d"] - old["d"]) >= MIN_MOVE:
@@ -86,7 +87,7 @@ def rewrite(conn: sqlite3.Connection, user_id: str, sessions: list[dict], sports
     ids of the sessions whose verdicts can change. No commit."""
     resp = current(conn, user_id)
     touched = [s for s in sessions if s["sport"] in sports and s.get("features") is not None]
-    heat.adjust(touched, resp)
+    heat.adjust(touched, resp, weather.wind_enabled(conn, user_id))
     for s in touched:
         conn.execute("UPDATE sessions SET features = ? WHERE id = ?", (json.dumps(s["features"]), s["id"]))
     return [s["id"] for s in touched]

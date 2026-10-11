@@ -9,6 +9,7 @@
   fitvio demo [--days N]                      fill the DB with synthetic data
   fitvio demo-export <out_dir>                made-up people + data as static JSON (the GitHub Pages demo)
   fitvio heat-report [--user ID]              how much heat costs each person, learned from their sessions
+  fitvio wind-report [--user ID]              whether the wind correction makes runs more comparable
   fitvio serve [--host H] [--port P]          run the API + wall UI
 """
 from __future__ import annotations
@@ -60,6 +61,10 @@ def main(argv=None) -> int:
     s = sub.add_parser("heat-report", help="how much heat costs each person per sport (reads FITVIO_DB only, "
                                            "read-only; prints numbers, no names)")
     s.add_argument("--user")
+    s = sub.add_parser("wind-report", help="runs compared with their neighbours with and without the wind "
+                                           "correction (reads the FIT files and cached weather, writes nothing; "
+                                           "prints numbers, no names)")
+    s.add_argument("--user")
     s = sub.add_parser("serve")
     s.add_argument("--host", default="0.0.0.0")
     s.add_argument("--port", type=int, default=8765)
@@ -77,6 +82,8 @@ def main(argv=None) -> int:
     if a.cmd == "heat-report":  # before load_config: needs only the database, opened read-only
         return heat_report(a.user)
     cfg = load_config()
+    if a.cmd == "wind-report":  # the database read-only, no weather is fetched
+        return wind_report(cfg, a.user)
 
     if a.cmd == "serve":
         import uvicorn
@@ -179,24 +186,124 @@ def main(argv=None) -> int:
     return 1
 
 
-def heat_report(user_id: str | None) -> int:
+def _read_only(path):
+    """The database read-only, for the reports. A database from before some tables existed (a copy that
+    hasn't been synced with this version) gets them empty, as TEMP tables: nothing is written to it."""
     import sqlite3
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    have = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    if "baseline_exclusions" not in have:
+        conn.execute("CREATE TEMP TABLE baseline_exclusions (session_id TEXT PRIMARY KEY, user_id TEXT, excluded_at TEXT)")
+    if "wall_state" not in have:
+        conn.execute("CREATE TEMP TABLE wall_state (key TEXT PRIMARY KEY, value TEXT)")
+    return conn
+
+
+def _robust_sd(values: list[float]) -> float | None:
+    from statistics import median
+    if len(values) < 3:
+        return None
+    m = median(values)
+    return 1.4826 * median(abs(v - m) for v in values)
+
+
+def wind_report(cfg, user_id: str | None) -> int:
+    """For each person's steady outdoor runs: how far each one's efficiency and HR drift sit from its
+    similar neighbours (±21 days, heat adjusted with the person's heat response), without the wind
+    correction and with it at a few exposures, as the verdicts use it (efficiency corrected, HR drift as
+    run). The correction helps when the spread gets smaller. Two experiments show what correcting drift
+    would do: on out-and-backs only (halves' headwind wind.DRIFT_HALVES_KMH apart) and on every run."""
+    from . import heat_response, weather
+    from .analytics import heat, physio, wind
+
+    conn = _read_only(cfg.db_path)
+    variants = ["none", *sorted({0.4, wind.EXPOSURE, 0.6}), "drift: out-and-backs", "drift: always"]
+    for n, user in enumerate(_users(cfg, user_id), 1):
+        print(f"\n== person {n} ==")
+        try:
+            reader = pipeline.reader_for(user)
+        except RuntimeError:
+            print("  no downloaded data")
+            continue
+        wx_dir, use_om = getattr(reader, "weather_dir", None), weather.enabled(conn, user.id)
+        resp = heat_response.current(conn, user.id)["running"]
+        runs: dict = {v: [] for v in variants}
+        moved, out_and_back, read = [], set(), 0
+        for s in pipeline.user_sessions(conn, user.id):
+            if not heat._usable(s, "running") or (act := reader.load_activity(s["activity_id"])) is None:
+                continue
+            read += 1
+            weather.apply(act, wx_dir, use_om)
+            recs = act.records
+            steady = physio.steady_slice(recs)
+            cut = len(recs) - len(steady)
+            gap = physio.grade_adjusted_speeds(recs)
+            ef = physio.efficiency_factor(steady, gap[cut:])
+            if not ef:
+                continue
+            f = {k: v for k, v in s["features"].items() if k != "wind"}
+            f.update(ef=ef, decoupling=physio.decoupling(steady, gap[cut:]))
+            halves = wind.halves_headwind_kmh(steady, act.weather, act.start_time)
+            if halves is not None and abs(halves) >= wind.DRIFT_HALVES_KMH:
+                out_and_back.add(s["id"])
+            for v in variants:
+                fe = dict(f)
+                windy = None if v == "none" else wind.adjusted_speeds(
+                    recs, gap, act.weather, act.start_time, v if isinstance(v, float) else wind.EXPOSURE)
+                if windy and (w_ef := physio.efficiency_factor(steady, windy[cut:])):
+                    drift = v == "drift: always" or (v == "drift: out-and-backs" and s["id"] in out_and_back)
+                    fe["wind"] = {"ef": w_ef, "decoupling": physio.decoupling(steady, windy[cut:]) if drift else None}
+                    if v == wind.EXPOSURE:
+                        moved.append(abs(w_ef / ef - 1) * 100)
+                runs[v].append({**s, "features": fe})
+        print(f"running: {read} steady outdoor runs read, {len(moved)} with headings and wind data, "
+              f"{len(out_and_back)} out-and-back (halves' headwind ≥ {wind.DRIFT_HALVES_KMH:g} km/h apart)")
+        if moved:
+            moved.sort()
+            print(f"  at exposure {wind.EXPOSURE:g}: efficiency moved median {moved[len(moved) // 2]:.2f} %, "
+                  f"max {moved[-1]:.2f} %, {sum(1 for m in moved if m > 1)} runs by more than 1 %")
+        print("  spread vs neighbours (robust SD):  exposure    n   efficiency %   HR drift points   "
+              "drift, out-and-backs only")
+        eff, drift, oab = {}, {}, {}
+        for v, sessions in runs.items():
+            res = heat.residuals(sessions, "running", wind=True)
+            eff[v] = _robust_sd([(p["r"] + resp["k"] * p["x"] / 100) * 100 for p in res])
+            d = [(p["id"], p["rd"] - resp["d"] * p["x"]) for p in res if p["rd"] is not None]
+            drift[v] = _robust_sd([x for _, x in d])
+            oab[v] = _robust_sd([x for i, x in d if i in out_and_back])
+            label = v if isinstance(v, str) else f"{v:g}" + (" (used)" if v == wind.EXPOSURE else "")
+            cells = [f"{x:.2f}" if x is not None else "—" for x in (eff[v], drift[v], oab[v])]
+            print(f"  {label:>44} {len(res):>4} {cells[0]:>13} {cells[1]:>17} {cells[2]:>27}")
+
+        def verdict(what, new, old, unit):
+            if new is not None and old is not None:
+                print(f"  → {what}: {'not larger' if new <= old else 'LARGER'} with the wind correction "
+                      f"({new:.2f} vs {old:.2f}{unit})")
+        verdict("efficiency spread", eff[wind.EXPOSURE], eff["none"], " %")
+        verdict("if drift were corrected on out-and-backs, its spread", drift["drift: out-and-backs"],
+                drift["none"], " points")
+    return 0
+
+
+def heat_report(user_id: str | None) -> int:
     from pathlib import Path
 
+    from . import weather
     from .analytics import heat
     from .config import PROJECT_ROOT, env
     path = Path(env("DB") or PROJECT_ROOT / "data" / "app.db").expanduser()
     if not path.exists():
         print(f"No database at {path} (set FITVIO_DB)", file=sys.stderr)
         return 1
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
+    conn = _read_only(path)
     ids = [user_id] if user_id else [r[0] for r in conn.execute("SELECT DISTINCT user_id FROM sessions ORDER BY 1")]
     for n, uid in enumerate(ids, 1):
         sessions = pipeline.user_sessions(conn, uid)
+        wind = weather.wind_enabled(conn, uid)
         print(f"\n== person {n} ==")
         for sport in heat.SPORTS:
-            r = heat.fit_response(sessions, sport)
+            r = heat.fit_response(sessions, sport, wind)
             om = sum(1 for s in sessions if s["sport"] == sport and not s.get("indoor")
                      and ((s.get("features") or {}).get("weather") or {}).get("source") == "Open-Meteo")
 
@@ -215,7 +322,7 @@ def heat_report(user_id: str | None) -> int:
                     print(f"  {m['month']:>9} {m['all']:>4} {m['indoor']:>6} {m['open_meteo']:>11} {m['platform']:>9} "
                           f"{m['no_weather']:>11} {m['steady']:>7} {m['no_ef']:>6} {m['usable']:>7} {m['warm']:>5} "
                           f"{m['max_load'] if m['max_load'] is not None else '—':>11}")
-            rows = heat.binned(sessions, sport, r["k"])
+            rows = heat.binned(sessions, sport, r["k"], wind)
             if rows:
                 print("  efficiency vs neighbours by heat load:  load %   n   as measured   heat adjusted")
                 for b in rows:

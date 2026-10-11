@@ -316,6 +316,10 @@ export const api = {
   heatSetting: (user: string) => get<HeatResponse>(`/api/users/${seg(user)}/heat`),
   setHeatSetting: (user: string, learn: boolean) =>
     send<HeatResponse & { recomputed: number }>('PUT', `/api/users/${seg(user)}/heat`, { learn }),
+  /** Head- and tailwind correction of outdoor runs; changing it re-judges the runs from what's stored */
+  windSetting: (user: string) => get<{ wind: boolean }>(`/api/users/${seg(user)}/wind`),
+  setWindSetting: (user: string, wind: boolean) =>
+    send<{ wind: boolean; recomputed: number }>('PUT', `/api/users/${seg(user)}/wind`, { wind }),
   activityCheck: () => get<ActivityCheck>('/api/settings/activity-check'),
   setActivityCheck: (enabled: boolean) => post<ActivityCheck>('/api/settings/activity-check', { enabled }),
   buddySettings: () => get<BuddySettings>('/api/settings/buddy'),
