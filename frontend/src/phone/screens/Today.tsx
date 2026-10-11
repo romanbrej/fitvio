@@ -8,6 +8,7 @@ import { StatusMark, shortDuration, weekday } from '../../components/WeekStrip'
 import { WorkoutShape } from '../../components/WorkoutShape'
 import { ago, distance, duration, hoursMinutes, num, SPORT_LABEL, VERDICT_LABEL, when } from '../../format'
 import { feedbackText, headline, isEasy, minutes, READINESS_LEVEL, readinessTitle, workoutSummary } from '../../mission'
+import { useTrendPeriod } from '../../trendPeriod'
 import { planName, SPORT_COLOR, tileContent } from '../../views/WallAmbient'
 import { usePhone, seenStore } from '../ctx'
 import { Avatar, Card, FormNumbers, SweetBar } from '../parts'
@@ -247,13 +248,14 @@ function streakLine(s: StreakData): string {
 }
 
 function Sports({ a }: { a: Ambient }) {
+  const [picked] = useTrendPeriod(a.user_id, a.trend_period)  // the period this person picked, like Trends
   return (
     <section className="ph-section">
       <span className="ph-label" style={{ padding: '0 4px' }}>Every sport</span>
       <div className="ph-grid2">
         {MAIN_SPORTS.map(sp => {
           const t = a.trends[sp]
-          const c = t ? tileContent(sp, t) : null
+          const c = t ? tileContent(sp, t, undefined, picked ?? undefined) : null
           const body = (
             <>
               <span className="ph-row" style={{ gap: 6 }}><SportIcon sport={sp} size={18} color={SPORT_COLOR[sp]} /><span className="ph-label sm" style={{ color: 'var(--text-2)' }}>{SPORT_LABEL[sp]}</span></span>
