@@ -4,6 +4,7 @@ import { Area, Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Too
 import { api } from '../api'
 import type { HealthDay } from '../api'
 import { hoursMinutes, num, shortDay } from '../format'
+import { weightOf, weightUnit } from '../units'
 import { useFetch } from '../useFetch'
 import './Detail.css'
 
@@ -54,9 +55,12 @@ export function HealthDetail() {
   const nav = useNavigate()
   const [days, setDays] = useState(90)
   const { data } = useFetch(() => api.health(user!, days), [user, days])
-  const m = METRICS[metric ?? ''] ?? METRICS.hrv
+  const base = METRICS[metric ?? ''] ?? METRICS.hrv
+  // weight in the units of the person on screen (kg or lb)
+  const m = base === METRICS.weight ? { ...base, unit: weightUnit() } : base
   const rows = (data ?? []).map(d => ({
     ...d,
+    ...(m === base || d.weight_kg == null ? {} : { weight_kg: weightOf(d.weight_kg) }),
     band: m.band && d[m.band[0]] != null ? [d[m.band[0]], d[m.band[1]]] : null,
   }))
   const main = m.lines[0].key

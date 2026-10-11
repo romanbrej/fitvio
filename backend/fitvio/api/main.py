@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .. import accounts, buddy, db, heat_response, pipeline, profile, wall, weather
+from .. import accounts, buddy, db, heat_response, pipeline, profile, units, wall, weather
 from ..analytics import load as load_model
 from ..config import PROJECT_ROOT, AppConfig, env, load_config
 from ..pipeline import user_sessions
@@ -110,7 +110,8 @@ def _user_or_404(c: AppConfig, user_id: str):
 def get_config(c: AppConfig = Depends(cfg), cn=Depends(conn)):
     users = [profile.resolve(cn, u) for u in c.users]  # names come from the Garmin profile
     return {
-        "users": [{"id": u.id, "name": u.display_name, "color": u.color, "initials": u.initials} for u in users],
+        "users": [{"id": u.id, "name": u.display_name, "color": u.color, "initials": u.initials,
+                   "units": units.for_user(cn, u.id)} for u in users],
         "wall": {"idle_return_seconds": c.wall.idle_return_seconds, "night_start": c.wall.night_start,
                  "night_end": c.wall.night_end, "verdict_minutes": c.wall.verdict_minutes},
     }
@@ -248,14 +249,16 @@ def get_validation(user_id: str, c: AppConfig = Depends(cfg), cn=Depends(conn)):
 
 @app.get("/api/events")
 async def events(request: Request, c: AppConfig = Depends(cfg)):
-    """Server-sent events: pushes 'refresh' whenever a verdict or sync status changes."""
+    """Server-sent events: pushes 'refresh' whenever a verdict, the sync status or someone's units change."""
 
     def fingerprint() -> str:  # blocking SQLite: runs in a worker thread, not on the event loop
         cn = db.connect(c.db_path)
         try:
             v = cn.execute("SELECT MAX(created_at) AS m, COUNT(*) AS n FROM verdicts").fetchone()
             s = cn.execute("SELECT MAX(last_attempt) AS m FROM sync_status").fetchone()
-            return f"{v['m']}|{v['n']}|{s['m']}"
+            # someone switched units on the phone: the wall writes its text again
+            u = cn.execute("SELECT GROUP_CONCAT(key || '=' || value) FROM wall_state WHERE key LIKE 'units:%'").fetchone()
+            return f"{v['m']}|{v['n']}|{s['m']}|{u[0]}"
         finally:
             cn.close()
 
@@ -445,6 +448,27 @@ def set_wind_setting(user_id: str, body: WindChoice, c: AppConfig = Depends(cfg)
     user = _user_or_404(c, user_id)
     n = pipeline.set_wind_adjust(cn, user.id, body.wind) if weather.wind_enabled(cn, user.id) != body.wind else 0
     return {"wind": body.wind, "recomputed": n}
+
+
+class UnitsChoice(BaseModel):
+    model_config = {"extra": "forbid"}
+    units: Literal["metric", "imperial"]
+
+
+@app.get("/api/users/{user_id}/units")
+def get_units(user_id: str, c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    """Metric or imperial for this person, and the install's default (FITVIO_UNITS)."""
+    _user_or_404(c, user_id)
+    return {"units": units.for_user(cn, user_id), "default": units.default()}
+
+
+@app.put("/api/users/{user_id}/units", dependencies=[Depends(local_network_only)])
+def set_units(user_id: str, body: UnitsChoice, c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    """Show this person's numbers in km, °C, kg (metric) or mi, °F, lb (imperial). Only the text changes:
+    everything is stored in metric and nothing is worked out again."""
+    user = _user_or_404(c, user_id)
+    units.set_for_user(cn, user.id, body.units)
+    return {"units": body.units, "default": units.default()}
 
 
 @app.put("/api/users/{user_id}/profile", dependencies=[Depends(local_network_only)])

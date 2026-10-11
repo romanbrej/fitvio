@@ -1,9 +1,11 @@
-import type { BuddySettings, Session, VerdictKind, WallState } from '../api'
+import type { AppConfig, BuddySettings, Session, SessionDetail, VerdictKind, WallState } from '../api'
+import type { Units } from '../units'
 import { DEMO_LOCKED } from './demo'
 
 /** The demo's stand-in for the server: GETs read the JSON that `fitvio demo-export` wrote to demo-data/,
- *  harmless taps (pick a person, dismiss a verdict, buddy, auto-sync switch) change an in-memory copy until
- *  a reload, and everything that would log in, sync or change settings is refused. */
+ *  harmless taps (pick a person, dismiss a verdict, buddy, auto-sync switch, units) change an in-memory copy
+ *  until a reload, and everything that would log in, sync or change settings is refused. In imperial, the
+ *  text the server writes (verdicts, "What improved") comes from demo-data/imperial/. */
 
 type ListRow = Session & { verdict: VerdictKind | null; headline: string | null }
 
@@ -26,8 +28,10 @@ function load<T>(file: string): Promise<T> {
   return files.get(file)!.then(v => structuredClone(v) as T)
 }
 
-const state: { selected?: string; dismissed: boolean; buddies: Record<string, string>; check?: boolean } =
-  { dismissed: false, buddies: {} }
+const state: { selected?: string; dismissed: boolean; buddies: Record<string, string>; check?: boolean
+                units: Record<string, Units> } = { dismissed: false, buddies: {}, units: {} }
+
+const imperial = (user: string | undefined) => !!user && state.units[user] === 'imperial'
 
 export async function demoGet<T>(path: string): Promise<T> {
   const url = new URL(path, 'http://demo')
@@ -35,6 +39,20 @@ export async function demoGet<T>(path: string): Promise<T> {
   if (parts[1] === 'users' && parts[3] === 'sessions') return sessions(parts[2], url.searchParams) as T
   if (parts[1] === 'users' && parts[3] === 'session-types') return sessionTypes(parts[2], url.searchParams) as T
   if (url.pathname === '/api/wall') return wall() as T
+  if (url.pathname === '/api/config') {
+    const c = await load<AppConfig>('config.json')
+    return { ...c, users: c.users.map(u => ({ ...u, units: state.units[u.id] ?? u.units })) } as T
+  }
+  if (parts[1] === 'users' && parts[3] === 'units') {
+    const u = await load<{ units: Units; default: Units }>(fileFor(path))
+    return { ...u, units: state.units[parts[2]] ?? u.units } as T
+  }
+  if (parts[1] === 'users' && parts[3] === 'ambient' && imperial(parts[2])) return load<T>(`imperial/${fileFor(path)}`)
+  if (parts[1] === 'sessions' && parts.length === 3) {
+    const s = await load<SessionDetail>(fileFor(path))
+    if (!imperial(s.user_id)) return s as T
+    return { ...s, ...await load<Pick<SessionDetail, 'verdict' | 'improvements'>>(`imperial/${fileFor(path)}`) } as T
+  }
   if (url.pathname === '/api/settings/buddy') {
     const b = await load<BuddySettings>('settings/buddy.json')
     return { ...b, users: { ...b.users, ...state.buddies } } as T
@@ -64,11 +82,14 @@ async function sessionTypes(user: string, q: URLSearchParams): Promise<{ type: s
 }
 
 async function wall(): Promise<WallState> {
-  const w = await load<WallState>('wall.json')
+  const first = await load<WallState>('wall.json')
+  const w = first.mode !== 'setup' && imperial(first.user_id) ? await load<WallState>('imperial/wall.json') : first
   const user = state.selected ?? w.user_id
   // the exported wall opens on a fresh verdict; after "Overview" (or picking someone) it shows that person's day
   if (w.mode === 'verdict' && !state.dismissed && !state.selected) return w
-  if (w.mode !== 'setup' && user) return { mode: 'ambient', user_id: user, ambient: await load(`users/${user}/ambient.json`) }
+  if (w.mode !== 'setup' && user) {
+    return { mode: 'ambient', user_id: user, ambient: await load(`${imperial(user) ? 'imperial/' : ''}users/${user}/ambient.json`) }
+  }
   return w
 }
 
@@ -76,6 +97,11 @@ export async function demoSend<T>(path: string, body: unknown): Promise<T> {
   const b = (body ?? {}) as Record<string, unknown>
   // the period someone looks at: harmless, kept in the page like the other taps
   if (/^\/api\/users\/[^/]+\/trend-period$/.test(path)) return { days: Number(b.days) } as T
+  const units = path.match(/^\/api\/users\/([^/]+)\/units$/)
+  if (units) {
+    state.units[decodeURIComponent(units[1])] = b.units === 'imperial' ? 'imperial' : 'metric'
+    return demoGet<T>(path)
+  }
   switch (path) {
     case '/api/wall/select': state.selected = String(b.user_id); return { ok: true } as T
     case '/api/wall/dismiss': state.dismissed = true; return { ok: true } as T

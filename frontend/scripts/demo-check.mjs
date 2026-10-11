@@ -112,6 +112,28 @@ for (const u of users) {
   await ctx.close()
 }
 
+// the units switch works in the demo too: imperial text comes from demo-data/imperial/, numbers convert in the page
+{
+  const u = users[0]
+  const ctx = await browser.newContext({ viewport: phone, isMobile: true, hasTouch: true })
+  await ctx.addInitScript(id => localStorage.setItem('fitvio.me', id), u)
+  const page = await ctx.newPage()
+  const errors = []
+  page.on('response', r => r.status() >= 400 && errors.push(`${r.status()} ${r.url()}`))
+  await page.goto(`${root}?app#/me`)
+  let text = ''
+  try {
+    await page.getByRole('radiogroup', { name: 'Units' }).getByRole('radio', { name: /^Imperial/ }).click({ timeout: 5000 })
+    await page.goto(`${root}?app#/session/${encodeURIComponent(firstSession(u))}`)
+    await page.waitForFunction(() => /\/mi\b|°F|\bmi\b/.test(document.body.innerText), null, { timeout: 5000 })
+    text = await page.locator('body').innerText()
+  } catch { /* reported below */ }
+  const ok = !errors.length && text && !/\/km\b|°C|\d km\b/.test(text)
+  if (!ok) problems.push(`the units switch in the demo: ${errors.join(', ') || 'metric text left or no imperial text'}`)
+  console.log(`${ok ? '✓' : '✗'} demo units: imperial on a session`)
+  await ctx.close()
+}
+
 await browser.close()
 server.close()
 finish()

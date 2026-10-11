@@ -1,6 +1,7 @@
 import type { Sport, SportTrend } from './api'
 import { paceStr } from './mission'
 import { periodText } from './trendPeriod'
+import { paceDiffUnit, paceUnit, perKm } from './units'
 import { tileContent } from './views/WallAmbient'
 
 export interface PeriodAnswer {
@@ -32,18 +33,19 @@ export function periodAnswer(sport: Sport, t: SportTrend, days: number): PeriodA
   }
   const running = sport === 'running'
   const noun = running ? 'runs' : 'power rides'
-  // running: count the change from the two paces as shown, so "5 s/km" always matches 4:58 → 4:53
+  // running: count the change from the two paces as shown, so "5 s/km" always matches 4:58 → 4:53 (and
+  // "8 s/mi" 8:00 → 7:52); the tone stays what the metric numbers say
   const shown = running && p.change != null && p.now != null && p.then != null
-    ? Math.round(p.then) - Math.round(p.now) : p.change
+    ? Math.round(perKm(p.then)) - Math.round(perKm(p.now)) : p.change
   const text = p.change == null ? `Not enough ${noun} in ${span} for a trend.`
     : c.tone === 'inline' ? `Steady over ${span}.`
-    : running ? `${Math.abs(shown!).toFixed(0)} s/km ${shown! > 0 ? 'faster' : 'slower'} in ${span}.`
+    : running ? `${Math.abs(shown!).toFixed(0)} ${paceDiffUnit()} ${shown! > 0 ? 'faster' : 'slower'} in ${span}.`
     : `${Math.abs(p.change).toFixed(1)} % ${p.change > 0 ? 'more' : 'less'} power per beat in ${span}.`
-  const fmt = (v: number | null | undefined) => v == null ? '—' : running ? paceStr(v) : v.toFixed(2)
-  const unit = running ? '/km' : 'W/beat'
+  const fmt = (v: number | null | undefined) => v == null ? '—' : running ? paceStr(perKm(v)) : v.toFixed(2)
+  const unit = running ? paceUnit() : 'W/beat'
   const r = shown == null ? null : Number(shown.toFixed(running ? 0 : 1))
   const change = r == null ? '—' : running
-    ? `${r > 0 ? '−' : r < 0 ? '+' : '±'}${Math.abs(r).toFixed(0)} s/km`  // faster = fewer seconds per km
+    ? `${r > 0 ? '−' : r < 0 ? '+' : '±'}${Math.abs(r).toFixed(0)} ${paceDiffUnit()}`  // faster = fewer seconds per km
     : `${r > 0 ? '+' : r < 0 ? '−' : '±'}${Math.abs(r).toFixed(1)} %`
   return { word, text, tone: c.tone, count: `${p.n} ${running ? 'runs' : 'rides'}`,
     compare: { thenLabel: `${ago} · ${unit}`, then: fmt(p.then), nowLabel: `Now · ${unit}`,

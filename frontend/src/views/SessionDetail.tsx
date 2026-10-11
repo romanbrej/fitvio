@@ -7,7 +7,8 @@ import { BaselineSwitch, ConfirmExclude, ExcludeButton, useBaseline } from '../c
 import { SportIcon, VerdictIcon } from '../components/icons'
 import { Improvements } from '../components/Improvements'
 import { SetList } from '../components/SetList'
-import { distance, duration, feelLabel, kmh, num, pace, SPORT_LABEL, TYPE_LABEL, VERDICT_LABEL, weatherSource, when } from '../format'
+import { distance, duration, feelLabel, num, pace, speed, SPORT_LABEL, TYPE_LABEL, VERDICT_LABEL, weatherSource, when } from '../format'
+import { elevation, elevUnit, paceUnit, perBeat, per100m, perKm, speedOf, speedUnit, swimUnit, temp, weight, weightNum, weightUnit, wind } from '../units'
 import { useFetch } from '../useFetch'
 import { adjustedPace, deltaTone } from './WallVerdict'
 import './Detail.css'
@@ -51,11 +52,11 @@ export function factGroups(s: SessionDetail): FactGroups {
   const adj = adjustedPace(s)
   const key: Row[] = [['Duration', duration(s.duration_s)]]
   if (s.distance_m) key.push(['Distance', distance(s.distance_m, s.sport)])
-  if (s.sport === 'running' && f.avg_speed) key.push(['Avg pace', `${pace(f.avg_speed)} /km`])
-  if (adj) key.push(['Weather-adj. pace', `${pace(adj)} /km`])
-  if (s.sport === 'cycling') key.push(f.avg_power ? ['Avg power', `${num(f.avg_power)} W`] : ['Avg speed', `${kmh(f.avg_speed)} km/h`])
-  if (s.sport === 'swimming' && f.pace_100m_s) key.push(['Pace', `${duration(f.pace_100m_s)} /100 m`])
-  if (s.sport === 'strength') key.push(['Volume', `${num(f.total_volume)} kg`])
+  if (s.sport === 'running' && f.avg_speed) key.push(['Avg pace', `${pace(f.avg_speed)} ${paceUnit()}`])
+  if (adj) key.push(['Weather-adj. pace', `${pace(adj)} ${paceUnit()}`])
+  if (s.sport === 'cycling') key.push(f.avg_power ? ['Avg power', `${num(f.avg_power)} W`] : ['Avg speed', `${speed(f.avg_speed)} ${speedUnit()}`])
+  if (s.sport === 'swimming' && f.pace_100m_s) key.push(['Pace', `${duration(per100m(f.pace_100m_s))} ${swimUnit()}`])
+  if (s.sport === 'strength') key.push(['Volume', f.total_volume != null ? weight(f.total_volume, 0) : '—'])
   if (s.avg_hr) key.push(['Avg HR', `${num(s.avg_hr)} bpm`])
   if (s.sport === 'running' && spm && !adj) key.push(['Cadence', spm])
   key.push(['Load', num(s.load)])
@@ -68,18 +69,18 @@ export function factGroups(s: SessionDetail): FactGroups {
   if (s.sport === 'running') {
     add('Performance', [
       // weather-adjusted, as compared; the real one beside it
-      [`Pace @ ${f.ref_hr ?? ''} bpm (weather-adj.)`, f.speed_at_ref_hr ? `${pace(f.speed_at_ref_hr_adj ?? f.speed_at_ref_hr)} /km` : '—'],
-      !!adj && !!f.speed_at_ref_hr && [`Pace @ ${f.ref_hr ?? ''} bpm, as run`, `${pace(f.speed_at_ref_hr)} /km`],
-      ['Grade-adj. pace', f.gap_speed ? `${pace(f.gap_speed)} /km` : '—'],
+      [`Pace @ ${f.ref_hr ?? ''} bpm (weather-adj.)`, f.speed_at_ref_hr ? `${pace(f.speed_at_ref_hr_adj ?? f.speed_at_ref_hr)} ${paceUnit()}` : '—'],
+      !!adj && !!f.speed_at_ref_hr && [`Pace @ ${f.ref_hr ?? ''} bpm, as run`, `${pace(f.speed_at_ref_hr)} ${paceUnit()}`],
+      ['Grade-adj. pace', f.gap_speed ? `${pace(f.gap_speed)} ${paceUnit()}` : '—'],
       !!adj && !!spm && ['Cadence', spm],
-      ['Efficiency', num(f.ef_adj, 2)],
+      ['Efficiency', f.ef_adj != null ? `${num(perBeat(f.ef_adj), 2)} ${elevUnit()}/beat` : '—'],
       ['HR drift', f.decoupling != null ? `${num(f.decoupling, 1)} %` : '—'],
     ])
     if (f.work_speed) {
       add('Intervals', [
         ['Reps', f.rep_s ? `${f.rep_count} × ${duration(f.rep_s)}` : num(f.rep_count)],
-        ['Rep pace (weather-adj.)', `${pace(f.work_speed_adj ?? f.work_speed)} /km`],
-        !!adj && ['Rep pace, as run', `${pace(f.work_speed)} /km`],
+        ['Rep pace (weather-adj.)', `${pace(f.work_speed_adj ?? f.work_speed)} ${paceUnit()}`],
+        !!adj && ['Rep pace, as run', `${pace(f.work_speed)} ${paceUnit()}`],
         ['Rep HR', `${num(f.work_hr)} bpm`],
         // short reps: HR can't keep up, so the HR drop says little — show how well the pace held instead
         f.rep_s && f.rep_s < 120 ? ['Pace held', f.rep_fade != null ? (f.rep_fade > 0 ? `−${num(f.rep_fade, 1)} %` : 'held') : '—']
@@ -95,7 +96,7 @@ export function factGroups(s: SessionDetail): FactGroups {
   if (s.sport === 'strength') add('Lifting', [['Sets', num(f.total_sets)]])
   add('Heart & effort', [
     ['Max HR', s.max_hr ? `${num(s.max_hr)} bpm` : '—'],
-    s.ascent_m ? ['Ascent', `${num(s.ascent_m)} m`] : null,
+    s.ascent_m ? ['Ascent', elevation(s.ascent_m)] : null,
     s.rpe != null ? ['Your effort', `${num(s.rpe)}/10`] : null,
     s.feel != null ? ['How you felt', feelLabel(s.feel)] : null,
   ])
@@ -103,11 +104,11 @@ export function factGroups(s: SessionDetail): FactGroups {
   const w = f.weather
   const source = weatherSource(w)
   add('Conditions', [
-    w ? ['Weather', `${num(w.temp_c)} °C${w.desc ? ` · ${w.desc}` : ''}`] : null,
-    w && w.feels_like_c != null && Math.round(w.feels_like_c) !== Math.round(w.temp_c) ? ['Feels like', `${num(w.feels_like_c)} °C`] : null,
-    w && w.dew_point_c != null ? ['Dew point', `${num(w.dew_point_c)} °C`] : null,
+    w && w.temp_c != null ? ['Weather', `${temp(w.temp_c)}${w.desc ? ` · ${w.desc}` : ''}`] : null,
+    w && w.temp_c != null && w.feels_like_c != null && temp(w.feels_like_c) !== temp(w.temp_c) ? ['Feels like', temp(w.feels_like_c)] : null,
+    w && w.dew_point_c != null ? ['Dew point', temp(w.dew_point_c)] : null,
     w && w.humidity != null ? ['Humidity', `${num(w.humidity)} %`] : null,
-    w && w.wind_kmh != null ? ['Wind', `${num(w.wind_kmh)} km/h${w.wind_dir ? ` ${w.wind_dir}` : ''}`] : null,
+    w && w.wind_kmh != null ? ['Wind', `${wind(w.wind_kmh)}${w.wind_dir ? ` ${w.wind_dir}` : ''}`] : null,
     // what the run is credited: efficiency and pace at fixed HR count this much better than measured
     f.heat_adj_pct ? ['Heat credit', `+${num(f.heat_adj_pct, 1)} %`] : null,
     f.wind_adj_pct ? ['Wind credit', `${f.wind_adj_pct > 0 ? '+' : '−'}${num(Math.abs(f.wind_adj_pct), 1)} %`] : null,
@@ -134,12 +135,12 @@ export function StreamChart({ s }: { s: SessionDetail }) {
   const data = st.t.map((t, i) => ({
     min: +(t / 60).toFixed(1),
     hr: st.hr?.[i] ?? null,
-    pace: running && spd?.[i] && spd[i]! > 1.2 ? 1000 / spd[i]! : null,
+    pace: running && spd?.[i] && spd[i]! > 1.2 ? perKm(1000 / spd[i]!) : null,  // per km or mile
     power: pwr?.[i] ?? null,
-    speed: !running && spd?.[i] ? spd[i]! * 3.6 : null,
+    speed: !running && spd?.[i] ? speedOf(spd[i]! * 3.6) : null,
   }))
   const second = running ? 'pace' : st.power ? 'power' : st.speed ? 'speed' : null
-  const fmtPace = (v: number) => `${Math.floor(v / 60)}:${String(Math.round(v % 60)).padStart(2, '0')}`
+  const fmtPace = (v: number) => { const r = Math.round(v); return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, '0')}` }
   return (
     <div className="card span-12">
       <div className="card-title">Heart rate{second ? ` & ${second}` : ''}</div>
@@ -153,7 +154,7 @@ export function StreamChart({ s }: { s: SessionDetail }) {
               <YAxis yAxisId="b" orientation="right" width={56} reversed={second === 'pace'}
                      domain={['auto', 'auto']} tickFormatter={second === 'pace' ? fmtPace : (v: number) => String(Math.round(v))} />
             )}
-            <Tooltip formatter={(v, k) => k === 'pace' ? [`${fmtPace(Number(v))} /km`, 'Pace'] : [Math.round(Number(v)), String(k)]}
+            <Tooltip formatter={(v, k) => k === 'pace' ? [`${fmtPace(Number(v))} ${paceUnit()}`, 'Pace'] : [Math.round(Number(v)), String(k)]}
                      labelFormatter={v => `${v} min`} />
             <Line yAxisId="hr" dataKey="hr" stroke="#f87171" dot={false} strokeWidth={1.8} isAnimationActive={false} name="HR" />
             {second && <Line yAxisId="b" dataKey={second} stroke="var(--primary)" dot={false} strokeWidth={1.8} isAnimationActive={false} connectNulls />}
@@ -291,7 +292,7 @@ function SessionBody({ loaded }: { loaded: SessionDetail }) {
                   {laps.map((l, i) => (
                     <tr key={i}>
                       <td>{i + 1}</td><td className="num">{duration(l.duration_s)}</td><td className="num">{distance(l.distance_m, s.sport)}</td>
-                      <td className="num">{s.sport === 'running' ? pace(l.avg_speed) : l.avg_power ? `${num(l.avg_power)} W` : `${kmh(l.avg_speed)}`}</td>
+                      <td className="num">{s.sport === 'running' ? pace(l.avg_speed) : l.avg_power ? `${num(l.avg_power)} W` : `${speed(l.avg_speed)}`}</td>
                       <td className="num">{num(l.avg_hr)}</td>
                     </tr>
                   ))}
@@ -335,9 +336,9 @@ function SessionBody({ loaded }: { loaded: SessionDetail }) {
 }
 
 export function keyMetric(sport: string, f: Record<string, any>): string {
-  if (sport === 'running') return num(f?.ef_adj, 2)
+  if (sport === 'running') return f?.ef_adj != null ? num(perBeat(f.ef_adj), 2) : '—'
   if (sport === 'cycling') return f?.ef ? `${num(f.ef, 2)} W/b` : '—'
-  if (sport === 'swimming') return f?.pace_100m_s ? `${duration(f.pace_100m_s)}/100` : '—'
-  if (sport === 'strength') return `${num(f?.total_volume)} kg`
+  if (sport === 'swimming') return f?.pace_100m_s ? `${duration(per100m(f.pace_100m_s))}/100` : '—'
+  if (sport === 'strength') return f?.total_volume != null ? `${weightNum(f.total_volume, 0)} ${weightUnit()}` : '—'
   return '—'
 }

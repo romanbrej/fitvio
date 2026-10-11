@@ -9,18 +9,28 @@ import { distance, duration, num, pace, shortDay, SPORT_LABEL, TYPE_LABEL, VERDI
 import { PeriodChips } from '../components/PeriodChips'
 import { periodAnswer, TONE_BG, TONE_COLOR } from '../periodAnswer'
 import { daysFor, periodSince, periodText, useTrendPeriod } from '../trendPeriod'
+import { paceDiffUnit, paceUnit, per100m, perKm, swimDiffUnit, swimUnit, weightNum, weightOf, weightUnit } from '../units'
 import { useFetch } from '../useFetch'
 import { adjustedPace } from './WallVerdict'
 import './Detail.css'
 
-const PRIMARY: Record<string, { label: string; get: (f: Record<string, any>) => number | null | undefined; fmt: (v: number) => string }> = {
-  // pace held at the reference HR in s/km (grade & heat adjusted, so runs compare fairly) — lower is faster
-  running: { label: 'Pace at fixed HR (/km, grade & weather adjusted) — steady time at that HR in any run, lower is faster',
-             get: f => { const v = f.speed_at_ref_hr_adj ?? f.speed_at_ref_hr; return v ? 1000 / v : null }, fmt: v => duration(v) },
-  cycling: { label: 'Power per heartbeat (W/beat, heat adjusted)', get: f => f.ef_adj ?? f.ef, fmt: v => v.toFixed(2) },
-  swimming: { label: 'Pace per 100 m (s) — lower is better', get: f => f.pace_100m_s, fmt: v => duration(v) },
-  strength: { label: 'Session volume (kg)', get: f => f.total_volume, fmt: v => num(v) },
-  other: { label: 'Training load', get: () => null, fmt: v => num(v) },
+type Primary = { label: string; get: (f: Record<string, any>) => number | null | undefined; fmt: (v: number) => string
+                 /** a metric number (the server's then/now) in the units `get` gives */
+                 conv: (v: number) => number }
+/** The number each sport is charted by, in the units of the person on screen (units.ts). */
+function primary(sport: string): Primary {
+  const same = (v: number) => v
+  switch (sport) {
+    // pace held at the reference HR (grade & heat adjusted, so runs compare fairly) — lower is faster
+    case 'running': return { label: `Pace at fixed HR (${paceUnit()}, grade & weather adjusted) — steady time at that HR in any run, lower is faster`,
+      get: f => { const v = f.speed_at_ref_hr_adj ?? f.speed_at_ref_hr; return v ? perKm(1000 / v) : null }, fmt: v => duration(v), conv: perKm }
+    case 'cycling': return { label: 'Power per heartbeat (W/beat, heat adjusted)', get: f => f.ef_adj ?? f.ef, fmt: v => v.toFixed(2), conv: same }
+    case 'swimming': return { label: `Pace per ${swimUnit().slice(1)} (s) — lower is better`,
+      get: f => f.pace_100m_s ? per100m(f.pace_100m_s) : null, fmt: v => duration(v), conv: per100m }
+    case 'strength': return { label: `Session volume (${weightUnit()})`, get: f => f.total_volume != null ? weightOf(f.total_volume) : null,
+      fmt: v => num(v), conv: weightOf }
+    default: return { label: 'Training load', get: () => null, fmt: v => num(v), conv: same }
+  }
 }
 
 const VCOLOR: Record<VerdictKind, string> = {
@@ -38,7 +48,7 @@ export function SportDetail() {
   const trend = sport ? ambient?.trends[sport as Sport] : undefined
   const days = daysFor(sport as Sport, picked)
   const period = trend?.periods?.[String(days)]
-  const p = PRIMARY[sport ?? 'other'] ?? PRIMARY.other
+  const p = primary(sport ?? 'other')
   const [all, setAll] = useState(false)
   // running: like the wall card, every outdoor run with steady time at the reference HR (others have no value).
   // Sessions left out of comparisons (bad data) are not plotted; their row in the table says "Excluded".
@@ -54,7 +64,7 @@ export function SportDetail() {
   const pts = period ? allPts.filter(x => inPeriod(x.day)) : allPts
   const rows = (data ?? []).filter(s => inPeriod(s.start_time))
   // the trend line: with a period, the server's (then → now, the same line as the answer); else a 5-session median
-  const line = period?.then != null && period?.now != null ? { then: period.then, now: period.now } : null
+  const line = period?.then != null && period?.now != null ? { then: p.conv(period.then), now: p.conv(period.now) } : null
   const withTrend = pts.map((x, i) => {
     if (line) return { ...x, trend: line.then + (line.now - line.then) * (1 - (lastT - x.t) / (days * 86400000)) }
     const win = pts.slice(Math.max(0, i - 4), i + 1).map(y => y.v as number).sort((a, b) => a - b)
@@ -75,7 +85,7 @@ export function SportDetail() {
     const weeks = Math.max(1, Math.round((lastPt.t - ref.t) / 604800000))
     const gain = lowerBetter ? first - last : last - first
     const rel = Math.abs(gain) / Math.abs(first || 1)
-    const unit = sport === 'running' ? `${Math.round(Math.abs(gain))} s/km` : sport === 'swimming' ? `${Math.round(Math.abs(gain))} s/100 m`
+    const unit = sport === 'running' ? `${Math.round(Math.abs(gain))} ${paceDiffUnit()}` : sport === 'swimming' ? `${Math.round(Math.abs(gain))} ${swimDiffUnit()}`
       : `${(rel * 100).toFixed(1)} %`
     const word = rel < 0.01 ? 'Holding.' : gain > 0 ? 'Yes.' : 'Not yet.'
     const text = rel < 0.01 ? `Steady over ${weeks} weeks.`
@@ -98,7 +108,7 @@ export function SportDetail() {
     (data ?? []).filter(usable).slice().reverse().forEach(s => {
       Object.entries((s.features?.exercises ?? {}) as Record<string, any>).forEach(([k, e]) => {
         if (!e.e1rm) return
-        ;(exHist[k] ??= { label: e.label ?? k, pts: [] }).pts.push({ t: new Date(s.start_time).getTime(), v: e.e1rm })
+        ;(exHist[k] ??= { label: e.label ?? k, pts: [] }).pts.push({ t: new Date(s.start_time).getTime(), v: +weightNum(e.e1rm) })
       })
     })
   }
@@ -195,8 +205,8 @@ export function SportDetail() {
                 <ScatterChart margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                   <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']} scale="time" tickFormatter={v => shortDay(new Date(v).toISOString())} minTickGap={40} />
-                  <YAxis dataKey="v" width={52} domain={['auto', 'auto']} unit=" kg" />
-                  <Tooltip formatter={v => [`${num(Number(v), 1)} kg`]} labelFormatter={() => ''} />
+                  <YAxis dataKey="v" width={52} domain={['auto', 'auto']} unit={` ${weightUnit()}`} />
+                  <Tooltip formatter={v => [`${num(Number(v), 1)} ${weightUnit()}`]} labelFormatter={() => ''} />
                   {Object.entries(exHist).map(([k, e], i) => (
                     <Scatter key={k} name={e.label} data={e.pts} line lineType="joint" isAnimationActive={false}
                              fill={['#60a5fa', '#f97316', '#22c55e', '#f472b6', '#facc15', '#a78bfa'][i % 6]} />

@@ -1,10 +1,11 @@
 /** "Today's mission": the wall's headline and the wording around Garmin's readiness and workouts. */
 import type { Ambient, PlannedWorkout, Readiness, WorkoutStep } from './api'
+import { distUnit, longDistance, paceUnit, perKm } from './units'
 
-/** 312 → "5:12" (seconds per km). */
-export function paceStr(sPerKm: number | null | undefined): string {
-  if (!sPerKm) return '—'
-  const s = Math.round(sPerKm)
+/** 312 → "5:12": seconds (per km, mile or 100 m — convert first, units.ts) as min:s. */
+export function paceStr(sec: number | null | undefined): string {
+  if (!sec) return '—'
+  const s = Math.round(sec)
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
@@ -86,7 +87,7 @@ export function stepSeconds(step: WorkoutStep): number {
 export function targetText(step: WorkoutStep): string | null {
   const t = step.target
   if (!t) return null
-  if (t.type === 'pace') return `${paceStr(t.low_s_per_km)}–${paceStr(t.high_s_per_km)} /km`
+  if (t.type === 'pace') return `${paceStr(perKm(t.low_s_per_km))}–${paceStr(perKm(t.high_s_per_km))} ${paceUnit()}`
   if (t.type === 'hr') return `HR ${t.low}–${t.high}`
   if (t.type === 'hr_zone') return `HR zone ${t.zone}`
   if (t.type === 'power') return `${t.low}–${t.high} W`
@@ -99,7 +100,10 @@ export function stepLength(step: WorkoutStep): string {
     const m = Math.floor(step.duration_s / 60), s = Math.round(step.duration_s % 60)
     return s ? `${m}:${String(s).padStart(2, '0')}` : `${m}′`
   }
-  if (step.distance_m) return step.distance_m >= 1000 ? `${(step.distance_m / 1000).toFixed(1)} km` : `${step.distance_m} m`
+  if (step.distance_m) {
+    if (distUnit() === 'mi') return `${longDistance(step.distance_m).toFixed(2)} mi`  // 400 m → 0.25 mi
+    return step.distance_m >= 1000 ? `${(step.distance_m / 1000).toFixed(1)} km` : `${step.distance_m} m`
+  }
   return 'lap'
 }
 

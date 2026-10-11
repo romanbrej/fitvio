@@ -340,3 +340,9 @@ a.ph-card:active, .ph-hero:active, .ph-tile:active, .ph-day:active, .ph-list-row
 .ph-compare-pair b { font: 600 20px var(--mono); }
 .ph-compare-pair svg { margin-bottom: 5px; flex: none; }
 .ph-change { padding: 6px 10px; border-radius: 10px; font: 600 15px var(--mono); white-space: nowrap; }
+
+/* me: metric / imperial, two big halves */
+.ph-units { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 8px 12px; min-height: 56px; }
+.ph-units b { font: 600 16px var(--font); }
+.ph-units span { font-size: 13px; opacity: 0.8; }
+.ph-units[aria-checked='true'] { background: var(--volt); border-color: var(--volt); color: var(--volt-ink); }

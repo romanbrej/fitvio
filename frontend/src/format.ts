@@ -1,4 +1,5 @@
 import type { Sport, VerdictKind } from './api'
+import { distUnit, longDistance, perKm, poolDistance, speedOf } from './units'
 
 export function duration(s: number | null | undefined): string {
   if (!s) return '—'
@@ -13,20 +14,24 @@ export function hoursMinutes(min: number | null | undefined): string {
   return `${Math.floor(min / 60)}h ${String(Math.round(min % 60)).padStart(2, '0')}m`
 }
 
+/** In the units of the person on screen (units.ts): "12.34 km" / "7.67 mi", a swim "1500 m" / "1640 yd". */
 export function distance(m: number | null | undefined, sport?: Sport): string {
   if (!m) return '—'
-  if (sport === 'swimming') return `${Math.round(m)} m`
-  return `${(m / 1000).toFixed(m >= 10000 ? 1 : 2)} km`
+  if (sport === 'swimming') return `${Math.round(poolDistance(m))} ${poolDistance(1) === 1 ? 'm' : 'yd'}`
+  const d = longDistance(m)
+  return `${d.toFixed(d >= 10 ? 1 : 2)} ${distUnit()}`
 }
 
+/** A speed in m/s as min:s per km or mile (without the unit: paceUnit()). */
 export function pace(speed: number | null | undefined): string {
   if (!speed || speed <= 0) return '—'
-  const s = 1000 / speed
-  return `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
+  const s = Math.round(perKm(1000 / speed))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
-export function kmh(speed: number | null | undefined): string {
-  return speed ? (speed * 3.6).toFixed(1) : '—'
+/** A speed in m/s as km/h or mph (without the unit: speedUnit()). */
+export function speed(v: number | null | undefined): string {
+  return v ? speedOf(v * 3.6).toFixed(1) : '—'
 }
 
 export function num(v: number | null | undefined, dp = 0): string {

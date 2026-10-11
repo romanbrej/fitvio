@@ -11,6 +11,7 @@ import { ConnectForm } from '../components/ConnectForm'
 import { HrSettings } from '../components/HrSettings'
 import { ago } from '../format'
 import { uiScale } from '../uiScale'
+import type { Units } from '../units'
 import './Detail.css'
 
 const PHASE_LABEL: Record<string, string> = {
@@ -20,7 +21,7 @@ const PHASE_LABEL: Record<string, string> = {
 const SOURCE_LABEL = { garmin: 'Garmin', intervals: 'Intervals.icu' } as const
 
 export function Accounts() {
-  const { reload } = useApp()
+  const { reload, config } = useApp()
   const nav = useNavigate()
   // screen check for the wall tablet: the layout is made for about 1280×800
   const [screen, setScreen] = useState({ w: window.innerWidth, h: window.innerHeight })
@@ -59,6 +60,12 @@ export function Accounts() {
   const pickBuddy = async (uid: string, animal: Animal) => {
     setErr(null)
     try { setBuddies(await api.setBuddy(uid, animal)); reload() } catch (e) { setErr(String(e).replace(/^Error: /, '')) }
+  }
+
+  // metric or imperial, per person (the same setting as on the phone's Me screen)
+  const pickUnits = async (uid: string, u: Units) => {
+    setErr(null)
+    try { await api.setUnitsSetting(uid, u); reload() } catch (e) { setErr(String(e).replace(/^Error: /, '')) }
   }
 
   // auto-sync kill switch
@@ -136,6 +143,15 @@ export function Accounts() {
                 )}
               </div>
               <div style={{ marginTop: 14 }}><HrSettings account={a} onSaved={load} /></div>
+              <div className="between" style={{ marginTop: 14 }}>
+                <div className="label">Units</div>
+                <div className="segmented" role="group" aria-label={`Units for ${a.name}`}>
+                  {([['metric', 'Metric · km, °C, kg'], ['imperial', 'Imperial · mi, °F, lb']] as const).map(([u, label]) => {
+                    const on = (config.users.find(x => x.id === a.id)?.units ?? 'metric') === u
+                    return <button key={u} className="btn" aria-pressed={on} onClick={() => !on && pickUnits(a.id, u)}>{label}</button>
+                  })}
+                </div>
+              </div>
               {a.profile.ftp.value != null && (
                 <div className="muted" style={{ marginTop: 8, fontSize: 15 }}>FTP <b className="num" style={{ color: 'var(--text)' }}>{Math.round(Number(a.profile.ftp.value))} W</b></div>
               )}

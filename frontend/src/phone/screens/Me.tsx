@@ -8,6 +8,8 @@ import { ANIMALS, Buddy } from '../../components/Buddy'
 import type { Animal } from '../../components/Buddy'
 import { HrSettings } from '../../components/HrSettings'
 import { ago } from '../../format'
+import { useUnits } from '../../units'
+import type { Units } from '../../units'
 import { usePhone } from '../ctx'
 import { Avatar, Card } from '../parts'
 
@@ -24,9 +26,12 @@ function heatLine(r: HeatResponse['sports'][string], noun: string) {
   return `${what}: heat costs you ${(r.k / r.prior_k).toFixed(1)}× the standard (${r.warm} warm ${noun})`
 }
 
-/** Who uses this phone, their heart-rate values, their buddy, the accounts and auto-sync. */
+const UNIT_CHOICES: [Units, string, string][] = [['metric', 'Metric', 'km · °C · kg'], ['imperial', 'Imperial', 'mi · °F · lb']]
+
+/** Who uses this phone, their heart-rate values, units, their buddy, the accounts and auto-sync. */
 export function Me() {
-  const { config, me, setMe, refresh } = usePhone()
+  const { config, me, setMe, refresh, reloadConfig } = usePhone()
+  const units = useUnits()
   const [accounts, setAccounts] = useState<Account[] | null>(null)
   const [buddies, setBuddies] = useState<BuddySettings | null>(null)
   const [check, setCheck] = useState<ActivityCheck | null>(null)
@@ -80,6 +85,12 @@ export function Me() {
       api.heatSetting(me.id).then(setHeat).catch(() => {})  // the heat response is relearned on what now counts
     } catch (e) { setProblem(errorText(e)) }
   }
+  const pickUnits = async (u: Units) => {
+    if (u === units) return
+    setProblem(null)
+    // only the text changes (everything is stored in metric): the screens just load again
+    try { await api.setUnitsSetting(me.id, u); reloadConfig(); await refresh() } catch (e) { setProblem(errorText(e)) }
+  }
   const mine = buddies?.users[me.id]
   const myAccount = accounts?.find(a => a.id === me.id)
 
@@ -112,6 +123,19 @@ export function Me() {
           <HrSettings account={myAccount} onSaved={load} />
         </Card>
       )}
+
+      <Card>
+        <span className="ph-label">Units</span>
+        <div className="ph-row" role="radiogroup" aria-label="Units" style={{ gap: 8 }}>
+          {UNIT_CHOICES.map(([u, label, what]) => (
+            <button key={u} role="radio" aria-checked={u === units} className="ph-chip-btn ph-units"
+                    onClick={() => pickUnits(u)}>
+              <b>{label}</b><span>{what}</span>
+            </button>
+          ))}
+        </div>
+        <span className="ph-caption">For {me.name} on every screen, the wall too. Stored in metric, so switching changes no verdict.</span>
+      </Card>
 
       {openMeteo != null && (
         <Card>

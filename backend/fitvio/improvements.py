@@ -1,6 +1,6 @@
 """'What improved' after an activity: fitness, performance vs your usual, VO2max and new bests.
 
-Everything in real units ("8 s/km faster than usual", "+0.08 W/kg"), each with a tone:
+Everything in real units, in the person's metric or imperial ("8 s/km faster than usual", "+0.08 W/kg"), each with a tone:
 improving / steady / declining, or best (★) for records.
 """
 from __future__ import annotations
@@ -9,7 +9,7 @@ import bisect
 import sqlite3
 from datetime import date, timedelta
 
-from . import profile
+from . import profile, units
 from .pipeline import performance_sessions, user_sessions
 
 BEST_WINDOW_DAYS = 90
@@ -25,15 +25,6 @@ def _tone_z(z: float | None) -> str | None:
     if z is None:
         return None
     return "improving" if z >= 0.6 else "declining" if z <= -0.6 else "steady"
-
-
-def _pace_km(speed: float) -> str:
-    s = 1000 / speed
-    return f"{int(s // 60)}:{int(round(s % 60)):02d} /km"
-
-
-def _pace_100(sec: float) -> str:
-    return f"{int(sec // 60)}:{int(round(sec % 60)):02d} /100m"
 
 
 def _vs_usual(tone: str | None, diff: int, unit: str, up: str, down: str) -> str:
@@ -70,7 +61,7 @@ def fitness_item(trend: dict) -> dict | None:
     return _item("fitness", "Fitness", f"{trend['fitness_after']:.0f}", text, tone)
 
 
-def delta_items(session: dict, deltas: list[dict], weight_kg: float | None) -> list[dict]:
+def delta_items(session: dict, deltas: list[dict], weight_kg: float | None, u: str = units.METRIC) -> list[dict]:
     f = session.get("features") or {}
     ref = f.get("ref_hr")
     at = f"@{ref:.0f} bpm" if ref else "at fixed HR"
@@ -81,9 +72,9 @@ def delta_items(session: dict, deltas: list[dict], weight_kg: float | None) -> l
             continue
         key = d["key"]
         if key in ("speed_at_ref_hr", "work_speed"):
-            sec = round(1000 / base - 1000 / v)  # + = faster
+            sec, unit = units.pace_seconds(1000 / base - 1000 / v, u)  # + = faster
             label = (f"Pace {at}" if key == "speed_at_ref_hr" else "Rep pace") + " (weather-adj.)"  # as compared
-            out.append(_item(key, label, _pace_km(v), _vs_usual(tone, sec, "s/km", "faster", "slower"), tone))
+            out.append(_item(key, label, units.pace(v, u), _vs_usual(tone, sec, unit, "faster", "slower"), tone))
         elif key == "hr_recovery":
             text = _vs_usual(tone, round(v - base), "bpm", "more", "less")
             out.append(_item(key, "HR drop between reps", f"{v:.0f} bpm", text, tone))
@@ -106,15 +97,15 @@ def delta_items(session: dict, deltas: list[dict], weight_kg: float | None) -> l
             out.append(_item(key, "Best 5 min", f"{v:.0f} W",
                              "like usual" if tone == "steady" else f"{v - base:+.0f} W vs usual", tone))
         elif key == "pace_100m_s":
-            text = _vs_usual(tone, round(base - v), "s/100m", "faster", "slower")
-            out.append(_item(key, "Pace", _pace_100(v), text, tone))
+            sec, unit = units.swim_seconds(base - v, u)
+            out.append(_item(key, "Pace", units.swim_pace(v, u), _vs_usual(tone, sec, unit, "faster", "slower"), tone))
         elif key == "swolf":
             out.append(_item(key, "SWOLF", f"{v:.0f}", _vs_usual(tone, round(base - v), "", "better", "worse"), tone))
     if session["sport"] == "strength":
         lifts = [d for d in deltas if d.get("delta") is not None and d.get("value")]
         for d in sorted(lifts, key=lambda d: -abs(d.get("delta_pct") or 0))[:3]:
-            out.append(_item("lift", d["label"], f"{d['value']:.1f} kg",
-                             f"{d['delta']:+.1f} kg vs best of last {d['n']}", _tone_z(d.get("z"))))
+            out.append(_item("lift", d["label"], units.weight(d["value"], u),
+                             f"{units.weight_diff(d['delta'], u)} vs best of last {d['n']}", _tone_z(d.get("z"))))
     return out
 
 
@@ -134,7 +125,7 @@ def vo2max_item(session: dict, health: list[dict]) -> dict | None:
     return _item("vo2max", "VO₂max", f"{b:.1f} → {a:.1f}", f"{a - b:+.1f}", "improving" if a > b else "declining")
 
 
-def best_items(session: dict, history: list[dict], reasons: list[str]) -> list[dict]:
+def best_items(session: dict, history: list[dict], reasons: list[str], u: str = units.METRIC) -> list[dict]:
     out = [_item("best", "New best", r.removeprefix("New "), "", "best")
            for r in reasons if r.startswith(("New all-time", "New personal record"))]
     sport = session["sport"]
@@ -148,8 +139,8 @@ def best_items(session: dict, history: list[dict], reasons: list[str]) -> list[d
     dist = session.get("distance_m")
     prev = [h.get("distance_m") or 0 for h in prior]
     if dist and dist > max(prev):
-        km = f"{dist:.0f} m" if sport == "swimming" else f"{dist / 1000:.1f} km"
-        out.append(_item("best", f"Longest {NOUN[sport]} in 90 days", km, "", "best"))
+        far = units.swim_distance(dist, u) if sport == "swimming" else units.distance(dist, u)
+        out.append(_item("best", f"Longest {NOUN[sport]} in 90 days", far, "", "best"))
     f = session.get("features") or {}
     key = {"running": "speed_at_ref_hr", "cycling": "power_at_ref_hr"}.get(sport)
     if key:
@@ -162,12 +153,14 @@ def best_items(session: dict, history: list[dict], reasons: list[str]) -> list[d
             ref = f.get("ref_hr")
             label = f"{what} at {ref:.0f} bpm in 90 days" if ref else f"{what} at fixed HR in 90 days"
             out.append(_item("best", label + (" (weather-adj.)" if sport == "running" else ""),
-                             _pace_km(v) if sport == "running" else f"{v:.0f} W", "", "best"))
+                             units.pace(v, u) if sport == "running" else f"{v:.0f} W", "", "best"))
     return out
 
 
-def what_improved(conn: sqlite3.Connection, session: dict, sessions: list[dict] | None = None) -> list[dict]:
-    """`sessions`: the person's sessions if the caller already loaded them (saves reading them twice)."""
+def what_improved(conn: sqlite3.Connection, session: dict, sessions: list[dict] | None = None,
+                  u: str = units.METRIC) -> list[dict]:
+    """`sessions`: the person's sessions if the caller already loaded them (saves reading them twice).
+    `u`: metric or imperial; the verdict's reasons must already be in it (the records are copied)."""
     v = session.get("verdict") or {}
     if v.get("verdict") == "excluded":  # left out as bad data: it shows no gains, bests or comparisons
         return []
@@ -179,16 +172,17 @@ def what_improved(conn: sqlite3.Connection, session: dict, sessions: list[dict] 
     items = [fitness_item(v.get("trend") or {})]
     history = [h for h in performance_sessions(sessions if sessions is not None else user_sessions(conn, uid))
                if h["id"] != session["id"]]
-    items += delta_items(session, v.get("deltas") or [], weight)
+    items += delta_items(session, v.get("deltas") or [], weight, u)
     items.append(vo2max_item(session, health))
-    items += best_items(session, history, v.get("reasons") or [])
+    items += best_items(session, history, v.get("reasons") or [], u)
     # good news first: improvements and bests, then steady, then declining (stable within each group)
     order = {"improving": 0, "best": 0, "steady": 1, None: 1, "declining": 2}
     return sorted((i for i in items if i), key=lambda i: order.get(i["tone"], 1))
 
 
-def attach(conn: sqlite3.Connection, card: dict | None, sessions: list[dict] | None = None) -> dict | None:
+def attach(conn: sqlite3.Connection, card: dict | None, sessions: list[dict] | None = None,
+           u: str = units.METRIC) -> dict | None:
     if card and card.get("verdict"):
-        card["improvements"] = what_improved(conn, card, sessions)
+        card["improvements"] = what_improved(conn, card, sessions, u)
     return card
 

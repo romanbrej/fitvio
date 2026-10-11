@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from statistics import median
 from typing import Callable
 
+from .. import units
 from ..analytics import load as load_model
 from ..analytics import physio
 from ..analytics.heat import PRIOR as HEAT_PRIOR
@@ -19,6 +20,8 @@ MIN_SIMILAR = 3
 WINDOWS_DAYS = (56, 84, 120)
 SCORE_THRESHOLD = 0.6
 WIND_NOTE_PCT = 0.5  # smaller wind corrections are not worth a line
+WEATHER_KINDS = {"heat", "wind", "hills"}  # context notes worked out from the session alone (they hold units)
+JUDGED = {"better", "worse", "in_line"}    # verdicts whose reasons come from the comparison
 
 
 @dataclass
@@ -27,7 +30,7 @@ class MetricSpec:
     label: str
     better: int                  # +1 higher is better, -1 lower is better
     weight: float
-    fmt: Callable[[float], str]
+    fmt: Callable[[float, str], str]  # (value, units) → text
     mode: str = "rel"            # rel: compare in %, abs: compare in the metric's own unit
     noise: float = 0.015         # minimum spread (fraction for rel, units for abs)
     get: Callable[[dict], float | None] | None = None
@@ -140,14 +143,14 @@ class SportModel:
                 return sorted(win, key=lambda h: h["start_time"], reverse=True)[:12]
         return [h for h in cands if datetime.fromisoformat(h["start_time"]) < start]
 
-    def compare(self, session: dict, similar: list[dict]) -> list[dict]:
+    def compare(self, session: dict, similar: list[dict], u: str = units.METRIC) -> list[dict]:
         out = []
         for m in self.metrics_for(session):
             v = m.value(session)
             base_vals = [x for x in (m.value(s) for s in similar) if x is not None]
             row = {"key": m.key, "label": m.label, "value": v, "baseline": None, "delta": None,
                    "delta_pct": None, "z": None, "weight": m.weight, "better": m.better, "n": len(base_vals),
-                   "value_fmt": m.fmt(v) if v is not None else "—", "baseline_fmt": "—"}
+                   "value_fmt": m.fmt(v, u) if v is not None else "—", "baseline_fmt": "—"}
             if v is not None and len(base_vals) >= MIN_SIMILAR:
                 med = median(base_vals)
                 spread_raw = 1.4826 * physio.mad(base_vals)
@@ -162,13 +165,13 @@ class SportModel:
                 if m.mode == "rel" and pct is not None:
                     dfmt = f"{'+' if pct > 0 else '−' if pct < 0 else '±'}{abs(pct):.1f}%"
                 else:
-                    dfmt = f"{'+' if v > med else '−' if v < med else '±'}{m.fmt(abs(v - med))}"
-                row.update({"baseline": med, "delta": v - med, "z": round(z, 2), "baseline_fmt": m.fmt(med),
+                    dfmt = f"{'+' if v > med else '−' if v < med else '±'}{m.fmt(abs(v - med), u)}"
+                row.update({"baseline": med, "delta": v - med, "z": round(z, 2), "baseline_fmt": m.fmt(med, u),
                             "delta_pct": pct, "delta_fmt": dfmt})
             out.append(row)
         return out
 
-    def reasons(self, session: dict, deltas: list[dict], n: int, noun: str) -> list[str]:
+    def reasons(self, session: dict, deltas: list[dict], n: int, noun: str, u: str = units.METRIC) -> list[str]:
         ranked = sorted((d for d in deltas if d["z"] is not None), key=lambda d: -abs(d["z"] * d["weight"]))
         out = []
         for d in ranked[:3]:
@@ -179,7 +182,7 @@ class SportModel:
             if d["delta_pct"] is not None and self._metric(d["key"], session).mode == "rel":
                 size = f"{abs(d['delta_pct']):.1f}%"
             else:
-                size = self._metric(d["key"], session).fmt(abs(d["delta"]))
+                size = self._metric(d["key"], session).fmt(abs(d["delta"]), u)
             out.append(f"{d['label']} {size} {word} than your {n} similar {noun} ({d['value_fmt']} vs {d['baseline_fmt']})")
         return out
 
@@ -205,14 +208,21 @@ class SportModel:
         return {"trend_metric": m.label, "trend_pct_per_week": round(pct_week, 2) if pct_week is not None else None,
                 "trend_points": [{"day": p[2], "value": round(p[1], 4)} for p in pts]}
 
-    def context_notes(self, session: dict, health: dict | None, health_base: dict | None, trend: dict) -> list[dict]:
+    def context_notes(self, session: dict, health: dict | None, health_base: dict | None, trend: dict,
+                      u: str = units.METRIC) -> list[dict]:
+        notes = self.weather_notes(session, u)
+        notes += self.wellbeing_notes(session, health, health_base, trend)
+        return notes
+
+    def weather_notes(self, session: dict, u: str = units.METRIC) -> list[dict]:
+        """Heat, wind and hills: from the session alone, so `render` can write them again in other units."""
         notes = []
         f = session.get("features") or {}
         heat, w = f.get("heat_adj_pct") or 0, f.get("weather") or {}
         if heat > 0 and w.get("temp_c") is not None:
-            text = f"Warm & humid: {w['temp_c']:.0f} °C"
+            text = f"Warm & humid: {units.temp(w['temp_c'], u)}"
             if w.get("dew_point_c") is not None:
-                text += f", dew point {w['dew_point_c']:.0f} °C"
+                text += f", dew point {units.temp(w['dew_point_c'], u)}"
             if (source := weather_label(w)):
                 text += f" ({source})"
             text += f" — efficiency adjusted +{heat:.1f} %"
@@ -229,7 +239,7 @@ class SportModel:
             notes.append({"kind": "heat", "text": text})
         wind = f.get("wind_adj_pct") or 0
         if abs(wind) >= WIND_NOTE_PCT and w.get("wind_kmh") is not None:
-            text = f"Windy: {w['wind_kmh']:.0f} km/h" + (f" from {w['wind_dir']}" if w.get("wind_dir") else "")
+            text = f"Windy: {units.wind(w['wind_kmh'], u)}" + (f" from {w['wind_dir']}" if w.get("wind_dir") else "")
             if (source := weather_label(w)):
                 text += f" ({source})"
             text += f" — efficiency adjusted {wind:+.1f} %".replace("-", "−") + " for head- and tailwind"
@@ -237,7 +247,13 @@ class SportModel:
         if session.get("ascent_m") and session.get("distance_m") and self.sport == "running":
             per_km = session["ascent_m"] / (session["distance_m"] / 1000)
             if per_km >= 15:
-                notes.append({"kind": "hills", "text": f"Hilly: {session['ascent_m']:.0f} m climbing, pace grade-adjusted"})
+                notes.append({"kind": "hills",
+                              "text": f"Hilly: {units.elevation(session['ascent_m'], u)} climbing, pace grade-adjusted"})
+        return notes
+
+    def wellbeing_notes(self, session: dict, health: dict | None, health_base: dict | None, trend: dict) -> list[dict]:
+        """Sleep, HRV, resting HR, fatigue and effort: none of them has a unit that changes."""
+        notes = []
         if health:
             sl = health.get("sleep_total_min")
             if sl and sl < 360:
@@ -257,6 +273,45 @@ class SportModel:
 
     def _metric(self, key: str, session: dict | None = None) -> MetricSpec:
         return next(m for m in (self.metrics_for(session) if session else self.metrics) if m.key == key)
+
+    # --- reading ---------------------------------------------------------
+    def render(self, verdict: dict, session: dict, u: str) -> dict:
+        """A stored verdict with its text in units `u`. Verdicts are stored as judged, in metric; the numbers
+        behind the text are in the deltas and the session, so the text is written again from them. Anything
+        that can't be (a metric this model no longer has) keeps its stored text."""
+        v = dict(verdict)
+        metrics = {m.key: m for m in self.metrics_for(session)}
+        v["deltas"] = [self._render_delta(d, metrics.get(d.get("key")), u) for d in v.get("deltas") or []]
+        if v.get("trend") and v["trend"].get("trend_metric") and self.primary_label():
+            v["trend"] = {**v["trend"], "trend_metric": self.primary_label()}
+        if v.get("verdict") in JUDGED and all(d.get("key") in metrics for d in v["deltas"]):
+            stored = v.get("reasons") or []
+            again = self.reasons(session, v["deltas"], len(v.get("baseline_ids") or []), self.similar_noun(session), u)
+            v["reasons"] = again + stored[len(again):]  # what follows (records in W) has no unit to change
+        v["context"] = self.render_context(v.get("context"), session, u)
+        return v
+
+    def render_context(self, context: list[dict] | None, session: dict, u: str) -> list[dict]:
+        """The stored notes, each weather note written again in `u` (one the session no longer gives stays)."""
+        fresh = {n["kind"]: n for n in self.weather_notes(session, u)}
+        return [fresh.get(c.get("kind"), c) if c.get("kind") in WEATHER_KINDS else c for c in context or []]
+
+    def primary_label(self) -> str | None:
+        """The name of the metric the 6-week trend follows (today's, also for verdicts stored under an older one)."""
+        return next((m.label for m in self.metrics if m.key == self.primary), None)
+
+    @staticmethod
+    def _render_delta(d: dict, m: MetricSpec | None, u: str) -> dict:
+        if m is None:
+            return d
+        d = {**d, "label": m.label}
+        v, base = d.get("value"), d.get("baseline")
+        d["value_fmt"] = m.fmt(v, u) if v is not None else "—"
+        if base is not None:
+            d["baseline_fmt"] = m.fmt(base, u)
+            if m.mode != "rel" and v is not None:
+                d["delta_fmt"] = f"{'+' if v > base else '−' if v < base else '±'}{m.fmt(abs(v - base), u)}"
+        return d
 
     @staticmethod
     def _result(session, verdict, confidence, score, headline, reasons, deltas, context, trend, baseline_ids) -> dict:
