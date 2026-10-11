@@ -1,5 +1,6 @@
 import type { Ambient, Session, Sport, VerdictKind } from '../api'
 import { pace } from '../format'
+import { paceUnit } from '../units'
 
 /** The four sports with their own card (Today), trend row (Trends) and history page. */
 export const MAIN_SPORTS: Sport[] = ['running', 'cycling', 'swimming', 'strength']
@@ -25,9 +26,9 @@ export function bodyBatteryNote(bb: number | null | undefined): Note | null {
   return { text: bb >= 85 ? 'Full' : bb >= 60 ? 'Good' : 'Low', tone: bb >= 60 ? 'better' : 'worse' }
 }
 
-/** A run's average pace ("5:07/km"); null for other sports or without distance and time. */
+/** A run's average pace ("5:07/km", "8:14/mi"); null for other sports or without distance and time. */
 export function runPace(s: Pick<Session, 'sport' | 'distance_m' | 'duration_s'>): string | null {
-  return s.sport === 'running' && s.distance_m && s.duration_s ? `${pace(s.distance_m / s.duration_s)}/km` : null
+  return s.sport === 'running' && s.distance_m && s.duration_s ? `${pace(s.distance_m / s.duration_s)}${paceUnit()}` : null
 }
 
 /** This week's load against the sweet spot, plus a one-line hint (same wording as the wall). */

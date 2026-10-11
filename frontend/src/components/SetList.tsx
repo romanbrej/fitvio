@@ -1,14 +1,13 @@
 import type { SessionDetail } from '../api'
-import { duration, num } from '../format'
+import { duration } from '../format'
+import { weight, weightNum, weightUnit } from '../units'
 import './SetList.css'
 
 type SetRow = SessionDetail['sets'][number]
 
-const kg = (w: number) => String(+w.toFixed(1))
-
 /**
  * Sets like a gym log: each exercise once, then one row per set (weight, reps, or the time of a timed set).
- * Columns only appear when some set has them, so a plank shows Set · Time and a deadlift Set · kg · Reps.
+ * Columns only appear when some set has them, so a plank shows Set · Time and a deadlift Set · kg (lb) · Reps.
  */
 export function SetList({ sets, exercises, wall = false }: {
   sets: SetRow[]; exercises?: Record<string, { label?: string; e1rm?: number | null }>; wall?: boolean
@@ -27,14 +26,14 @@ export function SetList({ sets, exercises, wall = false }: {
             <div className="setlist-head">
               <span className="setlist-name">{info?.label ?? ex}</span>
               <span className="setlist-meta num">
-                {rows.length} {rows.length === 1 ? 'set' : 'sets'}{info?.e1rm != null && ` · e1RM ${num(info.e1rm, 1)} kg`}
+                {rows.length} {rows.length === 1 ? 'set' : 'sets'}{info?.e1rm != null && ` · e1RM ${weight(info.e1rm)}`}
               </span>
             </div>
             <table>
               <thead>
                 <tr>
                   <th>Set</th>
-                  {hasKg && <th className="num">kg</th>}
+                  {hasKg && <th className="num">{weightUnit()}</th>}
                   {(hasReps || !hasTime) && <th className="num">Reps</th>}
                   {hasTime && <th className="num">Time</th>}
                 </tr>
@@ -43,7 +42,7 @@ export function SetList({ sets, exercises, wall = false }: {
                 {rows.map((x, i) => (
                   <tr key={x.set_index}>
                     <td className="setlist-no">{i + 1}</td>
-                    {hasKg && <td className="num">{x.weight_kg ? kg(x.weight_kg) : '—'}</td>}
+                    {hasKg && <td className="num">{x.weight_kg ? weightNum(x.weight_kg) : '—'}</td>}
                     {(hasReps || !hasTime) && <td className="num">{x.reps || '—'}</td>}
                     {hasTime && <td className="num">{!x.reps && x.duration_s ? duration(x.duration_s) : '—'}</td>}
                   </tr>

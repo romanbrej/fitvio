@@ -12,6 +12,7 @@ import { SPORT_COLOR } from '../../views/WallAmbient'
 import { paceStr } from '../../mission'
 import { periodAnswer, TONE_BG, TONE_COLOR } from '../../periodAnswer'
 import { daysFor, periodSince, periodText, useTrendPeriod } from '../../trendPeriod'
+import { perKm } from '../../units'
 import { AxisChart, dateAxis, dayLabel, niceTicks } from '../Chart'
 import { usePhone } from '../ctx'
 import { Back, Card } from '../parts'
@@ -128,9 +129,10 @@ function PeriodCard({ sport, t, days }: { sport: Sport; t: SportTrend; days: num
   const i = pickedDay == null ? null : keys.lastIndexOf(pickedDay)
   const at = i == null || i < 0 ? null : i
   const running = sport === 'running'
+  const shown = (v: number) => running ? perKm(v) : v  // s/km → per km or mile; the chart is drawn in these
   const fmt = (v: number) => running ? paceStr(v) : sport === 'cycling' ? v.toFixed(2) : String(v)
   // running: faster is up, so the pace is drawn negated
-  const flip = (v: number | null | undefined) => v == null ? null : running ? -v : v
+  const flip = (v: number | null | undefined) => v == null ? null : running ? -shown(v) : v
   const vals = pts.map(p => flip(p.value)!)
   const trend = pts.map(p => flip(('trend' in p ? p.trend : null) as number | null))
   const { lo, hi, ticks } = niceTicks(sport === 'strength' ? [0, ...vals] : [...vals, ...trend],
@@ -156,7 +158,7 @@ function PeriodCard({ sport, t, days }: { sport: Sport; t: SportTrend; days: num
         <span className="ph-caption">{label}{answer ? ` · ${answer.count}` : ''}</span>
         <span className={`ph-right ph-when${at != null ? ' on' : ''}`} aria-live="polite">
           {at == null ? (pts.length >= 2 ? 'Tap the chart' : '')
-            : `${sport === 'strength' ? `Week of ${dayLabel(pts[at].day)}` : dayLabel(pts[at].day, true)} · ${fmt(pts[at].value)}`}
+            : `${sport === 'strength' ? `Week of ${dayLabel(pts[at].day)}` : dayLabel(pts[at].day, true)} · ${fmt(shown(pts[at].value))}`}
         </span>
       </div>
       {pts.length >= 2 && (

@@ -5,7 +5,8 @@ import type { SessionDetail } from '../../api'
 import { BaselineSwitch, ConfirmExclude, ExcludeButton, useBaseline } from '../../components/Baseline'
 import { SportIcon, VerdictPill } from '../../components/icons'
 import { SetList } from '../../components/SetList'
-import { distance, duration, kmh, num, pace, SPORT_LABEL, TYPE_LABEL, when } from '../../format'
+import { distance, duration, num, pace, speed, SPORT_LABEL, TYPE_LABEL, when } from '../../format'
+import { temp } from '../../units'
 import { useFetch } from '../../useFetch'
 import { factGroups, keyMetric, StreamChart } from '../../views/SessionDetail'
 import { Back, Card } from '../parts'
@@ -36,7 +37,7 @@ function SessionBody({ loaded }: { loaded: SessionDetail }) {
       <section className="ph-section" style={{ gap: 4 }}>
         <span className="ph-label ph-row" style={{ gap: 6 }}><SportIcon sport={s.sport} size={16} />{SPORT_LABEL[s.sport]} · {TYPE_LABEL[s.session_type] ?? s.session_type}</span>
         <h1 className="ph-title">{s.name || SPORT_LABEL[s.sport]}</h1>
-        <span className="ph-foot">{when(s.start_time)}{f.weather ? ` · ${num(f.weather.temp_c)} °C` : ''}{s.indoor ? ' · indoor' : ''}</span>
+        <span className="ph-foot">{when(s.start_time)}{f.weather?.temp_c != null ? ` · ${temp(f.weather.temp_c)}` : ''}{s.indoor ? ' · indoor' : ''}</span>
       </section>
 
       <div className="ph-grid3">
@@ -68,7 +69,7 @@ function SessionBody({ loaded }: { loaded: SessionDetail }) {
                 {laps.map((l, i) => (
                   <tr key={i}>
                     <td>{i + 1}</td><td className="num">{duration(l.duration_s)}</td><td className="num">{distance(l.distance_m, s.sport)}</td>
-                    <td className="num">{s.sport === 'running' ? pace(l.avg_speed) : l.avg_power ? `${num(l.avg_power)} W` : kmh(l.avg_speed)}</td>
+                    <td className="num">{s.sport === 'running' ? pace(l.avg_speed) : l.avg_power ? `${num(l.avg_power)} W` : speed(l.avg_speed)}</td>
                     <td className="num">{num(l.avg_hr)}</td>
                   </tr>
                 ))}

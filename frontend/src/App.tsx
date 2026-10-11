@@ -6,6 +6,7 @@ import type { Ambient, AppConfig, Job, WallState } from './api'
 import { DayScreen } from './components/DayScreen'
 import { NightScreen } from './components/NightScreen'
 import { TopBar } from './components/TopBar'
+import { setUnits } from './units'
 import type { SyncOutcome } from './components/TopBar'
 import './App.css'
 
@@ -78,7 +79,8 @@ export default function App() {
     const poll = setInterval(refresh, POLL_MS)
     // Server-sent events: the backend pushes 'refresh' as soon as a new verdict lands.
     const es = DEMO ? null : new EventSource('/api/events')
-    es?.addEventListener('refresh', () => refresh())
+    // a new verdict, or someone switched units on their phone (the config carries everyone's)
+    es?.addEventListener('refresh', () => { refresh(); api.config().then(setConfig).catch(() => {}) })
     return () => { clearInterval(poll); es?.close() }
   }, [refresh])
 
@@ -252,13 +254,17 @@ export default function App() {
   const userId = routeUser ?? (wall.mode === 'setup' ? null : wall.user_id)
   // the sync status we have is the wall person's; don't show it on another person's detail page
   const sync = wall.mode !== 'setup' && wall.user_id === userId ? wall.ambient.sync : null
+  // every number on screen in that person's units: set before the screens below render (units.ts)
+  const units = (wall.mode !== 'setup' && wall.user_id === userId ? wall.ambient.units : undefined)
+    ?? config.users.find(u => u.id === userId)?.units ?? 'metric'
+  setUnits(units)
 
   return (
     <AppCtx.Provider value={{ config, wall, userId, refresh, reload, select, dismiss }}>
       <div className="shell">
         <TopBar users={config.users} activeUser={userId} onSelect={select} sync={sync}
                 syncJob={syncJob} syncOutcome={syncOutcome} onSync={() => userId && syncNow(userId)} />
-        <main className="main"><Outlet /></main>
+        <main className="main" key={units}><Outlet /></main>
         {error && <div className="offline" role="status">Connection lost — showing last data</div>}
       </div>
       {dayScreen && !night && wall.mode === 'ambient' && loc.pathname === '/' && (

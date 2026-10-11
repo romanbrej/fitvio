@@ -10,6 +10,7 @@ import { WeekStrip } from '../components/WeekStrip'
 import { formState, hoursMinutes, num, signed, SPORT_LABEL } from '../format'
 import { READINESS_LEVEL, feedbackText, headline, paceStr, readinessTitle } from '../mission'
 import { DEFAULT_DAYS, periodText, useTrendPeriod } from '../trendPeriod'
+import { paceDiffUnit, paceUnit, per100m, perKm, swimUnit } from '../units'
 import './Wall.css'
 
 const SPORTS: Sport[] = ['running', 'cycling', 'swimming', 'strength']
@@ -326,7 +327,8 @@ function weekNo(iso: string): number {
 }
 
 /* Sport tiles: one big number in real units and where its trend is heading. A move smaller than the
- * steady band is noise (GPS, wind, heat), so the pill doesn't flip from one session to the next. */
+ * steady band is noise (GPS, wind, heat), so the pill doesn't flip from one session to the next. The bands
+ * are in metric, like the numbers they judge; only what's shown is in the person's units. */
 const STEADY = { run_s_per_km: 4, pct: 1.5, gym_sessions: 2 }
 const STALE_DAYS = 42
 
@@ -359,9 +361,9 @@ function tileBody(sport: Sport, t: SportTrend, days: number): { big: string; uni
     // pace, sparkline and trend: weather adjusted, never the pace as run
     const trend = c == null ? `not enough runs in ${span} for a trend`
       : tone === 'inline' ? `steady over ${span}`
-      : `${c > 0 ? '▲' : '▼'} ${Math.abs(c).toFixed(0)} s/km ${c > 0 ? 'faster' : 'slower'} in ${span}`
+      : `${c > 0 ? '▲' : '▼'} ${Math.abs(perKm(c)).toFixed(0)} ${paceDiffUnit()} ${c > 0 ? 'faster' : 'slower'} in ${span}`
     return {
-      big: paceStr(st.pace_s_per_km), unit: '/km',
+      big: paceStr(perKm(st.pace_s_per_km)), unit: paceUnit(),
       caption: `at ${num(st.ref_hr)} bpm, weather-adj. · ${trend}`,
       extra: cad ? `Cadence ${cad.spm} spm${cad.change ? ` ${cad.change > 0 ? '▲' : '▼'}${Math.abs(cad.change)}` : ''}` : undefined,
       spark: (p ?? st).points.map(x => -x.value), tone,
@@ -402,12 +404,12 @@ function tileBody(sport: Sport, t: SportTrend, days: number): { big: string; uni
   const pct6 = raw6 != null && Math.abs(raw6) <= 30 ? raw6 : null
   const tone = toneOf(pct6, STEADY.pct)
   if (sport === 'swimming' && t.points.length) {
-    // pace per 100 m (seconds): the big number is the typical pace of the last swims; + % = faster
+    // pace per 100 m (seconds; per 100 yd in imperial): the big number is the typical pace of the last swims; + % = faster
     const last = t.points.slice(-3).map(p => p.value).sort((x, y) => x - y)
     const trend = pct6 == null ? 'not enough swims for a trend' : tone === 'inline' ? 'steady over 6 wks'
       : `${pct6 > 0 ? '▲' : '▼'} ${Math.abs(pct6).toFixed(1)} % ${pct6 > 0 ? 'faster' : 'slower'} in 6 wks`
     return {
-      big: paceStr(last[Math.floor(last.length / 2)]), unit: '/100 m', caption: trend,
+      big: paceStr(per100m(last[Math.floor(last.length / 2)])), unit: swimUnit(), caption: trend,
       spark: t.points.map(p => -p.value), tone,
     }
   }

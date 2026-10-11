@@ -5,7 +5,8 @@
 #   ./deploy/install-updater.sh      automatic updates: pulls a newer image every 5 minutes
 # Data and settings stay on the host in ./data and ./config (credentials, tokens, health data).
 # Optional .env: FITVIO_UID / FITVIO_GID = the host user owning those folders (id -u / id -g), TZ = your time zone,
-#   FITVIO_BIND = the LAN IP the dashboard listens on (default: every IPv4 address).
+#   FITVIO_BIND = the LAN IP the dashboard listens on (default: every IPv4 address),
+#   FITVIO_UNITS = metric (default) or imperial: mi, °F, lb for everyone who hasn't picked their own on the phone.
 # Rollback: FITVIO_TAG=sha-<commit> in .env, then docker compose up -d (remove it to follow latest again).
 
 x-common: &common
@@ -13,6 +14,7 @@ x-common: &common
   user: "${FITVIO_UID:-1000}:${FITVIO_GID:-1000}"
   environment:
     TZ: ${TZ:-Europe/Berlin}
+    FITVIO_UNITS: ${FITVIO_UNITS:-metric}
   volumes:
     - ./data:/app/data
     - ./config:/app/config

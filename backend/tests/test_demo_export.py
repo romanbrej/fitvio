@@ -43,6 +43,15 @@ def test_export_uses_made_up_people_and_never_the_real_config(tmp_path, monkeypa
         sessions = json.loads((out / "users" / uid / "sessions.json").read_text())
         assert sessions and all((out / file_for(f"/api/sessions/{s['id']}")).exists() for s in sessions)
     assert counts["sessions"] == len(list((out / "sessions").iterdir()))
+    # the units switch: the server-written text again in imperial, a session with only its verdict and gains
+    for uid in ("alex", "sam"):
+        assert (out / "users" / uid / "units.json").exists()
+        assert json.loads((out / "imperial" / "users" / uid / "ambient.json").read_text())["units"] == "imperial"
+    assert json.loads((out / "imperial" / "wall.json").read_text())["ambient"]["units"] == "imperial"
+    texts = [f.read_text() for f in (out / "imperial" / "sessions").iterdir()]
+    assert all(set(json.loads(x)) == {"verdict", "improvements"} for x in texts)
+    assert any("/mi" in x for x in texts) and not any("/km" in x or "°C" in x for x in texts)
+    assert json.loads((out / "config.json").read_text())["users"][0]["units"] == "metric"
 
 
 def test_leak_check_refuses_names_addresses_and_paths(tmp_path):

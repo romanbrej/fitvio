@@ -6,7 +6,8 @@ import type { Ambient, Delta, Session } from '../api'
 import { Buddy } from '../components/Buddy'
 import { SportIcon, VerdictIcon } from '../components/icons'
 import { Improvements } from '../components/Improvements'
-import { distance, duration, kmh, num, pace, SPORT_LABEL, TYPE_LABEL, VERDICT_LABEL, when } from '../format'
+import { distance, duration, num, pace, speed, SPORT_LABEL, TYPE_LABEL, VERDICT_LABEL, when } from '../format'
+import { paceUnit, speedUnit, weight } from '../units'
 import './Wall.css'
 
 export function deltaTone(d: Delta): string {
@@ -26,12 +27,12 @@ export function facts(s: Session): [string, string][] {
   const adj = adjustedPace(s)
   const out: [string, string][] = [['Duration', duration(s.duration_s)]]
   if (s.distance_m) out.push(['Distance', distance(s.distance_m, s.sport)])
-  if (s.sport === 'running' && f.avg_speed) out.push(['Avg pace', `${pace(f.avg_speed)} /km`])
-  if (adj) out.push(['Weather-adj. pace', `${pace(adj)} /km`])
+  if (s.sport === 'running' && f.avg_speed) out.push(['Avg pace', `${pace(f.avg_speed)} ${paceUnit()}`])
+  if (adj) out.push(['Weather-adj. pace', `${pace(adj)} ${paceUnit()}`])
   if (s.sport === 'cycling' && f.np) out.push(['Norm. power', `${num(f.np)} W`])
-  else if (s.sport === 'cycling' && f.avg_speed) out.push(['Avg speed', `${kmh(f.avg_speed)} km/h`])
+  else if (s.sport === 'cycling' && f.avg_speed) out.push(['Avg speed', `${speed(f.avg_speed)} ${speedUnit()}`])
   if (s.sport === 'swimming' && f.swolf) out.push(['SWOLF', num(f.swolf)])
-  if (s.sport === 'strength' && f.total_sets) out.push(['Sets', String(f.total_sets)], ['Volume', `${num(f.total_volume)} kg`])
+  if (s.sport === 'strength' && f.total_sets) out.push(['Sets', String(f.total_sets)], ['Volume', f.total_volume != null ? weight(f.total_volume, 0) : '—'])
   if (s.avg_hr) out.push(['Avg HR', `${num(s.avg_hr)} bpm`])
   if (s.sport === 'running' && f.avg_cadence && !adj) out.push(['Cadence', `${num(f.avg_cadence * (f.avg_cadence < 120 ? 2 : 1))} spm`])
   out.push(['Load', `${num(s.load)}`])

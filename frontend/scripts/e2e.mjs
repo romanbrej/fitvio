@@ -4,7 +4,8 @@
 // Covers leaving a session out of comparisons (#19) on the wall and the phone: confirm, recalculated
 // verdicts, persistence, restore, a refused change. And the weather (#18): the session's conditions with
 // their source, and the per-person Open-Meteo switch; the learned heat response (#18 part 2) on runs and
-// rides and its switch. The demo's lock is checked in demo-check.mjs.
+// rides and its switch. Imperial units (#27) on every screen of one person. The demo's lock is checked in
+// demo-check.mjs.
 import { spawn, spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
@@ -322,6 +323,75 @@ try {
   await p.getByText(/home network/).waitFor()
   check('a refused change shows why and learning stays on', await hs().getAttribute('aria-checked') === 'true'
     && (await api('/api/users/alex/heat')).learn === true)
+  await p.close()
+
+  // --- units (#27): imperial for one person, every screen in mi / °F / lb, nothing stored changes ------------
+  console.log('— units')
+  // what may stay metric: planned-workout titles (free text from Garmin / Intervals.icu) and units that are the
+  // same everywhere (W/kg, ml/kg/min)
+  const METRIC = /\/km\b|s\/km|km\/h|°C|(?<![/\w])kg\b|\/100 m\b|\d km\b|\d m\b|m\/beat/
+  const metricReasons = JSON.stringify((await detail(T.id)).verdict.reasons)
+  const plan = await api('/api/users/alex/ambient')
+  const titles = [plan.today_workout, ...(plan.upcoming ?? []), ...(plan.plan_week?.days ?? []).flatMap(d => d.workouts ?? [])]
+    .filter(Boolean).flatMap(w => [w.title, w.name, w.description]).filter(Boolean)
+  const leftovers = async (pg) => {
+    let s = await pg.locator('body').innerText()
+    for (const x of titles) s = s.split(x).join('')
+    return s.split('\n').filter(l => METRIC.test(l))
+  }
+  p = await newPage(true)
+  await p.goto(`${ROOT}me`)
+  const unitBtn = name => p.getByRole('radiogroup', { name: 'Units' }).getByRole('radio', { name: new RegExp(`^${name}`) })
+  await unitBtn('Metric').waitFor()
+  check('metric by default', await unitBtn('Metric').getAttribute('aria-checked') === 'true'
+    && (await api('/api/users/alex/units')).units === 'metric')
+  await unitBtn('Imperial').click()
+  await p.waitForFunction(() => document.querySelector('[aria-label=Units] [aria-checked=true]')?.textContent?.startsWith('Imperial'))
+  check('switching to imperial is saved, for alex only', (await api('/api/users/alex/units')).units === 'imperial'
+    && (await api('/api/users/sam/units')).units === 'metric')
+  const swim = (await api('/api/users/alex/sessions?sport=swimming&limit=1'))[0]
+  const gym = (await api('/api/users/alex/sessions?sport=strength&limit=1'))[0]
+  const phonePages = ['', 'trends', 'trends/sport/running', 'trends/sport/swimming', 'trends/sport/strength', `session/${encodeURIComponent(T.id)}`,
+                      `session/${encodeURIComponent(warm.id)}`, `session/${encodeURIComponent(outside.id)}`,
+                      ...[swim, gym].filter(Boolean).map(s => `session/${encodeURIComponent(s.id)}`)]
+  let seenImperial = ''
+  for (const path of phonePages) {
+    await p.goto(ROOT + path)
+    await p.locator('.ph-page').waitFor()
+    await p.waitForLoadState('networkidle')
+    const bad = await leftovers(p)
+    seenImperial += await p.locator('body').innerText()
+    check(`phone /${decodeURIComponent(path)} has no metric units`, !bad.length, bad.join(' | '))
+  }
+  check('… and shows miles, °F and pounds', /\/mi\b/.test(seenImperial) && /°F/.test(seenImperial) && /\blb\b/.test(seenImperial)
+    && /\/100 ?yd/.test(seenImperial), seenImperial.slice(0, 200))
+  await p.close()
+
+  p = await newPage(false)
+  await api('/api/wall/select', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: 'alex' }) })
+  const wallPages = ['', `session/${encodeURIComponent(T.id)}`, `session/${encodeURIComponent(warm.id)}`,
+                     ...[swim, gym].filter(Boolean).map(s => `session/${encodeURIComponent(s.id)}`),
+                     'u/alex/sport/running', 'u/alex/sport/swimming', 'u/alex/sport/strength', 'u/alex/health/weight', 'u/alex/load']
+  for (const path of wallPages) {
+    await p.goto(ROOT + path)
+    await p.locator('.main').waitFor()
+    await p.waitForLoadState('networkidle')
+    const bad = await leftovers(p)
+    check(`wall /${decodeURIComponent(path)} has no metric units`, !bad.length, bad.join(' | '))
+  }
+  await p.goto(`${ROOT}u/sam/sport/running`)
+  await p.getByText(/Am I improving/).waitFor()
+  await p.waitForLoadState('networkidle')
+  check('sam (metric) still sees km on the same wall', /\/km/.test(await p.locator('body').innerText()))
+  await p.close()
+
+  p = await newPage(true)
+  await p.goto(`${ROOT}me`)
+  await unitBtn('Metric').click()
+  await p.waitForFunction(() => document.querySelector('[aria-label=Units] [aria-checked=true]')?.textContent?.startsWith('Metric'))
+  check('switching back to metric gives the same verdict as before',
+    (await api('/api/users/alex/units')).units === 'metric'
+      && JSON.stringify((await detail(T.id)).verdict.reasons) === metricReasons)
   await p.close()
 } finally {
   await browser.close()

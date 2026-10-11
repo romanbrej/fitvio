@@ -28,6 +28,7 @@ Your data and logins stay on the host in `./data` and `./config`. They are mount
 - **Logs:** `docker compose logs -f sync` (or `web`).
 - **Build it yourself instead:** clone the repository and run `docker compose up -d --build`.
 - **Rollback:** put `FITVIO_TAG=sha-<commit>` in `.env`, then `docker compose up -d`. Remove it again to follow `latest`.
+- **Miles, °F and pounds:** put `FITVIO_UNITS=imperial` in `.env`, then `docker compose up -d`. That's the default for everyone; each person can still pick their own on the phone (Me → Units). Everything is stored in metric, so switching back and forth is safe.
 - **Only on your LAN address:** the port is published on IPv4 only. To listen on one address, put `FITVIO_BIND=<server-ip>` in `.env` — only if that IP is fixed (a DHCP reservation in your router), otherwise the dashboard stops answering when it changes.
 
 ### Updates

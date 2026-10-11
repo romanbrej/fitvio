@@ -3,23 +3,14 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from .. import units
 from ..analytics import load as load_model
-from .base import MIN_SIMILAR, MetricSpec, SportModel, comparable
-
-
-def fmt_pace_km(speed: float) -> str:
-    if not speed or speed <= 0:
-        return "—"
-    s = 1000 / speed
-    return f"{int(s // 60)}:{int(round(s % 60)):02d} /km"
-
-
-def fmt_pace_100(sec: float) -> str:
-    return f"{int(sec // 60)}:{int(round(sec % 60)):02d} /100m"
+from .base import JUDGED, MIN_SIMILAR, MetricSpec, SportModel, comparable
 
 
 def fmt_num(dp: int, unit: str = ""):
-    return lambda v: f"{v:.{dp}f}{unit}"
+    """A number whose unit is the same in metric and imperial (%, bpm, W)."""
+    return lambda v, u=None: f"{v:.{dp}f}{unit}"
 
 
 def _adj(key: str):
@@ -36,8 +27,8 @@ class RunningModel(SportModel):
     sport = "running"
     primary = "ef_adj"
     metrics = [
-        MetricSpec("ef_adj", "Aerobic efficiency", +1, 0.45, fmt_num(2, " m/beat")),
-        MetricSpec("speed_at_ref_hr", "Pace at fixed HR (weather-adj.)", +1, 0.35, fmt_pace_km,
+        MetricSpec("ef_adj", "Aerobic efficiency", +1, 0.45, units.per_beat),
+        MetricSpec("speed_at_ref_hr", "Pace at fixed HR (weather-adj.)", +1, 0.35, units.pace,
                    get=_adj("speed_at_ref_hr")),
         MetricSpec("decoupling", "HR drift", -1, 0.20, fmt_num(1, " %"), mode="abs", noise=1.5, get=_drift),
     ]
@@ -45,14 +36,14 @@ class RunningModel(SportModel):
     # intervals: only the work reps count — the recovery jogs would dilute pace and efficiency,
     # and HR drift across reps is noise
     interval_metrics = [
-        MetricSpec("work_speed", "Rep pace (weather-adj.)", +1, 0.4, fmt_pace_km, get=_adj("work_speed")),
-        MetricSpec("work_ef", "Rep efficiency", +1, 0.4, fmt_num(2, " m/beat"), get=_adj("work_ef")),
+        MetricSpec("work_speed", "Rep pace (weather-adj.)", +1, 0.4, units.pace, get=_adj("work_speed")),
+        MetricSpec("work_ef", "Rep efficiency", +1, 0.4, units.per_beat, get=_adj("work_ef")),
         MetricSpec("hr_recovery", "HR recovery between reps", +1, 0.2, fmt_num(0, " bpm"), mode="abs", noise=2.0),
     ]
     # short reps: HR can't catch up within a rep, so pace per beat and HR drop say nothing —
     # judge the pace and how well it held from the first to the last reps
     short_interval_metrics = [
-        MetricSpec("work_speed", "Rep pace (weather-adj.)", +1, 0.6, fmt_pace_km, get=_adj("work_speed")),
+        MetricSpec("work_speed", "Rep pace (weather-adj.)", +1, 0.6, units.pace, get=_adj("work_speed")),
         MetricSpec("rep_fade", "Pace held across reps", -1, 0.4, fmt_num(1, " %"), mode="abs", noise=2.0),
     ]
     SHORT_REP_S = 120
@@ -140,7 +131,7 @@ class SwimmingModel(SportModel):
     sport = "swimming"
     primary = "pace_100m_s"
     metrics = [
-        MetricSpec("pace_100m_s", "Pace per 100 m", -1, 0.6, fmt_pace_100),
+        MetricSpec("pace_100m_s", "Swim pace", -1, 0.6, units.swim_pace),  # per 100 m or 100 yd
         MetricSpec("swolf", "SWOLF", -1, 0.4, fmt_num(0), mode="abs", noise=1.0),
     ]
 
@@ -179,8 +170,8 @@ class StrengthModel(SportModel):
             row = {"key": ex, "label": cur.get("label") or ex.replace("_", " ").title(), "value": cur.get("e1rm"),
                    "baseline": max(prev) if prev else None, "delta": None, "delta_pct": None, "z": None,
                    "weight": 1.0, "better": 1, "n": len(prev),
-                   "value_fmt": f"{cur['e1rm']:.1f} kg e1RM" if cur.get("e1rm") else "—",
-                   "baseline_fmt": f"{max(prev):.1f} kg" if prev else "—",
+                   "value_fmt": f"{units.weight(cur['e1rm'], units.METRIC)} e1RM" if cur.get("e1rm") else "—",
+                   "baseline_fmt": units.weight(max(prev), units.METRIC) if prev else "—",
                    "sets": cur.get("sets"), "volume": cur.get("volume"),
                    "all_time_best": max((((h.get("features") or {}).get("exercises") or {}).get(ex, {}).get("e1rm") or 0)
                                         for h in same) if same else None}
@@ -203,16 +194,34 @@ class StrengthModel(SportModel):
         verdict = "better" if score >= 0.34 else "worse" if score <= -0.34 else "in_line"
         headline = {"better": "Stronger than your recent sessions", "worse": "Weaker than your recent sessions",
                     "in_line": "Strength held"}[verdict]
-        reasons = []
-        for d in sorted(judged, key=lambda d: -abs(d["delta_pct"] or 0))[:3]:
-            word = "up" if d["delta_pct"] > 0 else "down" if d["delta_pct"] < 0 else "equal"
-            reasons.append(f"{d['label']}: {d['value_fmt']}, {word} {abs(d['delta_pct']):.1f}% vs best of last {d['n']}")
-        for d in deltas:
-            if d["value"] and d.get("all_time_best") and d["value"] > d["all_time_best"]:
-                reasons.append(f"New personal record: {d['label']} {d['value']:.1f} kg e1RM")
+        reasons = self.lift_reasons(deltas)
         confidence = "high" if len(judged) >= 3 else "medium"
         return self._result(session, verdict, confidence, score, headline, reasons, deltas, context, trend,
                             sorted(used_ids))
+
+    @staticmethod
+    def lift_reasons(deltas: list[dict], u: str = units.METRIC) -> list[str]:
+        """The biggest e1RM changes, then new personal records. `value_fmt` must already be in `u`."""
+        judged = [d for d in deltas if d["z"] is not None]
+        out = []
+        for d in sorted(judged, key=lambda d: -abs(d["delta_pct"] or 0))[:3]:
+            word = "up" if d["delta_pct"] > 0 else "down" if d["delta_pct"] < 0 else "equal"
+            out.append(f"{d['label']}: {d['value_fmt']}, {word} {abs(d['delta_pct']):.1f}% vs best of last {d['n']}")
+        for d in deltas:
+            if d["value"] and d.get("all_time_best") and d["value"] > d["all_time_best"]:
+                out.append(f"New personal record: {d['label']} {units.weight(d['value'], u)} e1RM")
+        return out
+
+    def render(self, verdict, session, u):
+        """Lifts: every number is a weight in the deltas (e1RM), so the deltas and reasons are written again."""
+        v = dict(verdict)
+        v["deltas"] = [{**d, "value_fmt": f"{units.weight(d['value'], u)} e1RM" if d.get("value") else "—",
+                        "baseline_fmt": units.weight(d["baseline"], u) if d.get("baseline") else "—"}
+                       for d in v.get("deltas") or []]
+        if v.get("verdict") in JUDGED:
+            v["reasons"] = self.lift_reasons(v["deltas"], u)
+        v["context"] = self.render_context(v.get("context"), session, u)
+        return v
 
 
 class GenericModel(SportModel):

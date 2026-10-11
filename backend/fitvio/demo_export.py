@@ -25,6 +25,7 @@ DEMO_USERS = [
 PMC_DAYS = (42, 90, 180, 365)
 HEALTH_DAYS = (7, 30, 90, 180, 365)
 PAGE = 500  # the API's largest page
+IMPERIAL_DIR = "imperial"  # the text in miles, °F and lb: what the demo's units switch reads instead
 
 # Never publish anything that looks like a home network, an email address or a local path.
 LEAK_PATTERNS = [re.compile(p) for p in (r"192\.168\.", r"\b10\.\d+\.\d+\.\d+\b", r"[\w.+-]+@[\w-]+\.[\w.]+",
@@ -63,7 +64,7 @@ def export(out_dir: Path, days: int = 150, deny: list[str] | None = None) -> dic
 def _export(out_dir: Path, days: int) -> dict[str, int]:
     from fastapi.testclient import TestClient
 
-    from . import db
+    from . import db, units
     from .api import main as api
     from .config import load_config
     from .demo import generate
@@ -82,13 +83,14 @@ def _export(out_dir: Path, days: int) -> dict[str, int]:
     if out_dir.exists():
         shutil.rmtree(out_dir)
     counts = {"files": 0, "sessions": 0}
+    all_sessions: dict[str, list[dict]] = {}
 
-    def save(path: str, data=None):
+    def save(path: str, data=None, folder: str = ""):
         if data is None:
             r = client.get(path)
             r.raise_for_status()
             data = r.json()
-        f = out_dir / file_for(path)
+        f = out_dir / folder / file_for(path)
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
         counts["files"] += 1
@@ -98,7 +100,7 @@ def _export(out_dir: Path, days: int) -> dict[str, int]:
         save(path)
     for u in cfg.users:
         base = f"/api/users/{u.id}"
-        for path in ("ambient", "profile", "validation", "weather", "heat", "wind"):
+        for path in ("ambient", "profile", "validation", "weather", "heat", "wind", "units"):
             save(f"{base}/{path}")
         for d in PMC_DAYS:
             save(f"{base}/pmc?days={d}")
@@ -111,6 +113,22 @@ def _export(out_dir: Path, days: int) -> dict[str, int]:
         for s in sessions:
             save(f"/api/sessions/{s['id']}")
         counts["sessions"] += len(sessions)
+        all_sessions[u.id] = sessions
+
+    # The same screens in imperial: only what the server writes as text differs (verdict reasons and notes,
+    # "What improved"); the demo reads these when someone switches units. A session keeps just those parts.
+    conn = db.connect(cfg.db_path)
+    try:
+        for u in cfg.users:
+            units.set_for_user(conn, u.id, units.IMPERIAL)
+    finally:
+        conn.close()
+    save("/api/wall", folder=IMPERIAL_DIR)
+    for u in cfg.users:
+        save(f"/api/users/{u.id}/ambient", folder=IMPERIAL_DIR)
+        for s in all_sessions[u.id]:
+            full = client.get(f"/api/sessions/{s['id']}").raise_for_status().json()
+            save(f"/api/sessions/{s['id']}", {k: full.get(k) for k in ("verdict", "improvements")}, IMPERIAL_DIR)
     return counts
 
 

@@ -5,10 +5,11 @@ import sqlite3
 from datetime import date, datetime, timedelta
 from statistics import median
 
-from . import buddy, coach, db, improvements, profile
+from . import buddy, coach, db, improvements, profile, units
 from .analytics import load as load_model
 from .analytics import physio
 from .config import AppConfig
+from .models.sports import model_for
 from .pipeline import performance_sessions, user_sessions
 
 
@@ -49,17 +50,21 @@ def dismiss(conn: sqlite3.Connection, session_id: str, cfg: AppConfig) -> None:
     conn.commit()
 
 
-def session_card(conn: sqlite3.Connection, session_id: str, sessions: list[dict] | None = None) -> dict | None:
-    """The session with its verdict and "What improved". `sessions`: the person's sessions, if already loaded."""
+def session_card(conn: sqlite3.Connection, session_id: str, sessions: list[dict] | None = None,
+                 u: str | None = None) -> dict | None:
+    """The session with its verdict and "What improved", their text in `u` (metric or imperial; default: the
+    person's choice). `sessions`: the person's sessions, if already loaded."""
     s = db.row_to_dict(conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone())
     if not s:
         return None
-    s["verdict"] = db.row_to_dict(conn.execute("SELECT * FROM verdicts WHERE session_id = ?", (session_id,)).fetchone())
-    return improvements.attach(conn, s, sessions)
+    u = u or units.for_user(conn, s["user_id"])
+    v = db.row_to_dict(conn.execute("SELECT * FROM verdicts WHERE session_id = ?", (session_id,)).fetchone())
+    s["verdict"] = model_for(s["sport"]).render(v, s, u) if v else None
+    return improvements.attach(conn, s, sessions, u)
 
 
-def session_detail(conn: sqlite3.Connection, session_id: str) -> dict | None:
-    s = session_card(conn, session_id)
+def session_detail(conn: sqlite3.Connection, session_id: str, u: str | None = None) -> dict | None:
+    s = session_card(conn, session_id, u=u)
     if not s:
         return None
     st = conn.execute("SELECT data FROM session_streams WHERE session_id = ?", (session_id,)).fetchone()
@@ -357,7 +362,9 @@ def strength_status(sessions: list[dict], today: date, days: int = 42) -> dict:
                        for i, n in enumerate(reversed(weeks))]}
 
 
-def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
+def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str, u: str | None = None) -> dict:
+    """`u`: metric or imperial for the text in it (default: the person's choice)."""
+    u = u or units.for_user(conn, user_id)
     sessions = user_sessions(conn, user_id)
     today = date.today()
     series = load_model.pmc(load_model.daily_loads(sessions), None, today) if sessions else []
@@ -368,7 +375,7 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
         """SELECT s.id, s.start_time FROM verdicts v JOIN sessions s ON s.id = v.session_id
            WHERE s.user_id = ? ORDER BY s.start_time DESC LIMIT 1""", (user_id,)).fetchone()
     last_workout = None
-    card = session_card(conn, last["id"], sessions) if last and _is_today(last["start_time"]) else None
+    card = session_card(conn, last["id"], sessions, u) if last and _is_today(last["start_time"]) else None
     if card:
         v = card["verdict"]
         last_workout = {k: card[k] for k in ("id", "name", "sport", "session_type", "start_time", "improvements")}
@@ -404,7 +411,7 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
         if r:
             t = db.row_to_dict(r)
             trends[sport] = {"last_session": t["id"], "last_time": t["start_time"], "last_verdict": t["verdict"],
-                             "metric": t["trend"].get("trend_metric"), "pct_per_week": t["trend"].get("trend_pct_per_week"),
+                             "metric": model_for(sport).primary_label() or t["trend"].get("trend_metric"), "pct_per_week": t["trend"].get("trend_pct_per_week"),
                              "points": t["trend"].get("trend_points", [])}
     if trends:
         prof = profile.stored(conn, user_id)
@@ -439,6 +446,7 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> dict:
     streak = coach.week_streak(sessions, today)
     return {
         "user_id": user_id,
+        "units": u,
         "source": source,
         "pmc": series[-182:],
         "form": form_now,

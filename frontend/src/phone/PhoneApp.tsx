@@ -5,6 +5,7 @@ import { api } from '../api'
 import { DEMO } from '../demo/demo'
 import type { Ambient, AppConfig, Job } from '../api'
 import { ConnectForm } from '../components/ConnectForm'
+import { setUnits } from '../units'
 import { meStore, PhoneContext } from './ctx'
 import { Offline } from './screens/Offline'
 import { Picker } from './screens/Picker'
@@ -116,11 +117,14 @@ export function PhoneApp() {
   }
   if (!me) return <Picker users={config.users} onPick={setMe} />
   if (!ambient && stale) return <Offline onRetry={refresh} />
+  // every number in this person's units (units.ts), set before the screens below render
+  const units = ambient?.units ?? me.units ?? 'metric'
+  setUnits(units)
 
   return (
     <PhoneContext.Provider value={{ config, me, ambient, stale, syncJob, syncNow, refresh, reloadConfig, setMe }}>
       <div className="ph">
-        <main className="ph-page">
+        <main className="ph-page" key={units}>
           {ambient ? <Outlet /> : <div className="ph-boot">Loading…</div>}
         </main>
         {stale && <div className="ph-stale" role="status">Server not reachable — showing the last data</div>}

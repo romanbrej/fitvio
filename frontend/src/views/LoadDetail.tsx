@@ -4,6 +4,7 @@ import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, Referenc
 import { api } from '../api'
 import type { Ambient } from '../api'
 import { formState, num, shortDay, signed } from '../format'
+import { weight } from '../units'
 import { useFetch } from '../useFetch'
 import { weekState, weeklyLoads } from '../weeks'
 import './Detail.css'
@@ -151,7 +152,7 @@ export function LoadDetail() {
               {([['max_hr', 'Max HR', ' bpm'], ['rest_hr', 'Resting HR', ' bpm'], ['lthr', 'Threshold HR', ' bpm'], ['ftp', 'FTP', ' W'], ['weight_kg', 'Weight', ' kg'], ['sex', 'Sex', '']] as const).map(([k, label, unit]) => (
                 <div key={k}>
                   <div className="k">{label}</div>
-                  <div className="v num">{prof[k].value == null ? '—' : typeof prof[k].value === 'number' ? `${Math.round(prof[k].value as number)}${unit}` : String(prof[k].value)}</div>
+                  <div className="v num">{prof[k].value == null ? '—' : typeof prof[k].value === 'number' ? (k === 'weight_kg' ? weight(prof[k].value as number, 0) : `${Math.round(prof[k].value as number)}${unit}`) : String(prof[k].value)}</div>
                   <div className="faint" style={{ fontSize: 13 }}>{prof[k].source}</div>
                 </div>
               ))}

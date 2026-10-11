@@ -1,10 +1,12 @@
 import { DEMO } from './demo/demo'
 import { demoGet, demoSend } from './demo/demoApi'
+import type { Units } from './units'
 
 export type Sport = 'running' | 'cycling' | 'swimming' | 'strength' | 'other'
 export type VerdictKind = 'better' | 'in_line' | 'worse' | 'not_comparable' | 'load_only' | 'excluded'
 
-export interface User { id: string; name: string; color: string; initials: string }
+/** `units`: this person's metric or imperial (an older server without it: metric) */
+export interface User { id: string; name: string; color: string; initials: string; units?: Units }
 export interface AppConfig {
   users: User[]
   wall: { idle_return_seconds: number; night_start: string; night_end: string; verdict_minutes: number }
@@ -182,6 +184,8 @@ export interface ActivityCheck {
 }
 
 export interface Ambient {
+  /** the units the server wrote this person's text in (verdict reasons, "What improved") */
+  units?: Units
   /** the period this person picked for "Am I improving?" (days), null = each sport's default */
   trend_period?: number | null
   /** where this person's data comes from; Intervals.icu has no Body Battery */
@@ -322,6 +326,10 @@ export const api = {
   windSetting: (user: string) => get<{ wind: boolean }>(`/api/users/${seg(user)}/wind`),
   setWindSetting: (user: string, wind: boolean) =>
     send<{ wind: boolean; recomputed: number }>('PUT', `/api/users/${seg(user)}/wind`, { wind }),
+  /** km, °C, kg (metric) or mi, °F, lb (imperial) for this person; `default` is the install's (FITVIO_UNITS) */
+  unitsSetting: (user: string) => get<{ units: Units; default: Units }>(`/api/users/${seg(user)}/units`),
+  setUnitsSetting: (user: string, units: Units) =>
+    send<{ units: Units; default: Units }>('PUT', `/api/users/${seg(user)}/units`, { units }),
   activityCheck: () => get<ActivityCheck>('/api/settings/activity-check'),
   setActivityCheck: (enabled: boolean) => post<ActivityCheck>('/api/settings/activity-check', { enabled }),
   buddySettings: () => get<BuddySettings>('/api/settings/buddy'),
