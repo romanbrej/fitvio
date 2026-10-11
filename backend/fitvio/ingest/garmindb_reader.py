@@ -81,7 +81,7 @@ class GarminDbReader:
             return False
         return bool(row and "statute" in str(row["value"]).lower())  # GarminDB's own fuzzy match
 
-    def _m(self, v):
+    def _ft_m(self, v):
         """GarminDB's short distances (ascent, altitude): m, or ft for a statute account."""
         return v * M_PER_FT if v is not None and self.statute else v
 
@@ -165,7 +165,7 @@ class GarminDbReader:
             distance_m=self._km_m(a["distance"]) if a.get("distance") else None,
             avg_hr=a.get("avg_hr"),
             max_hr=a.get("max_hr"),
-            ascent_m=self._m(a["ascent"]) if a.get("ascent") is not None else fs.get("ascent"),
+            ascent_m=self._ft_m(a["ascent"]) if a.get("ascent") is not None else fs.get("ascent"),
             # Heat comes from Garmin's weather for the activity, not the wrist sensor (body heat skews
             # it, and GarminDB stores the FIT "no value" marker 127 as if it were °C).
             avg_temp_c=weather["temp_c"] if weather else None,
@@ -194,7 +194,7 @@ class GarminDbReader:
                 hr=r["hr"],
                 speed=self._kph_ms(r["speed"]),
                 distance=self._km_m(r["distance"]),
-                altitude=self._m(r["altitude"]),
+                altitude=self._ft_m(r["altitude"]),
                 cadence=r["cadence"],
                 temperature=plausible_temp(self._c(r["temperature"])),
             ))
