@@ -147,3 +147,51 @@ def test_update_reprocesses_newest_first_and_shows_the_progress(tmp_path, monkey
     assert progress[0] == {"done": 0, "total": 30} and progress[25] == {"done": 25, "total": 30}
     assert wall.sync_info(conn, AppConfig(users=[user]), "u")["reprocessing"] is None  # done: back to "Synced …"
     assert {r[0] for r in conn.execute("SELECT distance_m FROM sessions")} == {9511}
+
+
+def test_an_interrupted_reprocess_does_not_leave_the_label_behind(tmp_path, monkeypatch):
+    """A reprocess for a new max HR that crashes halfway isn't repeated by the next sync (the version is
+    current and the HR didn't move again): that sync must still clear the "Updating history" progress."""
+    from fitvio import wall
+    from fitvio.config import AppConfig
+
+    conn = db.connect(tmp_path / "app.db")
+    user = UserConfig(id="u", garmindb_config_dir=str(tmp_path / "cfg"), max_hr=190, rest_hr=50)
+    start = (datetime.datetime.now() - datetime.timedelta(days=2)).replace(microsecond=0)
+    act = ParsedActivity(activity_id="7", start_time=start, sport="running", name="Run", duration_s=2700,
+                         distance_m=8000, records=steady_records(minutes=45, hr=137))
+    pipeline.store_activity(conn, user, act)
+    db.set_state(conn, "analysis_version:u", pipeline.ANALYSIS_VERSION)
+    crash = [True]
+
+    class FakeReader:
+        def __init__(self, base):
+            self.base, self.db_dir, self.available = base, base, True
+
+        def activity_ids(self, since):
+            return [("7", str(start))]
+
+        def changed_activity_ids(self, since):
+            return set()
+
+        def load_activity(self, aid):
+            if crash[0]:
+                raise RuntimeError("corrupt file")
+            return act
+
+        def health_days(self, since):
+            return []
+
+    import fitvio.ingest.garmindb_reader as reader_mod
+    monkeypatch.setattr(reader_mod, "GarminDbReader", FakeReader)
+    monkeypatch.setattr(reader_mod, "base_dir_from_config", lambda d: tmp_path)
+    monkeypatch.setattr(pipeline.profile, "refresh", lambda conn, user, base: True)  # a new max HR
+    with pytest.raises(RuntimeError):
+        pipeline.ingest_from_garmindb(conn, user)
+    assert wall.sync_info(conn, AppConfig(users=[user]), "u")["reprocessing"] is None  # cleared on the way out
+
+    db.set_state(conn, pipeline.reprocess_key("u"), "25/400")  # killed outright (restart): nothing ran
+    crash[0] = False
+    monkeypatch.setattr(pipeline.profile, "refresh", lambda conn, user, base: False)
+    assert pipeline.ingest_from_garmindb(conn, user)["reprocessed"] is False
+    assert wall.sync_info(conn, AppConfig(users=[user]), "u")["reprocessing"] is None
