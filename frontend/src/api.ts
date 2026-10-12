@@ -258,9 +258,10 @@ async function post<T = void>(path: string, body: unknown): Promise<T> {
   return send<T>('POST', path, body)
 }
 
-async function send<T>(method: 'POST' | 'PUT', path: string, body: unknown): Promise<T> {
+async function send<T>(method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
   if (DEMO) return demoSend<T>(path, body)
-  const r = await fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const r = await fetch(path, body === undefined ? { method }
+    : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   if (!r.ok) {
     let detail = `${r.status}`
     try {
@@ -283,6 +284,8 @@ export const api = {
   select: (user_id: string) => post('/api/wall/select', { user_id }),
   dismiss: (session_id: string) => post('/api/wall/dismiss', { session_id }),
   session: (id: string) => get<SessionDetail>(`/api/sessions/${seg(id)}`),
+  /** remove a person and all their data; `pending`: a sync of theirs runs, the data goes when it ends */
+  removePerson: (user: string) => send<{ removed: string; pending: boolean }>('DELETE', `/api/users/${seg(user)}`),
   /** leave a session out of comparisons (or bring it back); recomputes the later verdicts */
   setBaseline: (id: string, excluded: boolean) => send<SessionDetail>('PUT', `/api/sessions/${seg(id)}/baseline`, { excluded }),
   /** `since` (YYYY-MM-DD): only sessions from that day on */

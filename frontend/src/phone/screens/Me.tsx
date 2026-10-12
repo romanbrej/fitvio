@@ -7,6 +7,7 @@ import type { Account, ActivityCheck, BuddySettings, HeatResponse } from '../../
 import { ANIMALS, Buddy } from '../../components/Buddy'
 import type { Animal } from '../../components/Buddy'
 import { HrSettings } from '../../components/HrSettings'
+import { RemovePerson } from '../../components/RemovePerson'
 import { ago } from '../../format'
 import { useUnits } from '../../units'
 import type { Units } from '../../units'
@@ -227,6 +228,12 @@ export function Me() {
           </div>
         )}
         <Link to="/me/connect" className="ph-list-row ph-add"><Plus size={22} aria-hidden />Add a person</Link>
+      </Card>
+
+      <Card>
+        <span className="ph-label">Remove</span>
+        <RemovePerson person={{ id: me.id, name: me.name, source: myAccount?.source }} phone label={`Remove ${me.name} from Fitvio`}
+                      onRemoved={() => { setMe(null); reloadConfig() }} />
       </Card>
 
       <p className="ph-note"><Wifi size={18} aria-hidden />Fitvio runs on your home server and only works on your home Wi-Fi. Your logins and health data never leave your house.</p>

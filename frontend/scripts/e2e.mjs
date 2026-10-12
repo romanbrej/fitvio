@@ -4,7 +4,8 @@
 // Covers leaving a session out of comparisons (#19) on the wall and the phone: confirm, recalculated
 // verdicts, persistence, restore, a refused change. And the weather (#18): the session's conditions with
 // their source, and the per-person Open-Meteo switch; the learned heat response (#18 part 2) on runs and
-// rides and its switch. Imperial units (#27) on every screen of one person. The demo's lock is checked in
+// rides and its switch. Imperial units (#27) on every screen of one person. Removing a person (#34) from the
+// wall and from their own phone, a refused remove, and what the other screens do. The demo's lock is checked in
 // demo-check.mjs.
 import { spawn, spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -42,7 +43,7 @@ const api = async (path, init) => (await fetch(ROOT + path.replace(/^\//, ''), i
 const detail = id => api(`/api/sessions/${encodeURIComponent(id)}`)
 const { chromium } = await import('playwright')
 const browser = await chromium.launch()
-async function newPage(phone, me = 'alex') {
+async function newPage(phone, me = 'alex', removed = false) {
   const ctx = await browser.newContext(phone
     ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }
     : { viewport: { width: 1280, height: 800 } })
@@ -51,7 +52,9 @@ async function newPage(phone, me = 'alex') {
   const tag = phone ? 'phone' : 'wall'
   p.on('pageerror', e => pageErrors.push(`${tag}: ${e.message}`))
   // the refused change below is a deliberate 403
-  p.on('console', m => m.type() === 'error' && !m.text().includes('403') && pageErrors.push(`${tag}: ${m.text()}`))
+  // …and a removed person's own phone may still ask for their data once (404) before it notices
+  p.on('console', m => m.type() === 'error' && !m.text().includes('403') && !(removed && m.text().includes('404'))
+    && pageErrors.push(`${tag}: ${m.text()}`))
   return p
 }
 
@@ -401,6 +404,54 @@ try {
   check('switching back to metric gives the same verdict as before',
     (await api('/api/users/alex/units')).units === 'metric'
       && JSON.stringify((await detail(T.id)).verdict.reasons) === metricReasons)
+  await p.close()
+
+  console.log('— removing a person (#34)')
+  const people = async () => (await api('/api/config')).users.map(u => u.id).join(',')
+  const status = async path => (await fetch(ROOT + path.replace(/^\//, ''))).status
+  const samPhone = await newPage(true, 'sam', true)  // Sam's own phone stays open meanwhile
+  await samPhone.goto(`${ROOT}me`)
+  await samPhone.getByRole('heading', { name: 'Sam' }).waitFor()
+  p = await newPage(false)
+  await p.goto(`${ROOT}accounts`)
+  const removeSam = () => p.getByRole('button', { name: 'Remove Sam', exact: true })
+  await removeSam().click()
+  const confirmSam = p.getByRole('group', { name: 'Remove Sam' })
+  check('removing asks first and says what goes', /can't be undone/.test(await confirmSam.innerText()))
+  await confirmSam.getByRole('button', { name: 'Cancel' }).click()
+  await removeSam().waitFor()
+  check('… and Cancel keeps everyone', await people() === 'alex,sam')
+
+  await p.route('**/api/users/sam', r => r.request().method() === 'DELETE'
+    ? r.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ detail: 'changes are only allowed from your home network' }) })
+    : r.continue())
+  await removeSam().click()
+  await confirmSam.getByRole('button', { name: 'Remove', exact: true }).click()
+  await confirmSam.getByRole('alert').waitFor()
+  check('a refused remove shows why and removes nobody', (await confirmSam.getByRole('alert').innerText()).includes('home network')
+    && await people() === 'alex,sam')
+  await p.unroute('**/api/users/sam')
+
+  await confirmSam.getByRole('button', { name: 'Remove', exact: true }).click()
+  await confirmSam.waitFor({ state: 'detached' })
+  check('Remove takes the person off the wall\'s accounts', await people() === 'alex'
+    && !(await p.locator('.detail').innerText()).includes('Sam'), (await p.locator('.detail').innerText()).split('\n').filter(l => l.includes('Sam')).join(' / '))
+  check('… with their data', await status('/api/users/sam/sessions') === 404 && await status('/api/users/sam/ambient') === 404)
+  check('the wall goes on with the other person', (await api('/api/wall')).user_id === 'alex')
+  await samPhone.getByRole('heading', { name: 'Who are you?' }).waitFor({ timeout: 15000 })
+  check('Sam\'s open phone goes back to the picker, not "offline"',
+    !(await samPhone.locator('body').innerText()).includes('Sam'))
+  await samPhone.close()
+  await p.close()
+
+  p = await newPage(true, 'alex')
+  await p.goto(`${ROOT}me`)
+  await p.getByRole('button', { name: 'Remove Alex from Fitvio' }).click()
+  await p.getByRole('group', { name: 'Remove Alex' }).getByRole('button', { name: 'Remove', exact: true }).click()
+  await p.getByRole('heading', { name: 'Welcome to Fitvio' }).waitFor()
+  check('the last person removes themselves from their phone', await people() === ''
+    && await p.evaluate(() => localStorage.getItem('fitvio.me')) === null)
+  check('the wall is back at setup', (await api('/api/wall')).mode === 'setup')
   await p.close()
 } finally {
   await browser.close()

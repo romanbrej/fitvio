@@ -1,0 +1,15 @@
+/* Removing a person (RemovePerson.tsx): a quiet button, and a confirm that says what goes. */
+.remove-person { color: var(--muted); }
+.remove-person:hover:not(:disabled), .remove-person:focus-visible { color: var(--worse); }
+
+.remove-confirm {
+  display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: var(--radius-sm);
+  background: var(--surface-2); border: 1px solid var(--worse); line-height: 1.4;
+  scroll-margin: 24px 0 120px;  /* clear of the phone's tab bar when it scrolls into view */
+}
+.remove-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.remove-actions button { min-height: 44px; }
+.remove-confirm .danger { background: var(--worse); border-color: var(--worse); color: #1a0606; font-weight: 600; }
+.remove-confirm .spin { animation: remove-spin 1s linear infinite; }
+@keyframes remove-spin { to { transform: rotate(360deg); } }
+.remove-error { margin: 0; font-size: 15px; color: var(--worse); }

@@ -253,6 +253,10 @@ def watch_loop(conn: sqlite3.Connection) -> None:
     next_full = 0.0  # a full sync right at start, like the old loop
     while True:
         cfg = load_config()  # people connected in the UI meanwhile are included
+        if cfg.removing:  # removed while their sync ran: delete their data now that it's done
+            from ..removal import purge_pending
+            purge_pending(cfg)
+            cfg = load_config()
         if time.monotonic() >= next_full:
             full_sync_all(conn, cfg)
             next_full = time.monotonic() + FULL_SYNC_INTERVAL_S

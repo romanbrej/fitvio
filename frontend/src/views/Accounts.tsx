@@ -9,6 +9,7 @@ import { ANIMALS, Buddy } from '../components/Buddy'
 import type { Animal } from '../components/Buddy'
 import { ConnectForm } from '../components/ConnectForm'
 import { HrSettings } from '../components/HrSettings'
+import { RemovePerson } from '../components/RemovePerson'
 import { ago } from '../format'
 import { uiScale } from '../uiScale'
 import type { Units } from '../units'
@@ -173,6 +174,7 @@ export function Accounts() {
               <button className="btn" style={{ marginTop: 12 }} onClick={() => nav(`/u/${a.id}/validation`)}>
                 Verdict check <ChevronRight size={18} />
               </button>
+              <div style={{ marginTop: 12 }}><RemovePerson person={a} onRemoved={connected} /></div>
             </div>
           )
         })}
