@@ -33,7 +33,7 @@ def client(tmp_path, monkeypatch):
             raise RuntimeError("invalid MFA code")
         return "Alex Runner"
 
-    def fake_sync(conn, user, full=False, timeout_s=0, on_line=None, on_step=None, quick=False):
+    def fake_sync(conn, user, full=False, timeout_s=0, on_line=None, on_step=None, quick=False, on_proc=None):
         on_step(2, 10, "hydration", "Hydration")
         on_line("Downloading activities: 100%")
         return True
@@ -96,6 +96,7 @@ def test_sync_now_reports_what_arrived(client, tmp_path, monkeypatch, new, messa
     from fitvio import db
     main.app.dependency_overrides[main.local_network_only] = lambda: None
     (tmp_path / "users.json").write_text(json.dumps({"users": [{"id": "alex", "garmindb_config_dir": "x/config"}]}))
+    (tmp_path / "x" / "config").mkdir(parents=True)
     main.reset_config()
     conn = db.connect(tmp_path / "app.db")  # an existing activity → this is a "latest" sync, not a first download
     conn.execute("INSERT INTO sessions (id, user_id, activity_id, sport, start_time) VALUES ('alex:1','alex','1','running','2026-09-01T07:00:00')")

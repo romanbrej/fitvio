@@ -56,13 +56,14 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False,
 
 
 def sync_user(conn: sqlite3.Connection, user: UserConfig, full: bool = False) -> tuple[bool, dict | None]:
-    since = None if full else changed_since(conn, user.id)  # before the sync moves it
-    ok = run_sync(conn, user, full=full)
-    try:
-        return ok, timed_ingest(conn, user, full=full, changed_since=since)
-    except RuntimeError as e:  # nothing downloaded yet
-        log.warning("%s: ingest skipped — %s", user.id, e)
-        return ok, None
+    with sync_lock(user):  # download and import: a removal waits for both (removal.py)
+        since = None if full else changed_since(conn, user.id)  # before the sync moves it
+        ok = run_sync(conn, user, full=full)
+        try:
+            return ok, timed_ingest(conn, user, full=full, changed_since=since)
+        except RuntimeError as e:  # nothing downloaded yet
+            log.warning("%s: ingest skipped — %s", user.id, e)
+            return ok, None
 
 
 def due(conn: sqlite3.Connection, user: UserConfig, now: datetime) -> bool:

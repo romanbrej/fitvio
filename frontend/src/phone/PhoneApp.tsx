@@ -65,8 +65,9 @@ export function PhoneApp() {
       setStale(false)
     } catch {
       setStale(true)
+      reloadConfig()  // removed meanwhile (#34)? then this phone goes back to the picker, not "offline"
     }
-  }, [myId])
+  }, [myId, reloadConfig])
 
   // after switching person, the old person's data is never shown
   const ambient = fetched?.user_id === myId ? fetched : null
@@ -76,12 +77,12 @@ export function PhoneApp() {
     refresh()
     const poll = setInterval(refresh, POLL_MS)
     const es = DEMO ? null : new EventSource('/api/events')  // a new verdict lands → refresh right away
-    es?.addEventListener('refresh', () => refresh())
+    es?.addEventListener('refresh', () => { refresh(); reloadConfig() })  // …or someone was added or removed
     // a phone sleeps a lot: catch up when it comes back
     const onVisible = () => { if (document.visibilityState === 'visible') refresh() }
     document.addEventListener('visibilitychange', onVisible)
     return () => { clearInterval(poll); es?.close(); document.removeEventListener('visibilitychange', onVisible) }
-  }, [myId, refresh])
+  }, [myId, refresh, reloadConfig])
 
   const setMe = useCallback((id: string | null) => {
     meStore.set(id)

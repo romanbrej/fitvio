@@ -30,7 +30,10 @@ def fresh_verdict(conn: sqlite3.Connection, cfg: AppConfig, now: datetime | None
         """SELECT v.*, s.start_time FROM verdicts v JOIN sessions s ON s.id = v.session_id
            WHERE s.start_time >= ? AND v.verdict != 'excluded'
            ORDER BY s.start_time DESC""", (cutoff,)).fetchall()
+    people = {u.id for u in cfg.users}  # not someone removed whose data is still being deleted
     for r in rows:
+        if r["user_id"] not in people:
+            continue
         shown = r["first_shown_at"]
         if shown is None or datetime.fromisoformat(shown) > now - timedelta(minutes=cfg.wall.verdict_minutes):
             return db.row_to_dict(r)

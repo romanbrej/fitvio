@@ -15,6 +15,8 @@ NOON = datetime(2026, 9, 29, 12, 0)
 def env(tmp_path):
     conn = db.connect(tmp_path / "app.db")
     users = [UserConfig(id=u, garmindb_config_dir=str(tmp_path / "garmindb" / u / "config")) for u in ("roman", "sam")]
+    for u in users:
+        u.garmindb_dir.mkdir(parents=True)  # made when they connect; the sync lock lives in there
     return conn, AppConfig(users=users, db_path=tmp_path / "app.db")
 
 

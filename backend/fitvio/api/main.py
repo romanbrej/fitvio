@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .. import accounts, buddy, db, heat_response, pipeline, profile, units, wall, weather
+from .. import accounts, buddy, config, db, heat_response, pipeline, profile, removal, units, wall, weather
 from ..analytics import load as load_model
 from ..config import PROJECT_ROOT, AppConfig, env, load_config
 from ..pipeline import user_sessions
@@ -88,6 +88,9 @@ def cfg() -> AppConfig:
     global _cfg
     if _cfg is None:
         _cfg = load_config()
+        if _cfg.removing:  # removed before a restart: finish deleting their data
+            import threading
+            threading.Thread(target=removal.purge_pending, name="purge", daemon=True).start()
     return _cfg
 
 
@@ -121,7 +124,8 @@ def get_config(c: AppConfig = Depends(cfg), cn=Depends(conn)):
 def get_wall(c: AppConfig = Depends(cfg), cn=Depends(conn)):
     if not c.users:
         return {"mode": "setup", "job": None}
-    if cn.execute("SELECT 1 FROM sessions LIMIT 1").fetchone() is None:
+    ids = [u.id for u in c.users]
+    if cn.execute(f"SELECT 1 FROM sessions WHERE user_id IN ({','.join('?' * len(ids))}) LIMIT 1", ids).fetchone() is None:
         # Connected, but the first download isn't finished: keep showing its progress, not an empty wall.
         job = next((j for j in (accounts.active_for(u.id) for u in c.users) if j), None)
         return {"mode": "setup", "job": job.public() if job else None, "user_id": c.users[0].id}
@@ -258,7 +262,10 @@ async def events(request: Request, c: AppConfig = Depends(cfg)):
             s = cn.execute("SELECT MAX(last_attempt) AS m FROM sync_status").fetchone()
             # someone switched units on the phone: the wall writes its text again
             u = cn.execute("SELECT GROUP_CONCAT(key || '=' || value) FROM wall_state WHERE key LIKE 'units:%'").fetchone()
-            return f"{v['m']}|{v['n']}|{s['m']}|{u[0]}"
+            # someone was added or removed: every screen picks up the new list of people
+            p = config.config_path()
+            people = p.stat().st_mtime_ns if p.exists() else 0
+            return f"{v['m']}|{v['n']}|{s['m']}|{u[0]}|{people}"
         finally:
             cn.close()
 
@@ -350,6 +357,21 @@ def connect_account(body: Connect, c: AppConfig = Depends(cfg)):
     except accounts.ConnectBusy as e:
         raise HTTPException(429, str(e)) from None
     return job.public()
+
+
+@app.delete("/api/users/{user_id}", dependencies=[Depends(local_network_only)])
+def remove_person(user_id: str, c: AppConfig = Depends(cfg)):
+    """Remove a person and everything Fitvio keeps about them (#34). They leave the wall at once; their
+    data is deleted now, or when a sync of theirs that is still running has finished."""
+    user = _user_or_404(c, user_id)
+    try:
+        config.remove_user(user.id)
+    except KeyError:
+        raise HTTPException(404, f"unknown user {user_id}") from None
+    reset_config()
+    accounts.remove(user.id)  # stops a first download; it can run for hours
+    waiting = removal.purge_pending()
+    return {"removed": user.id, "pending": user.id in waiting}
 
 
 @app.post("/api/accounts/intervals", dependencies=[Depends(local_network_only)])

@@ -20,19 +20,22 @@ from typing import Callable
 from . import db, pipeline
 from .config import UserConfig, add_user, load_config
 from .ingest import intervals_reader as icu
-from .sync.garmindb_runner import (FIRST_ACTIVITY_MARGIN, SyncBusy, changed_since, first_download_start, init_user_config,
-                                   login_interactive, run_sync, set_start_date, timed_ingest)
+from .sync.garmindb_runner import (FIRST_ACTIVITY_MARGIN, SyncBusy, UserRemoved, changed_since, first_download_start,
+                                   init_user_config, login_interactive, run_sync, set_start_date, sync_lock,
+                                   timed_ingest)
 
 log = logging.getLogger(__name__)
 
 MFA_TIMEOUT_S = 300
 FULL_SYNC_TIMEOUT_S = 12 * 3600  # 5 years × 8 data types at ~1 s/day ≈ 5–6 h
+REPROCESS_WAIT_S = 3600  # a reprocess waits this long for a running sync of the same person
 
 
 # --- account setup steps (shared by CLI and web) --------------------------------
 
 def new_user_id(email: str, requested: str | None = None) -> str:
-    existing = {u.id for u in load_config().users}
+    cfg = load_config()
+    existing = {u.id for u in cfg.users + cfg.removing}  # a removed id is free once its data is gone
     base = requested or re.sub(r"[^a-z0-9]+", "_", email.split("@")[0].lower()).strip("_") or "person"
     user_id, n = base, 2
     while user_id in existing:
@@ -116,12 +119,16 @@ class Job:
     finished_at: str | None = None
     _mfa_event: threading.Event = field(default_factory=threading.Event, repr=False)
     _mfa_code: str | None = field(default=None, repr=False)
+    _cancel: threading.Event = field(default_factory=threading.Event, repr=False)
+    _proc: object = field(default=None, repr=False)  # the running GarminDB process (first download)
 
     def on_step(self, index: int, total: int, key: str, label: str) -> None:
         self.step, self.step_index, self.step_total = label, index, total
         self.log.clear()  # the previous step's progress bar is finished; don't show it as current
 
     def line(self, text: str) -> None:
+        if self._cancel.is_set():  # stops an Intervals.icu download, which reports every activity
+            raise JobCancelled("removed")
         self.log.append(text)
         del self.log[:-8]
 
@@ -135,6 +142,10 @@ class Job:
 
 _jobs: dict[str, Job] = {}
 _lock = threading.Lock()
+
+
+class JobCancelled(RuntimeError):
+    """The person was removed while their first download ran."""
 
 
 class ConnectBusy(RuntimeError):
@@ -209,7 +220,8 @@ def _download(job: Job, conn, user: UserConfig, full: bool, quick: bool) -> bool
         job.message = ("Downloading your complete Garmin history — the first time this can take a long while"
                        if full else "Fetching last night's data from Garmin" if quick else "Fetching new data from Garmin")
         ok = run_sync(conn, user, full=full, timeout_s=FULL_SYNC_TIMEOUT_S if full else 1800,
-                      on_line=job.line, on_step=job.on_step, quick=quick)
+                      on_line=job.line, on_step=job.on_step, quick=quick,
+                      on_proc=lambda p: _keep_proc(job, p))
     if not ok:
         err = conn.execute("SELECT last_error FROM sync_status WHERE user_id = ?", (user.id,)).fetchone()[0]
         job.phase, job.error = "error", f"Download failed: {err}"
@@ -226,30 +238,41 @@ def _download(job: Job, conn, user: UserConfig, full: bool, quick: bool) -> bool
     return True
 
 
+def _keep_proc(job: Job, proc) -> None:
+    """Remember the GarminDB process so a removal can stop it, or stop it now if one already came."""
+    job._proc = proc
+    if job._cancel.is_set():
+        proc.kill()
+
+
 def _download_and_import(job: Job, user: UserConfig, db_path: Path, full: bool, quick: bool = False) -> None:
     conn = db.connect(db_path)
     try:
         job.phase = "downloading"
-        # read before the sync: a successful run moves this marker forward (a quick one only fetches
-        # health data, so it has no edited activities to look for)
-        since = None if full or quick else changed_since(conn, user.id)
-        try:
-            if not _download(job, conn, user, full, quick):
+        # The lock from download to import: a removal waits for both (removal.py).
+        with sync_lock(user):
+            # read before the sync: a successful run moves this marker forward (a quick one only fetches
+            # health data, so it has no edited activities to look for)
+            since = None if full or quick else changed_since(conn, user.id)
+            ok = _download(job, conn, user, full, quick)
+            if job._cancel.is_set():
+                raise JobCancelled("removed")
+            if not ok:
                 return
-        except SyncBusy as e:
-            job.phase, job.error = "error", str(e)
-            return
-        job.phase = "importing"
-        job.message = "Analysing your activities and working out every verdict"
-        job.result = timed_ingest(conn, user, full=full, changed_since=since)
+            job.phase = "importing"
+            job.message = "Analysing your activities and working out every verdict"
+            job.result = timed_ingest(conn, user, full=full, changed_since=since)
         job.phase = "done"
         job.message = result_message(job.result, full)
+    except (SyncBusy, JobCancelled) as e:
+        job.phase, job.error = "error", "This person was removed" if isinstance(e, (UserRemoved, JobCancelled)) else str(e)
     except Exception as e:  # surface anything unexpected in the UI instead of a silent dead thread
         log.exception("job %s failed", job.id)
         job.phase, job.error = "error", str(e)
     finally:
         job.finished_at = _now()
         conn.close()
+        _finish_removals()
 
 
 def start_connect(email: str, password: str, db_path: Path, on_registered: Callable[[], None] = lambda: None,
@@ -287,7 +310,12 @@ def start_connect(email: str, password: str, db_path: Path, on_registered: Calla
             return
         job.user_id = user.id
         on_registered()
-        shorten_first_download(user, since, job.line)
+        try:
+            # under the lock: it logs in with the person's folder, which a removal may be deleting
+            with sync_lock(user, wait_s=60):
+                shorten_first_download(user, since, job.line)
+        except Exception as e:  # removed meanwhile (the download below says so), or Garmin didn't answer
+            log.warning("connect job %s: first download not shortened: %s", job.id, e)
         _download_and_import(job, user, db_path, full=True)
 
     threading.Thread(target=run, name=f"connect-{job.id}", daemon=True).start()
@@ -342,18 +370,40 @@ def start_reprocess(user: UserConfig, db_path: Path) -> Job:
     def run() -> None:
         conn = db.connect(db_path)
         try:
-            job.result = timed_ingest(conn, user, full=False, changed_since=changed_since(conn, user.id))
+            with sync_lock(user, wait_s=REPROCESS_WAIT_S):  # after a running sync, never next to it
+                job.result = timed_ingest(conn, user, full=False, changed_since=changed_since(conn, user.id))
             job.phase = "done"
             job.message = result_message(job.result, False)
+        except UserRemoved:
+            job.phase, job.error = "error", "This person was removed"
         except Exception as e:
             log.exception("reprocess failed for %s", user.id)
             job.phase, job.error = "error", str(e)
         finally:
             job.finished_at = _now()
             conn.close()
+            _finish_removals()
 
     threading.Thread(target=run, name=f"reprocess-{job.id}", daemon=True).start()
     return job
+
+
+def _finish_removals() -> None:
+    """A job just let go of a person's sync lock: delete whoever was removed while it ran."""
+    from . import removal
+    if load_config().removing:
+        removal.purge_pending()
+
+
+def remove(user_id: str) -> None:
+    """Before a person's data is deleted: stop their first download (it can run for hours). Any
+    other job of theirs is short and finishes; the deletion follows when it does."""
+    job = active_for(user_id)
+    if job and job.kind == "connect":
+        job._cancel.set()
+        proc = job._proc
+        if proc is not None:
+            proc.kill()
 
 
 def start_sync(user: UserConfig, db_path: Path, full: bool = False, quick: bool = False) -> Job:

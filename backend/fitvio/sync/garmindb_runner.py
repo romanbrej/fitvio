@@ -245,19 +245,74 @@ class SyncBusy(RuntimeError):
     """Another sync for this person is running (e.g. the timer while you pressed "Sync now")."""
 
 
+class UserRemoved(SyncBusy):
+    """The person was removed meanwhile (e.g. by a sync that still had the old config): nothing to do.
+    A SyncBusy, so every caller already skips it quietly."""
+
+
+_held: dict[str, tuple[int, int]] = {}  # lock file → (thread holding it, depth): re-entrant per thread
+_held_guard = threading.Lock()
+
+
+def _being_removed(user_id: str) -> bool:
+    from ..config import load_config
+    return any(u.id == user_id for u in load_config().removing)
+
+
 @contextmanager
-def sync_lock(user: UserConfig):
+def sync_lock(user: UserConfig, wait_s: float = 0, removing: bool = False):
     """One sync per person at a time: two GarminDB runs on the same data dir corrupt its databases
-    (and two Intervals.icu downloads would race on the same files)."""
+    (and two Intervals.icu downloads would race on the same files). It also keeps a removal from
+    deleting a person's data while anything still works on it (removal.purge).
+
+    Re-entrant within a thread, so a job can hold it from download to import while run_sync takes it
+    again. `wait_s` waits that long for a running sync instead of raising SyncBusy at once. Never
+    creates the person's folder: it is made when they connect, and missing means they were removed.
+    `removing` is for removal.purge itself."""
+    if user.data_dir is None or not user.data_dir.is_dir():
+        raise UserRemoved(f"{user.id} has no data folder (removed?)")
     path = user.data_dir / ".sync.lock"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as fh:
-        try:
-            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise SyncBusy(f"a sync for {user.id} is already running") from None
+    key, me = str(path), threading.get_ident()
+    with _held_guard:
+        owner, depth = _held.get(key, (None, 0))
+        if owner == me:
+            _held[key] = (me, depth + 1)
+            reentered = True
+        else:
+            reentered = False
+    if reentered:
         try:
             yield
+        finally:
+            with _held_guard:
+                _held[key] = (me, _held[key][1] - 1)
+        return
+    deadline = time.monotonic() + wait_s
+    try:
+        fh = open(path, "a")
+    except FileNotFoundError:  # a removal deleted the folder just now
+        raise UserRemoved(f"{user.id} has no data folder (removed?)") from None
+    with fh:
+        while True:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise SyncBusy(f"a sync for {user.id} is already running") from None
+                time.sleep(1)
+        try:
+            # A removal may have deleted the folder between the check above and the lock (the lock
+            # file would then be a new one). Its config entry stays in `removing` until it is done.
+            if not removing and _being_removed(user.id):
+                raise UserRemoved(f"{user.id} is being removed")
+            with _held_guard:
+                _held[key] = (me, 1)
+            try:
+                yield
+            finally:
+                with _held_guard:
+                    _held.pop(key, None)
         finally:
             fcntl.flock(fh, fcntl.LOCK_UN)
 
@@ -269,9 +324,11 @@ QUICK_STATS = ["--monitoring", "--sleep", "--rhr", "--hrv"]
 
 def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, timeout_s: int = 1800,
              on_line: Callable[[str], None] | None = None,
-             on_step: Callable[[int, int, str, str], None] | None = None, quick: bool = False) -> bool:
+             on_step: Callable[[int, int, str, str], None] | None = None, quick: bool = False,
+             on_proc: Callable[[subprocess.Popen], None] | None = None) -> bool:
     """Run GarminDB for one person. `on_line` receives its output live, `on_step(index, total, key,
-    label)` which data type it is working on (progress in the UI). `quick` fetches the health data only
+    label)` which data type it is working on (progress in the UI), `on_proc` the running GarminDB
+    process (so a removal can stop a first download). `quick` fetches the health data only
     (QUICK_STATS) and leaves `last_success` alone: the next normal sync still imports everything since
     the last complete one."""
     now = datetime.now().isoformat(timespec="seconds")
@@ -299,6 +356,8 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, tim
             log_file = workdir / "garmindb.log"
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
                                     stdin=subprocess.DEVNULL, cwd=workdir, env=env_vars)
+            if on_proc:
+                on_proc(proc)
             timer = threading.Timer(timeout_s, proc.kill)
             timer.start()
             follower = LogFollower(log_file)
@@ -319,6 +378,9 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, tim
                             on_line(line)
                 rc = proc.wait()
             finally:
+                if proc.poll() is None:  # left early (e.g. the person was removed): never leave GarminDB running
+                    proc.kill()
+                    proc.wait()
                 timed_out = not timer.is_alive()
                 timer.cancel()
                 follower.close()
@@ -359,14 +421,16 @@ def run_sync(conn: sqlite3.Connection, user: UserConfig, full: bool = False, tim
 
 def sync_user(conn: sqlite3.Connection, user: UserConfig, full: bool = False) -> tuple[bool, dict | None]:
     """Download (GarminDB) + ingest + verdicts for one person — what `fitvio sync` does per person.
-    Returns (download ok, ingest result or None). Raises SyncBusy when another sync holds the lock."""
-    since = None if full else changed_since(conn, user.id)  # before the sync moves it
-    ok = run_sync(conn, user, full=full)
-    try:
-        return ok, timed_ingest(conn, user, full=full, changed_since=since)
-    except RuntimeError as e:  # e.g. nothing downloaded yet
-        log.warning("%s: ingest skipped — %s", user.id, e)
-        return ok, None
+    Returns (download ok, ingest result or None). Raises SyncBusy when another sync holds the lock.
+    The lock covers the import too, so a removal can't delete the person halfway through it."""
+    with sync_lock(user):
+        since = None if full else changed_since(conn, user.id)  # before the sync moves it
+        ok = run_sync(conn, user, full=full)
+        try:
+            return ok, timed_ingest(conn, user, full=full, changed_since=since)
+        except RuntimeError as e:  # e.g. nothing downloaded yet
+            log.warning("%s: ingest skipped — %s", user.id, e)
+            return ok, None
 
 
 def timed_ingest(conn: sqlite3.Connection, user: UserConfig, **kw) -> dict:

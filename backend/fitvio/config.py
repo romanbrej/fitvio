@@ -90,6 +90,8 @@ class AppConfig:
     users: list[UserConfig]
     wall: WallConfig = field(default_factory=WallConfig)
     db_path: Path = PROJECT_ROOT / "data" / "app.db"
+    # people removed in the UI whose data is not deleted yet (a sync was still running): see removal.py
+    removing: list[UserConfig] = field(default_factory=list)
 
     def user(self, user_id: str) -> UserConfig:
         for u in self.users:
@@ -104,7 +106,8 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     users = [UserConfig(**u) for u in raw.get("users", [])]
     wall = WallConfig(**raw.get("wall", {}))
     db_path = Path(env("DB") or raw.get("db_path") or PROJECT_ROOT / "data" / "app.db")
-    return AppConfig(users=users, wall=wall, db_path=db_path.expanduser())
+    removing = [UserConfig(**u) for u in raw.get("removing", [])]
+    return AppConfig(users=users, wall=wall, db_path=db_path.expanduser(), removing=removing)
 
 
 COLORS = ["#3B82F6", "#F97316", "#22C55E", "#EC4899", "#A78BFA", "#FACC15"]
@@ -136,7 +139,7 @@ def add_user(user_id: str, garmindb_config_dir: str | None = None, intervals_dir
         raise ValueError(f"refusing to add a real account to {path.name}; run with your own config "
                          f"(default config/users.json) instead of the example/demo config")
     raw = json.loads(path.read_text()) if path.exists() else {"users": []}
-    if any(u["id"] == user_id for u in raw["users"]):
+    if any(u["id"] == user_id for u in raw["users"] + raw.get("removing", [])):
         raise ValueError(f"user {user_id!r} already exists")
     if bool(garmindb_config_dir) == bool(intervals_dir):
         raise ValueError("a person needs exactly one data source")
@@ -145,6 +148,32 @@ def add_user(user_id: str, garmindb_config_dir: str | None = None, intervals_dir
     raw["users"].append(entry)
     _write(path, raw)
     return UserConfig(**entry)
+
+
+@_serialized
+def remove_user(user_id: str) -> UserConfig:
+    """Take a person out of config/users.json. Their entry moves to `removing` until their data is
+    deleted (removal.purge), so the folder is still known and the id isn't handed out again meanwhile."""
+    path = config_path()
+    raw = json.loads(path.read_text())
+    entry = next((u for u in raw["users"] if u["id"] == user_id), None)
+    if entry is None:
+        raise KeyError(user_id)
+    raw["users"].remove(entry)
+    raw.setdefault("removing", []).append(entry)
+    _write(path, raw)
+    return UserConfig(**entry)
+
+
+@_serialized
+def finish_removal(user_id: str) -> None:
+    """The person's data is gone: forget them completely."""
+    path = config_path()
+    raw = json.loads(path.read_text())
+    raw["removing"] = [u for u in raw.get("removing", []) if u["id"] != user_id]
+    if not raw["removing"]:
+        del raw["removing"]
+    _write(path, raw)
 
 
 PROFILE_OVERRIDES = ("max_hr", "rest_hr")
