@@ -1,6 +1,6 @@
 """The training buddy: a little animal on the wall whose mood follows your data.
 
-Each person picks an animal (Accounts → Training buddy). The mood is derived from what the wall
+Each person picks an animal (Accounts → Training buddy) and can hide it; hiding keeps the animal. The mood is derived from what the wall
 already knows — Garmin readiness, last night's sleep, today's workout and verdict, recent training —
 in this order: overjoyed → hungry → sleepy → happy → content. At night the wall shows it asleep.
 """
@@ -27,6 +27,14 @@ def _key(user_id: str) -> str:
 def get_animal(conn: sqlite3.Connection, user_id: str) -> str:
     v = db.get_state(conn, _key(user_id), DEFAULT)
     return v if v in ANIMALS else DEFAULT
+
+
+def is_shown(conn: sqlite3.Connection, user_id: str) -> bool:
+    return db.get_state(conn, f"buddy.{user_id}.shown", "1") != "0"
+
+
+def set_shown(conn: sqlite3.Connection, user_id: str, shown: bool) -> None:
+    db.set_state(conn, f"buddy.{user_id}.shown", "1" if shown else "0")
 
 
 def set_animal(conn: sqlite3.Connection, user_id: str, animal: str) -> None:

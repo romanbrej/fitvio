@@ -158,7 +158,10 @@ export interface BuddyInfo {
   animal: 'mouse' | 'cat' | 'bunny' | 'fox' | 'bear' | 'penguin' | 'frog' | 'hedgehog'
   food: string; mood: 'happy' | 'content' | 'sleepy' | 'overjoyed' | 'hungry'; line: string
 }
-export interface BuddySettings { animals: BuddyInfo['animal'][]; food: Record<string, string>; users: Record<string, BuddyInfo['animal']> }
+export interface BuddySettings {
+  animals: BuddyInfo['animal'][]; food: Record<string, string>; users: Record<string, BuddyInfo['animal']>
+  enabled: Record<string, boolean>  // false: hidden everywhere, the animal is kept
+}
 
 export interface SweetSpot { low: number; high: number; load: number; fitness_at_start: number }
 
@@ -337,5 +340,6 @@ export const api = {
   activityCheck: () => get<ActivityCheck>('/api/settings/activity-check'),
   setActivityCheck: (enabled: boolean) => post<ActivityCheck>('/api/settings/activity-check', { enabled }),
   buddySettings: () => get<BuddySettings>('/api/settings/buddy'),
-  setBuddy: (user_id: string, animal: string) => post<BuddySettings>('/api/settings/buddy', { user_id, animal }),
+  setBuddy: (user_id: string, change: { animal?: string; enabled?: boolean }) =>
+    post<BuddySettings>('/api/settings/buddy', { user_id, ...change }),
 }

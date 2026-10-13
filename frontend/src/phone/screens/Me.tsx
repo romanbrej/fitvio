@@ -1,4 +1,4 @@
-import { AlertTriangle, Loader2, Plus, RefreshCw, Wifi } from 'lucide-react'
+import { AlertTriangle, Ban, Loader2, Plus, RefreshCw, Wifi } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../../api'
@@ -61,7 +61,11 @@ export function Me() {
   }
   const pickBuddy = async (animal: Animal) => {
     setProblem(null)
-    try { setBuddies(await api.setBuddy(me.id, animal)); refresh() } catch (e) { setProblem(errorText(e)) }
+    try { setBuddies(await api.setBuddy(me.id, { animal, enabled: true })); refresh() } catch (e) { setProblem(errorText(e)) }
+  }
+  const hideBuddy = async () => {
+    setProblem(null)
+    try { setBuddies(await api.setBuddy(me.id, { enabled: false })); refresh() } catch (e) { setProblem(errorText(e)) }
   }
   const toggleCheck = async () => {
     if (!check) return
@@ -93,6 +97,7 @@ export function Me() {
     try { await api.setUnitsSetting(me.id, u); reloadConfig(); await refresh() } catch (e) { setProblem(errorText(e)) }
   }
   const mine = buddies?.users[me.id]
+  const shown = !!buddies?.enabled[me.id]
   const myAccount = accounts?.find(a => a.id === me.id)
 
   return (
@@ -184,12 +189,15 @@ export function Me() {
       {buddies && (
         <Card>
           <div className="ph-row" style={{ gap: 12 }}>
-            {mine && <Buddy animal={mine} mood="happy" size={56} />}
-            <div className="ph-grow"><span className="ph-label">Training buddy</span><span className="ph-strong" style={{ textTransform: 'capitalize' }}>{mine ?? '—'}</span></div>
+            {mine && shown && <Buddy animal={mine} mood="happy" size={56} />}
+            <div className="ph-grow"><span className="ph-label">Training buddy</span><span className="ph-strong" style={{ textTransform: 'capitalize' }}>{shown ? mine ?? '—' : 'None'}</span></div>
           </div>
           <div className="ph-buddies" role="radiogroup" aria-label="Buddy animal">
+            <button role="radio" aria-checked={!shown} className={shown ? '' : 'on'} onClick={hideBuddy} aria-label="No training buddy">
+              <Ban size={36} strokeWidth={1.5} aria-hidden /><span>None</span>
+            </button>
             {ANIMALS.map(an => (
-              <button key={an} role="radio" aria-checked={mine === an} className={mine === an ? 'on' : ''}
+              <button key={an} role="radio" aria-checked={shown && mine === an} className={shown && mine === an ? 'on' : ''}
                       onClick={() => pickBuddy(an)} aria-label={`${an}, eats ${buddies.food[an]}`}>
                 <Buddy animal={an} mood="happy" size={36} /><span>{an}</span>
               </button>

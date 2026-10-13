@@ -1,4 +1,4 @@
-import type { AppConfig, BuddySettings, Session, SessionDetail, VerdictKind, WallState } from '../api'
+import type { Ambient, AppConfig, BuddySettings, Session, SessionDetail, VerdictKind, WallState } from '../api'
 import type { Units } from '../units'
 import { DEMO_LOCKED } from './demo'
 
@@ -28,10 +28,15 @@ function load<T>(file: string): Promise<T> {
   return files.get(file)!.then(v => structuredClone(v) as T)
 }
 
-const state: { selected?: string; dismissed: boolean; buddies: Record<string, string>; check?: boolean
-                units: Record<string, Units> } = { dismissed: false, buddies: {}, units: {} }
+const state: { selected?: string; dismissed: boolean; buddies: Record<string, string>; shown: Record<string, boolean>
+                check?: boolean; units: Record<string, Units> } = { dismissed: false, buddies: {}, shown: {}, units: {} }
 
 const imperial = (user: string | undefined) => !!user && state.units[user] === 'imperial'
+/** A buddy hidden in the settings is left out, as the backend does. */
+const withBuddy = (user: string, a: Ambient): Ambient => {
+  if (state.shown[user] === false) delete a.buddy
+  return a
+}
 
 export async function demoGet<T>(path: string): Promise<T> {
   const url = new URL(path, 'http://demo')
@@ -47,7 +52,9 @@ export async function demoGet<T>(path: string): Promise<T> {
     const u = await load<{ units: Units; default: Units }>(fileFor(path))
     return { ...u, units: state.units[parts[2]] ?? u.units } as T
   }
-  if (parts[1] === 'users' && parts[3] === 'ambient' && imperial(parts[2])) return load<T>(`imperial/${fileFor(path)}`)
+  if (parts[1] === 'users' && parts[3] === 'ambient') {
+    return withBuddy(parts[2], await load<Ambient>(`${imperial(parts[2]) ? 'imperial/' : ''}${fileFor(path)}`)) as T
+  }
   if (parts[1] === 'sessions' && parts.length === 3) {
     const s = await load<SessionDetail>(fileFor(path))
     if (!imperial(s.user_id)) return s as T
@@ -55,7 +62,7 @@ export async function demoGet<T>(path: string): Promise<T> {
   }
   if (url.pathname === '/api/settings/buddy') {
     const b = await load<BuddySettings>('settings/buddy.json')
-    return { ...b, users: { ...b.users, ...state.buddies } } as T
+    return { ...b, users: { ...b.users, ...state.buddies }, enabled: { ...b.enabled, ...state.shown } } as T
   }
   if (url.pathname === '/api/settings/activity-check') {
     const c = await load<{ enabled: boolean }>('settings/activity-check.json')
@@ -86,9 +93,10 @@ async function wall(): Promise<WallState> {
   const w = first.mode !== 'setup' && imperial(first.user_id) ? await load<WallState>('imperial/wall.json') : first
   const user = state.selected ?? w.user_id
   // the exported wall opens on a fresh verdict; after "Overview" (or picking someone) it shows that person's day
-  if (w.mode === 'verdict' && !state.dismissed && !state.selected) return w
+  if (w.mode === 'verdict' && !state.dismissed && !state.selected) return { ...w, ambient: withBuddy(w.user_id, w.ambient) }
   if (w.mode !== 'setup' && user) {
-    return { mode: 'ambient', user_id: user, ambient: await load(`${imperial(user) ? 'imperial/' : ''}users/${user}/ambient.json`) }
+    const ambient = await load<Ambient>(`${imperial(user) ? 'imperial/' : ''}users/${user}/ambient.json`)
+    return { mode: 'ambient', user_id: user, ambient: withBuddy(user, ambient) }
   }
   return w
 }
@@ -106,7 +114,10 @@ export async function demoSend<T>(path: string, body: unknown): Promise<T> {
     case '/api/wall/select': state.selected = String(b.user_id); return { ok: true } as T
     case '/api/wall/dismiss': state.dismissed = true; return { ok: true } as T
     case '/api/wall/morning': return { started: [], pending: false } as T
-    case '/api/settings/buddy': state.buddies[String(b.user_id)] = String(b.animal); return demoGet<T>(path)
+    case '/api/settings/buddy':
+      if (b.animal !== undefined) state.buddies[String(b.user_id)] = String(b.animal)
+      if (b.enabled !== undefined) state.shown[String(b.user_id)] = Boolean(b.enabled)
+      return demoGet<T>(path)
     case '/api/settings/activity-check': state.check = Boolean(b.enabled); return demoGet<T>(path)
     default: throw new Error(DEMO_LOCKED)
   }
