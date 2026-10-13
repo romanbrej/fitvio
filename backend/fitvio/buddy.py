@@ -1,6 +1,7 @@
 """The training buddy: a little animal on the wall whose mood follows your data.
 
-Each person picks an animal (Accounts → Training buddy) and can hide it; hiding keeps the animal. The mood is derived from what the wall
+Each person picks an animal, or None to hide it everywhere (Accounts → Training buddy, or Me on
+the phone); hiding keeps the animal. The mood is derived from what the wall
 already knows — Garmin readiness, last night's sleep, today's workout and verdict, recent training —
 in this order: overjoyed → hungry → sleepy → happy → content. At night the wall shows it asleep.
 """

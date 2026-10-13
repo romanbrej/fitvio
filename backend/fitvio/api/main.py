@@ -634,7 +634,7 @@ class BuddyChoice(BaseModel):
     model_config = {"extra": "forbid"}
     user_id: str = Field(max_length=64)
     animal: str | None = Field(default=None, max_length=32)
-    enabled: bool | None = None  # false hides the buddy everywhere; the animal is kept
+    enabled: bool | None = Field(default=None, strict=True)  # false hides the buddy everywhere; the animal is kept
 
 
 @app.get("/api/settings/buddy")

@@ -97,7 +97,7 @@ export function Me() {
     try { await api.setUnitsSetting(me.id, u); reloadConfig(); await refresh() } catch (e) { setProblem(errorText(e)) }
   }
   const mine = buddies?.users[me.id]
-  const shown = !!buddies?.enabled[me.id]
+  const shown = buddies?.enabled?.[me.id] ?? true  // missing (older backend): shown, like the backend default
   const myAccount = accounts?.find(a => a.id === me.id)
 
   return (

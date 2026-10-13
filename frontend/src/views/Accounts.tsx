@@ -66,6 +66,7 @@ export function Accounts() {
     setErr(null)
     try { setBuddies(await api.setBuddy(uid, { enabled: false })); reload() } catch (e) { setErr(String(e).replace(/^Error: /, '')) }
   }
+  const buddyShown = (uid: string) => buddies?.enabled?.[uid] ?? true  // missing (older backend): shown, like the backend default
 
   // metric or imperial, per person (the same setting as on the phone's Me screen)
   const pickUnits = async (uid: string, u: Units) => {
@@ -164,15 +165,15 @@ export function Accounts() {
                 <div style={{ marginTop: 14 }}>
                   <div className="label" style={{ marginBottom: 6 }}>Training buddy</div>
                   <div className="buddy-picker" role="radiogroup" aria-label={`Training buddy for ${a.name}`}>
-                    <button role="radio" aria-checked={!buddies.enabled[a.id]}
-                            className={`buddy-pick${buddies.enabled[a.id] ? '' : ' on'}`}
+                    <button role="radio" aria-checked={!buddyShown(a.id)}
+                            className={`buddy-pick${buddyShown(a.id) ? '' : ' on'}`}
                             onClick={() => hideBuddy(a.id)} aria-label="No training buddy">
                       <Ban size={52} strokeWidth={1.5} aria-hidden />
                       <span>None</span>
                     </button>
                     {ANIMALS.map(an => (
-                      <button key={an} role="radio" aria-checked={buddies.enabled[a.id] && buddies.users[a.id] === an}
-                              className={`buddy-pick${buddies.enabled[a.id] && buddies.users[a.id] === an ? ' on' : ''}`}
+                      <button key={an} role="radio" aria-checked={buddyShown(a.id) && buddies.users[a.id] === an}
+                              className={`buddy-pick${buddyShown(a.id) && buddies.users[a.id] === an ? ' on' : ''}`}
                               onClick={() => pickBuddy(a.id, an)} aria-label={`${an}, eats ${buddies.food[an]}`}>
                         <Buddy animal={an} mood="happy" size={52} />
                         <span>{an}</span>

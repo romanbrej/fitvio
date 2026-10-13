@@ -110,6 +110,16 @@ def test_a_hidden_buddy_is_left_off_the_wall_and_comes_back_as_the_same_animal(c
     r = client.post("/api/settings/buddy", json={"user_id": "a", "enabled": False}).json()
     assert r["enabled"] == {"a": False, "b": True} and r["users"]["a"] == "bear"
     assert "buddy" not in client.get("/api/users/a/ambient").json()
+    # a bad animal changes nothing, not even the visibility sent with it; a loose "no" isn't a bool
+    assert client.post("/api/settings/buddy", json={"user_id": "a", "animal": "dragon", "enabled": True}).status_code == 400
+    assert client.post("/api/settings/buddy", json={"user_id": "a", "enabled": "no"}).status_code == 422
+    r = client.get("/api/settings/buddy").json()
+    assert r["enabled"]["a"] is False and r["users"]["a"] == "bear"
+    # picking an animal while hidden shows it again in one request (what the pickers send)
+    r = client.post("/api/settings/buddy", json={"user_id": "a", "animal": "fox", "enabled": True}).json()
+    assert r["enabled"]["a"] and r["users"]["a"] == "fox"
+    assert client.get("/api/users/a/ambient").json()["buddy"]["animal"] == "fox"
+    client.post("/api/settings/buddy", json={"user_id": "a", "animal": "bear", "enabled": False})
     assert client.get("/api/users/b/ambient").json()["buddy"]  # only that person's buddy is hidden
     r = client.post("/api/settings/buddy", json={"user_id": "a", "enabled": True}).json()
     assert r["enabled"]["a"] and client.get("/api/users/a/ambient").json()["buddy"]["animal"] == "bear"

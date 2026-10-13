@@ -52,7 +52,7 @@ Garmin's weather and acclimation are downloaded with each sync. For older histor
 
 ## Training buddy
 
-A little animal that lives on the wall and reacts to your data: *overjoyed* after a "Better" workout or a new best, *hungry* after 3 days without training, *sleepy* when readiness or sleep is low, *happy* when you're fresh, *content* otherwise, and asleep at night. Tap it to pet it. Each person picks their own animal (mouse, cat, bunny, fox, bear, penguin, frog or hedgehog) in Accounts.
+A little animal that lives on the wall and reacts to your data: *overjoyed* after a "Better" workout or a new best, *hungry* after 3 days without training, *sleepy* when readiness or sleep is low, *happy* when you're fresh, *content* otherwise, and asleep at night. Tap it to pet it. Each person picks their own animal (mouse, cat, bunny, fox, bear, penguin, frog or hedgehog) in Accounts or on the phone's Me tab, or *None* to hide the buddy everywhere (wall, day and night screens, phone); the animal is kept for when you pick one again.
 
 ## Around the wall
 
