@@ -33,6 +33,7 @@ STATE_KEYS = (
     "reprocessing:{id}",             # pipeline.py
     "analysis_version:{id}",         # pipeline.py
     "buddy.{id}.animal",             # buddy.py
+    "buddy.{id}.shown",              # buddy.py
     "morning.{id}",                  # api/main.py
 )
 STATE_PREFIXES = (

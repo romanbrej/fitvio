@@ -452,7 +452,7 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str, u: str | Non
     if readiness is None and source == "intervals":  # no Garmin readiness from Intervals.icu: Fitvio's estimate
         readiness = coach.estimate_readiness(latest, base, form_now["form"] if form_now else None, today)
     streak = coach.week_streak(sessions, today)
-    return {
+    out = {
         "user_id": user_id,
         "units": u,
         "source": source,
@@ -479,10 +479,12 @@ def ambient(conn: sqlite3.Connection, cfg: AppConfig, user_id: str, u: str | Non
         "today_workout": today_workout,
         "upcoming": upcoming,
         "plan_week": coach.plan_week(conn, user_id, sessions, today),
-        "buddy": buddy.block(conn, user_id, readiness=readiness, health_latest=latest,
-                             form=form_now["form"] if form_now else None, today_workout=today_workout,
-                             last_workout=last_workout, streak=streak, sessions=sessions, today=today),
     }
+    if buddy.is_shown(conn, user_id):  # a hidden buddy is left out, so no screen draws it
+        out["buddy"] = buddy.block(conn, user_id, readiness=readiness, health_latest=latest,
+                                   form=form_now["form"] if form_now else None, today_workout=today_workout,
+                                   last_workout=last_workout, streak=streak, sessions=sessions, today=today)
+    return out
 
 
 def validation(conn: sqlite3.Connection, user_id: str, days: int = 120) -> dict:

@@ -633,24 +633,31 @@ def set_activity_check(body: ActivityCheck, c: AppConfig = Depends(cfg), cn=Depe
 class BuddyChoice(BaseModel):
     model_config = {"extra": "forbid"}
     user_id: str = Field(max_length=64)
-    animal: str = Field(max_length=32)
+    animal: str | None = Field(default=None, max_length=32)
+    enabled: bool | None = Field(default=None, strict=True)  # false hides the buddy everywhere; the animal is kept
 
 
 @app.get("/api/settings/buddy")
 def get_buddy(c: AppConfig = Depends(cfg), cn=Depends(conn)):
-    """Each person's training-buddy animal, plus the choices."""
+    """Each person's training-buddy animal and whether it's shown, plus the choices."""
     return {"animals": list(buddy.ANIMALS), "food": buddy.FOOD,
-            "users": {u.id: buddy.get_animal(cn, u.id) for u in c.users}}
+            "users": {u.id: buddy.get_animal(cn, u.id) for u in c.users},
+            "enabled": {u.id: buddy.is_shown(cn, u.id) for u in c.users}}
 
 
 @app.post("/api/settings/buddy", dependencies=[Depends(local_network_only)])
 def set_buddy(body: BuddyChoice, c: AppConfig = Depends(cfg), cn=Depends(conn)):
     if body.user_id not in {u.id for u in c.users}:
         raise HTTPException(400, "unknown person")
-    try:
-        buddy.set_animal(cn, body.user_id, body.animal)
-    except ValueError as e:
-        raise HTTPException(400, str(e)) from None
+    if body.animal is None and body.enabled is None:
+        raise HTTPException(400, "nothing to change")
+    if body.animal is not None:
+        try:
+            buddy.set_animal(cn, body.user_id, body.animal)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
+    if body.enabled is not None:
+        buddy.set_shown(cn, body.user_id, body.enabled)
     return get_buddy(c, cn)
 
 

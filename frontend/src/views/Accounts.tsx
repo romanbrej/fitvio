@@ -1,4 +1,4 @@
-import { AlertTriangle, ChevronRight, Loader2, Monitor, RefreshCw, UserPlus, Zap } from 'lucide-react'
+import { AlertTriangle, Ban, ChevronRight, Loader2, Monitor, RefreshCw, UserPlus, Zap } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../App'
@@ -55,13 +55,18 @@ export function Accounts() {
 
   const connected = useCallback(() => { load(); reload() }, [load, reload])
 
-  // training buddy: one animal per person
+  // training buddy: one animal per person, or none (hidden; the animal is kept)
   const [buddies, setBuddies] = useState<BuddySettings | null>(null)
   useEffect(() => { api.buddySettings().then(setBuddies).catch(() => setBuddies(null)) }, [])
   const pickBuddy = async (uid: string, animal: Animal) => {
     setErr(null)
-    try { setBuddies(await api.setBuddy(uid, animal)); reload() } catch (e) { setErr(String(e).replace(/^Error: /, '')) }
+    try { setBuddies(await api.setBuddy(uid, { animal, enabled: true })); reload() } catch (e) { setErr(String(e).replace(/^Error: /, '')) }
   }
+  const hideBuddy = async (uid: string) => {
+    setErr(null)
+    try { setBuddies(await api.setBuddy(uid, { enabled: false })); reload() } catch (e) { setErr(String(e).replace(/^Error: /, '')) }
+  }
+  const buddyShown = (uid: string) => buddies?.enabled?.[uid] ?? true  // missing (older backend): shown, like the backend default
 
   // metric or imperial, per person (the same setting as on the phone's Me screen)
   const pickUnits = async (uid: string, u: Units) => {
@@ -160,9 +165,15 @@ export function Accounts() {
                 <div style={{ marginTop: 14 }}>
                   <div className="label" style={{ marginBottom: 6 }}>Training buddy</div>
                   <div className="buddy-picker" role="radiogroup" aria-label={`Training buddy for ${a.name}`}>
+                    <button role="radio" aria-checked={!buddyShown(a.id)}
+                            className={`buddy-pick${buddyShown(a.id) ? '' : ' on'}`}
+                            onClick={() => hideBuddy(a.id)} aria-label="No training buddy">
+                      <Ban size={52} strokeWidth={1.5} aria-hidden />
+                      <span>None</span>
+                    </button>
                     {ANIMALS.map(an => (
-                      <button key={an} role="radio" aria-checked={buddies.users[a.id] === an}
-                              className={`buddy-pick${buddies.users[a.id] === an ? ' on' : ''}`}
+                      <button key={an} role="radio" aria-checked={buddyShown(a.id) && buddies.users[a.id] === an}
+                              className={`buddy-pick${buddyShown(a.id) && buddies.users[a.id] === an ? ' on' : ''}`}
                               onClick={() => pickBuddy(a.id, an)} aria-label={`${an}, eats ${buddies.food[an]}`}>
                         <Buddy animal={an} mood="happy" size={52} />
                         <span>{an}</span>

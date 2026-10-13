@@ -59,6 +59,7 @@ def fill(conn, uid):
     heat_response.set_enabled(conn, uid, False)
     wall.set_trend_period(conn, uid, 90)
     buddy.set_animal(conn, uid, "fox")
+    buddy.set_shown(conn, uid, False)
     for key in (reprocess_key(uid), f"analysis_version:{uid}", f"morning.{uid}", f"max_hr_dismissed:{uid}",
                 heat_response.STATE.format(user_id=uid, sport="running"), activity_watch._k(uid, "last_check")):
         db.set_state(conn, key, "1")

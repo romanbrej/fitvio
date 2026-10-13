@@ -35,6 +35,16 @@ def test_animal_defaults_to_mouse_and_is_validated():
     assert buddy.get_animal(conn, "u") == "mouse"
 
 
+def test_buddy_is_shown_by_default_and_hiding_keeps_the_animal():
+    conn = db.connect(":memory:")
+    assert buddy.is_shown(conn, "u")
+    buddy.set_animal(conn, "u", "fox")
+    buddy.set_shown(conn, "u", False)
+    assert not buddy.is_shown(conn, "u") and buddy.get_animal(conn, "u") == "fox"
+    buddy.set_shown(conn, "u", True)
+    assert buddy.is_shown(conn, "u") and buddy.get_animal(conn, "u") == "fox"
+
+
 def test_overjoyed_after_a_better_workout_or_a_new_best_today():
     assert mood(today_workout={"done": {"verdict": "better"}}) == "overjoyed"
     lw = {"start_time": f"{TODAY}T07:00:00", "improvements": [{"tone": "best"}]}
@@ -90,6 +100,31 @@ def test_buddy_settings_api_round_trip(client):
     assert client.get("/api/users/b/ambient").json()["buddy"]["animal"] == "frog"
     assert client.post("/api/settings/buddy", json={"user_id": "b", "animal": "dragon"}).status_code == 400
     assert client.post("/api/settings/buddy", json={"user_id": "zz", "animal": "cat"}).status_code == 400
+    main.app.dependency_overrides.clear()
+
+
+def test_a_hidden_buddy_is_left_off_the_wall_and_comes_back_as_the_same_animal(client):
+    main.app.dependency_overrides[main.local_network_only] = lambda: None
+    assert client.get("/api/settings/buddy").json()["enabled"] == {"a": True, "b": True}
+    client.post("/api/settings/buddy", json={"user_id": "a", "animal": "bear"})
+    r = client.post("/api/settings/buddy", json={"user_id": "a", "enabled": False}).json()
+    assert r["enabled"] == {"a": False, "b": True} and r["users"]["a"] == "bear"
+    assert "buddy" not in client.get("/api/users/a/ambient").json()
+    # a bad animal changes nothing, not even the visibility sent with it; a loose "no" isn't a bool
+    assert client.post("/api/settings/buddy", json={"user_id": "a", "animal": "dragon", "enabled": True}).status_code == 400
+    assert client.post("/api/settings/buddy", json={"user_id": "a", "enabled": "no"}).status_code == 422
+    r = client.get("/api/settings/buddy").json()
+    assert r["enabled"]["a"] is False and r["users"]["a"] == "bear"
+    # picking an animal while hidden shows it again in one request (what the pickers send)
+    r = client.post("/api/settings/buddy", json={"user_id": "a", "animal": "fox", "enabled": True}).json()
+    assert r["enabled"]["a"] and r["users"]["a"] == "fox"
+    assert client.get("/api/users/a/ambient").json()["buddy"]["animal"] == "fox"
+    client.post("/api/settings/buddy", json={"user_id": "a", "animal": "bear", "enabled": False})
+    assert client.get("/api/users/b/ambient").json()["buddy"]  # only that person's buddy is hidden
+    r = client.post("/api/settings/buddy", json={"user_id": "a", "enabled": True}).json()
+    assert r["enabled"]["a"] and client.get("/api/users/a/ambient").json()["buddy"]["animal"] == "bear"
+    assert client.post("/api/settings/buddy", json={"user_id": "a"}).status_code == 400  # nothing to change
+    assert client.post("/api/settings/buddy", json={"user_id": "zz", "enabled": False}).status_code == 400
     main.app.dependency_overrides.clear()
 
 
