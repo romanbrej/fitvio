@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../../api'
 import { DEMO, DEMO_LOCKED } from '../../demo/demo'
-import type { Account, ActivityCheck, BuddySettings, HeatResponse } from '../../api'
+import type { Account, ActivityCheck, BuddySettings, HeatResponse, HomeAssistantSettings } from '../../api'
 import { ANIMALS, Buddy } from '../../components/Buddy'
 import type { Animal } from '../../components/Buddy'
 import { HrSettings } from '../../components/HrSettings'
@@ -39,12 +39,14 @@ export function Me() {
   const [openMeteo, setOpenMeteo] = useState<boolean | null>(null)
   const [heat, setHeat] = useState<HeatResponse | null>(null)
   const [wind, setWind] = useState<boolean | null>(null)
+  const [ha, setHa] = useState<HomeAssistantSettings | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
 
   const load = useCallback(() => api.accounts().then(setAccounts).catch(e => setProblem(errorText(e))), [])
   useEffect(() => { load() }, [load])
   useEffect(() => { api.buddySettings().then(setBuddies).catch(() => setBuddies(null)) }, [])
   useEffect(() => { api.activityCheck().then(setCheck).catch(() => setCheck(null)) }, [])
+  useEffect(() => { api.homeAssistant().then(setHa).catch(() => setHa(null)) }, [])
   useEffect(() => { api.weatherSetting(me.id).then(r => setOpenMeteo(r.open_meteo)).catch(() => setOpenMeteo(null)) }, [me.id])
   useEffect(() => { api.heatSetting(me.id).then(setHeat).catch(() => setHeat(null)) }, [me.id])
   useEffect(() => { api.windSetting(me.id).then(r => setWind(r.wind)).catch(() => setWind(null)) }, [me.id])
@@ -66,6 +68,10 @@ export function Me() {
   const hideBuddy = async () => {
     setProblem(null)
     try { setBuddies(await api.setBuddy(me.id, { enabled: false })); refresh() } catch (e) { setProblem(errorText(e)) }
+  }
+  const shareWithHa = async (shared: boolean) => {
+    setProblem(null)
+    try { setHa(await api.setHomeAssistant(me.id, shared)) } catch (e) { setProblem(errorText(e)) }
   }
   const toggleCheck = async () => {
     if (!check) return
@@ -142,6 +148,21 @@ export function Me() {
         </div>
         <span className="ph-caption">For {me.name} on every screen, the wall too. Stored in metric, so switching changes no verdict.</span>
       </Card>
+
+      {ha?.configured && (
+        <Card>
+          <span className="ph-label">Home Assistant</span>
+          <div className="ph-row" role="radiogroup" aria-label="Home Assistant" style={{ gap: 8 }}>
+            {([[false, 'None', 'Not shared'], [true, 'Share', 'Readiness, sleep, workouts']] as const).map(([shared, label, what]) => (
+              <button key={label} role="radio" aria-checked={!!ha.users[me.id] === shared} className="ph-chip-btn ph-units"
+                      onClick={() => !!ha.users[me.id] !== shared && shareWithHa(shared)}>
+                <b>{label}</b><span>{what}</span>
+              </button>
+            ))}
+          </div>
+          <span className="ph-caption">Your numbers and new workouts for your Home Assistant at home, through your own MQTT broker. Nothing leaves your network.</span>
+        </Card>
+      )}
 
       {openMeteo != null && (
         <Card>

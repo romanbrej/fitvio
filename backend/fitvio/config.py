@@ -83,12 +83,29 @@ class WallConfig:
     stale_sync_hours: int = 24
     night_start: str = "22:00"
     night_end: str = "06:30"
+    # pages that may show the wall in a frame, e.g. ["http://192.168.1.10:8123"] for Home Assistant
+    embed_origins: list[str] = field(default_factory=list)
+
+
+@dataclass
+class MqttConfig:
+    """Home Assistant via MQTT (see home_assistant.py). The password comes from FITVIO_MQTT_PASSWORD."""
+    host: str
+    port: int = 1883
+    username: str | None = None
+    topic_prefix: str = "fitvio"
+    discovery_prefix: str = "homeassistant"
+
+    @property
+    def password(self) -> str | None:
+        return env("MQTT_PASSWORD")
 
 
 @dataclass
 class AppConfig:
     users: list[UserConfig]
     wall: WallConfig = field(default_factory=WallConfig)
+    mqtt: MqttConfig | None = None  # off unless the config has an "mqtt" block
     db_path: Path = PROJECT_ROOT / "data" / "app.db"
     # people removed in the UI whose data is not deleted yet (a sync was still running): see removal.py
     removing: list[UserConfig] = field(default_factory=list)
@@ -107,7 +124,8 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     wall = WallConfig(**raw.get("wall", {}))
     db_path = Path(env("DB") or raw.get("db_path") or PROJECT_ROOT / "data" / "app.db")
     removing = [UserConfig(**u) for u in raw.get("removing", [])]
-    return AppConfig(users=users, wall=wall, db_path=db_path.expanduser(), removing=removing)
+    mqtt = MqttConfig(**raw["mqtt"]) if raw.get("mqtt") else None
+    return AppConfig(users=users, wall=wall, mqtt=mqtt, db_path=db_path.expanduser(), removing=removing)
 
 
 COLORS = ["#3B82F6", "#F97316", "#22C55E", "#EC4899", "#A78BFA", "#FACC15"]

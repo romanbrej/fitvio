@@ -35,6 +35,8 @@ STATE_KEYS = (
     "buddy.{id}.animal",             # buddy.py
     "buddy.{id}.shown",              # buddy.py
     "morning.{id}",                  # api/main.py
+    "ha.{id}.shared",                # home_assistant.py
+    "ha.{id}.announced",             # mqtt_bridge.py
 )
 STATE_PREFIXES = (
     "heat_response:{id}:",           # heat_response.py, one per sport

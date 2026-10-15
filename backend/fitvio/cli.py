@@ -3,6 +3,7 @@
   fitvio init-user <user_id> <garmin_email>   create the GarminDB config for a user
   fitvio sync [--user ID] [--full]            GarminDB download + ingest + verdicts
   fitvio watch                                auto-sync on new activities (+ hourly full sync)
+  fitvio mqtt                                 share opted-in people with Home Assistant over MQTT
   fitvio ingest [--user ID] [--full]          ingest only (GarminDB data already present)
   fitvio evaluate [--user ID]                 recompute all verdicts
   fitvio backtest [--user ID] [--sport S]     print verdicts over history
@@ -46,6 +47,7 @@ def main(argv=None) -> int:
         s.add_argument("--full", action="store_true", help="full history instead of latest")
     sub.add_parser("watch", help="auto-sync: check Garmin every 2 min and Intervals.icu every 10 min for new "
                                  "activities, full sync hourly")
+    sub.add_parser("mqtt", help="share the people who opted in with Home Assistant (needs an \"mqtt\" block in the config)")
     s = sub.add_parser("backfill-extras", help="download Garmin's weather + heat acclimation for past activities")
     s.add_argument("--user")
     s = sub.add_parser("backtest")
@@ -137,6 +139,11 @@ def main(argv=None) -> int:
     if a.cmd == "watch":
         from .sync.activity_watch import watch_loop
         watch_loop(conn)
+        return 0
+
+    if a.cmd == "mqtt":
+        from .mqtt_bridge import run
+        run(conn)
         return 0
 
     if a.cmd == "ingest":

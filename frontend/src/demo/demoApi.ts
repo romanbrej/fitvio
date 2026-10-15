@@ -1,9 +1,9 @@
-import type { Ambient, AppConfig, BuddySettings, Session, SessionDetail, VerdictKind, WallState } from '../api'
+import type { Ambient, AppConfig, BuddySettings, HomeAssistantSettings, Session, SessionDetail, VerdictKind, WallState } from '../api'
 import type { Units } from '../units'
 import { DEMO_LOCKED } from './demo'
 
 /** The demo's stand-in for the server: GETs read the JSON that `fitvio demo-export` wrote to demo-data/,
- *  harmless taps (pick a person, dismiss a verdict, buddy, auto-sync switch, units) change an in-memory copy
+ *  harmless taps (pick a person, dismiss a verdict, buddy, auto-sync switch, units, Home Assistant) change an in-memory copy
  *  until a reload, and everything that would log in, sync or change settings is refused. In imperial, the
  *  text the server writes (verdicts, "What improved") comes from demo-data/imperial/. */
 
@@ -29,7 +29,8 @@ function load<T>(file: string): Promise<T> {
 }
 
 const state: { selected?: string; dismissed: boolean; buddies: Record<string, string>; shown: Record<string, boolean>
-                check?: boolean; units: Record<string, Units> } = { dismissed: false, buddies: {}, shown: {}, units: {} }
+                check?: boolean; units: Record<string, Units>; shared: Record<string, boolean> } =
+  { dismissed: false, buddies: {}, shown: {}, units: {}, shared: {} }
 
 const imperial = (user: string | undefined) => !!user && state.units[user] === 'imperial'
 /** A buddy hidden in the settings is left out, as the backend does. */
@@ -63,6 +64,10 @@ export async function demoGet<T>(path: string): Promise<T> {
   if (url.pathname === '/api/settings/buddy') {
     const b = await load<BuddySettings>('settings/buddy.json')
     return { ...b, users: { ...b.users, ...state.buddies }, enabled: { ...b.enabled, ...state.shown } } as T
+  }
+  if (url.pathname === '/api/settings/home-assistant') {
+    const h = await load<HomeAssistantSettings>('settings/home-assistant.json')
+    return { ...h, users: { ...h.users, ...state.shared } } as T
   }
   if (url.pathname === '/api/settings/activity-check') {
     const c = await load<{ enabled: boolean }>('settings/activity-check.json')
@@ -119,6 +124,7 @@ export async function demoSend<T>(path: string, body: unknown): Promise<T> {
       if (b.enabled !== undefined) state.shown[String(b.user_id)] = Boolean(b.enabled)
       return demoGet<T>(path)
     case '/api/settings/activity-check': state.check = Boolean(b.enabled); return demoGet<T>(path)
+    case '/api/settings/home-assistant': state.shared[String(b.user_id)] = Boolean(b.shared); return demoGet<T>(path)
     default: throw new Error(DEMO_LOCKED)
   }
 }
