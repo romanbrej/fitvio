@@ -41,7 +41,7 @@ export function SweetBar({ a, height = 12 }: { a: Ambient; height?: number }) {
 
 /** Fitness, fatigue and form side by side. `legend` adds the line style each has in the chart below it. */
 export function FormNumbers({ form, legend = false }: { form: PmcDay | null; legend?: boolean }) {
-  const state = formState(form?.form)
+  const state = formState(form)
   const mark = (line: string) => legend ? `${line} ` : ''
   return (
     <div className="ph-grid3">

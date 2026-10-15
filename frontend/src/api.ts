@@ -59,7 +59,9 @@ export interface SessionDetail extends Session {
   excluded_from_baseline: boolean
 }
 
-export interface PmcDay { day: string; load: number; fitness: number; fatigue: number; form: number }
+/** The form zone of a day (backend: analytics/load.py form_state), the same words as Home Assistant's training status. */
+export type FormZone = 'very_fresh' | 'fresh' | 'neutral' | 'productive' | 'overreaching'
+export interface PmcDay { day: string; load: number; fitness: number; fatigue: number; form: number; state: FormZone }
 
 export interface HealthDay {
   day: string; rhr: number | null; hrv_last_night: number | null; hrv_weekly: number | null

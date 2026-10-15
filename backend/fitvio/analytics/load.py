@@ -6,6 +6,13 @@ from datetime import date, timedelta
 
 CTL_DAYS = 42
 ATL_DAYS = 7
+# the classic form (TSB) zones, from the top: the wall's training status and Home Assistant's
+FORM_STATES = ((25, "very_fresh"), (5, "fresh"), (-10, "neutral"), (-30, "productive"))
+
+
+def form_state(form: float) -> str:
+    """very_fresh (losing fitness) / fresh / neutral / productive / overreaching."""
+    return next((name for floor, name in FORM_STATES if form > floor), "overreaching")
 
 
 def daily_loads(sessions: list[dict]) -> dict[date, float]:
@@ -34,8 +41,9 @@ def pmc(loads: dict[date, float], start: date | None = None, end: date | None = 
         load = loads.get(d, 0.0)
         ctl += (load - ctl) * kc
         atl += (load - atl) * ka
+        form = round(ctl - atl, 1)
         out.append({"day": d.isoformat(), "load": round(load, 1), "fitness": round(ctl, 1),
-                    "fatigue": round(atl, 1), "form": round(ctl - atl, 1)})
+                    "fatigue": round(atl, 1), "form": form, "state": form_state(form)})
         d += timedelta(days=1)
     return out
 

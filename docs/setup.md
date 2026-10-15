@@ -165,6 +165,8 @@ Per person, a device **Fitvio \<name\>** (entity ids use the person's id from `c
 | `sensor.fitvio_alex_body_battery` | Body Battery (the day's highest) |
 | `sensor.fitvio_alex_vo2max` | VO₂max |
 | `sensor.fitvio_alex_fitness`, `…_fatigue`, `…_form` | the training load curves |
+| `sensor.fitvio_alex_training_status` | the form zone, as on the wall: Very fresh / Fresh / Neutral / Productive / Overreaching |
+| `sensor.fitvio_alex_running`, `…_cycling`, `…_swimming`, `…_gym` | per sport (only the ones the person does; a new sport appears by itself): the newest verdict, Better / In line / Worse … (attributes: `trend` improving / steady / declining, `change` and `unit`, e.g. +5 s/km, the period in `days`, `last_session`) |
 | `sensor.fitvio_alex_week_load` | this week's load (attributes: `sweet_spot_low`, `sweet_spot_high`, `status` below / in / above) |
 | `sensor.fitvio_alex_week_streak` | weeks in a row (attributes: `this_week`, `needed`) |
 | `sensor.fitvio_alex_todays_workout` | today's planned workout, or `Rest` |

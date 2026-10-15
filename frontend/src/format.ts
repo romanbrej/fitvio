@@ -1,4 +1,4 @@
-import type { Sport, VerdictKind } from './api'
+import type { FormZone, PmcDay, Sport, VerdictKind } from './api'
 import { distUnit, longDistance, perKm, poolDistance, speedOf } from './units'
 
 export function duration(s: number | null | undefined): string {
@@ -81,14 +81,17 @@ export const TYPE_LABEL: Record<string, string> = {
   easy: 'Easy', long: 'Long', tempo: 'Tempo', intervals: 'Intervals', race: 'Race', strength: 'Strength', other: 'Activity',
 }
 
-/** Classic form (TSB) bands. */
-export function formState(form: number | null | undefined): { label: string; tone: string } {
-  if (form == null) return { label: '—', tone: 'muted' }
-  if (form > 25) return { label: 'Very fresh — losing fitness', tone: 'warn' }
-  if (form > 5) return { label: 'Fresh', tone: 'better' }
-  if (form > -10) return { label: 'Neutral', tone: 'inline' }
-  if (form > -30) return { label: 'Productive training', tone: 'better' }
-  return { label: 'Overreaching risk', tone: 'worse' }
+const FORM_ZONE: Record<FormZone, { label: string; tone: string }> = {
+  very_fresh: { label: 'Very fresh — losing fitness', tone: 'warn' },
+  fresh: { label: 'Fresh', tone: 'better' },
+  neutral: { label: 'Neutral', tone: 'inline' },
+  productive: { label: 'Productive training', tone: 'better' },
+  overreaching: { label: 'Overreaching risk', tone: 'worse' },
+}
+
+/** The classic form (TSB) zone of a day, as the backend works it out (PmcDay.state). */
+export function formState(day: PmcDay | null | undefined): { label: string; tone: string } {
+  return (day?.state && FORM_ZONE[day.state]) || { label: '—', tone: 'muted' }
 }
 
 export function feelLabel(feel: number | null | undefined): string {

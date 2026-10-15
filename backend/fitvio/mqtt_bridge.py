@@ -20,7 +20,7 @@ from datetime import date, datetime, timedelta
 
 from . import db, wall
 from . import home_assistant as ha
-from .config import AppConfig, MqttConfig, env, load_config
+from .config import AppConfig, MqttConfig, UserConfig, env, load_config
 from .sync.activity_watch import paused_for_login
 
 log = logging.getLogger(__name__)
@@ -47,6 +47,7 @@ class Bridge:
         """A new broker connection: send every device and its sensors again."""
         self.published: dict[str, tuple] = {}            # user id → fingerprint of the last state sent
         self.published_at: dict[str, float] = {}
+        self.devices: dict[str, list[str]] = {}          # user id → the sport sensors in their discovery sent
 
     def on_message(self, m: MqttConfig, topic: str, payload: bytes) -> None:
         if topic.startswith(f"{m.discovery_prefix}/device/fitvio_"):
@@ -75,15 +76,12 @@ class Bridge:
             self.client.publish(f"{m.topic_prefix}/{slug}/state", "", retain=True)
             for uid in [uid for uid in self.published if ha.slug(uid) == slug]:
                 del self.published[uid]
+                self.devices.pop(uid, None)
             for uid in [uid for uid in self.sync_seen if ha.slug(uid) == slug]:
                 del self.sync_seen[uid]
             log.info("home assistant: removed %s", slug)
         for user in shared:
-            if user.id not in self.published:
-                self.client.publish(ha.discovery_topic(m, user.id), json.dumps(ha.discovery(m, user)), retain=True)
-                with self.lock:
-                    self.seen_devices.add(ha.discovery_topic(m, user.id))
-            self.publish_state(conn, cfg, user.id)
+            self.publish_state(conn, cfg, user)
             self.new_workouts(conn, cfg, user.id, now)
             self.sync_events(conn, cfg, user.id)
         while not self.requests.empty():
@@ -92,7 +90,9 @@ class Bridge:
             if user:  # only for people who share; anybody else's button doesn't exist
                 self.post_sync(user.id)
 
-    def publish_state(self, conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> None:
+    def publish_state(self, conn: sqlite3.Connection, cfg: AppConfig, user: UserConfig) -> None:
+        """The person's sensors, when anything changed; their device first when it's new or got a sport."""
+        user_id = user.id
         r = conn.execute("SELECT last_attempt, last_success, last_error FROM sync_status WHERE user_id = ?",
                          (user_id,)).fetchone()
         v = conn.execute("SELECT max(created_at) FROM verdicts WHERE user_id = ?", (user_id,)).fetchone()
@@ -101,6 +101,12 @@ class Bridge:
         if self.published.get(user_id) == fingerprint and fresh:
             return
         payload = ha.state(wall.ambient(conn, cfg, user_id))
+        if self.devices.get(user_id) != payload["sports"]:
+            discovery = ha.discovery(cfg.mqtt, user, payload["sports"])
+            self.client.publish(ha.discovery_topic(cfg.mqtt, user_id), json.dumps(discovery), retain=True)
+            self.devices[user_id] = payload["sports"]
+            with self.lock:
+                self.seen_devices.add(ha.discovery_topic(cfg.mqtt, user_id))
         self.client.publish(ha.state_topic(cfg.mqtt, user_id), json.dumps(db.finite(payload)), retain=True)
         self.published[user_id], self.published_at[user_id] = fingerprint, time.monotonic()
 
