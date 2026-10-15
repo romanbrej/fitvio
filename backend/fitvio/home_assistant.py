@@ -9,6 +9,7 @@ This module only builds topics and payloads; mqtt_bridge.py talks to the broker.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 import sqlite3
 from datetime import datetime
@@ -51,17 +52,27 @@ EVENTS: dict[str, tuple[str, list[str], str]] = {
 }
 
 
+def announced_key(user_id: str) -> str:
+    """The fresh workouts already announced to Home Assistant (mqtt_bridge.py), as a JSON list of ids."""
+    return f"ha.{user_id}.announced"
+
+
 def is_shared(conn: sqlite3.Connection, user_id: str) -> bool:
     return db.get_state(conn, f"ha.{user_id}.shared") == "1"
 
 
 def set_shared(conn: sqlite3.Connection, user_id: str, shared: bool) -> None:
     db.set_state(conn, f"ha.{user_id}.shared", "1" if shared else "0")
+    if not shared:  # sharing again starts afresh: nothing from meanwhile is announced as new
+        db.set_state(conn, announced_key(user_id), "")
 
 
 def slug(user_id: str) -> str:
-    """The person's id as Home Assistant entity ids and MQTT topics accept it."""
-    return re.sub(r"[^a-z0-9_]", "_", user_id.lower())
+    """The person's id as Home Assistant entity ids and MQTT topics accept it. Ids Fitvio makes already
+    are; any other gets a short hash, so "anna.b" and "anna_b" don't end up as one device."""
+    if re.fullmatch(r"[a-z0-9_]+", user_id):
+        return user_id
+    return re.sub(r"[^a-z0-9_]", "_", user_id.lower()) + "_" + hashlib.sha1(user_id.encode()).hexdigest()[:6]
 
 
 def availability_topic(m: MqttConfig) -> str:
@@ -123,7 +134,8 @@ def state(amb: dict) -> dict:
     readiness, form = amb.get("readiness") or {}, amb.get("form") or {}
     sweet, streak = amb.get("sweet_spot") or {}, amb.get("streak") or {}
     today = amb.get("today_workout")
-    last = next(iter(amb.get("recent") or []), None)
+    # the newest workout with a verdict, like the new-workout event (an excluded one doesn't count)
+    last = next((r for r in amb.get("recent") or [] if r.get("verdict") not in (None, "excluded")), None)
     sync = amb.get("sync") or {}
     sleep = health.get("sleep_total_min")
     load, low, high = sweet.get("load"), sweet.get("low"), sweet.get("high")
@@ -141,7 +153,7 @@ def state(amb: dict) -> dict:
         "week_load": load,
         "week_streak": streak.get("weeks"),
         "todays_workout": (today.get("title") or "Workout") if today else "Rest",
-        "last_workout": VERDICT_LABEL.get(last.get("verdict"), "No verdict") if last else None,
+        "last_workout": VERDICT_LABEL.get(last["verdict"], last["verdict"]) if last else None,
         "last_sync": _local_iso(sync.get("last_success")),
         "sync_status": ("login_expired" if sync.get("login_expired") else "failed" if sync.get("last_error")
                         else "stale" if sync.get("stale") else "ok"),

@@ -1,8 +1,8 @@
 """`fitvio mqtt`: shares the people who opted in with Home Assistant through an MQTT broker.
 
 Runs as its own process (the `mqtt` service in docker-compose.yml), so a slow or missing broker can
-never hold up a sync: it only reads the database, every few seconds, and tells Home Assistant what
-changed. While the broker is down it does nothing; paho reconnects on its own, and once it's back
+never hold up a sync: it reads the database every few seconds and tells Home Assistant what changed.
+Its only writes are small: which workouts it has announced (ha.<id>.announced). While the broker is down it does nothing; paho reconnects on its own, and once it's back
 everything is published again (events of workouts that came in meanwhile too, if still fresh).
 "Sync now" from Home Assistant goes to the dashboard's own sync endpoint, with its cooldown.
 """
@@ -30,10 +30,6 @@ REFRESH_S = 15 * 60     # sensors are republished at least this often (today's w
 NEW_WORKOUTS_MAX = 5    # events per person and round, oldest first
 
 
-def _announced_key(user_id: str) -> str:
-    return f"ha.{user_id}.announced"
-
-
 class Bridge:
     """What to publish, given the database and a connected client. `client` needs publish(topic,
     payload, retain) and subscribe(topic); `post_sync(user_id)` starts a sync (see api_sync)."""
@@ -58,9 +54,9 @@ class Bridge:
                 with self.lock:
                     self.seen_devices.add(topic)
             return
-        prefix, _, rest = topic.partition("/")
-        if prefix == m.topic_prefix and rest.endswith("/sync") and payload == b"PRESS":
-            self.requests.put(rest.removesuffix("/sync"))
+        slug = topic.removeprefix(f"{m.topic_prefix}/").removesuffix("/sync")
+        if topic == f"{m.topic_prefix}/{slug}/sync" and "/" not in slug and payload == b"PRESS":
+            self.requests.put(slug)
 
     def subscriptions(self, m: MqttConfig) -> list[str]:
         return [f"{m.topic_prefix}/+/sync", f"{m.discovery_prefix}/device/+/config"]
@@ -79,6 +75,8 @@ class Bridge:
             self.client.publish(f"{m.topic_prefix}/{slug}/state", "", retain=True)
             for uid in [uid for uid in self.published if ha.slug(uid) == slug]:
                 del self.published[uid]
+            for uid in [uid for uid in self.sync_seen if ha.slug(uid) == slug]:
+                del self.sync_seen[uid]
             log.info("home assistant: removed %s", slug)
         for user in shared:
             if user.id not in self.published:
@@ -107,39 +105,39 @@ class Bridge:
         self.published[user_id], self.published_at[user_id] = fingerprint, time.monotonic()
 
     def new_workouts(self, conn: sqlite3.Connection, cfg: AppConfig, user_id: str, now: datetime) -> None:
-        """An event per workout with a verdict that's newer than the last one announced. The first time
-        (just opted in) nothing is announced, and old activities (a backfill) never are."""
-        last = db.get_state(conn, _announced_key(user_id))
+        """An event per fresh workout with a verdict that wasn't announced yet, oldest first. What's there
+        when someone opts in isn't announced, and old activities (a backfill) never are."""
+        oldest_fresh = (now - timedelta(hours=cfg.wall.fresh_activity_hours)).isoformat(timespec="seconds")
         rows = conn.execute(
             """SELECT s.id, s.name, s.sport, s.start_time, v.verdict, v.headline FROM sessions s
                JOIN verdicts v ON v.session_id = s.id WHERE s.user_id = ? AND v.verdict != 'excluded'
-               AND s.start_time > ? ORDER BY s.start_time DESC LIMIT ?""",
-            (user_id, last or "", 1 if last is None else NEW_WORKOUTS_MAX)).fetchall()
-        if not rows:
-            return
-        oldest_fresh = now - timedelta(hours=cfg.wall.fresh_activity_hours)
-        for row in reversed(rows) if last is not None else []:
-            if datetime.fromisoformat(row["start_time"]) >= oldest_fresh:
+               AND s.start_time >= ? ORDER BY s.start_time""", (user_id, oldest_fresh)).fetchall()
+        stored = db.get_state(conn, ha.announced_key(user_id))
+        ids = [r["id"] for r in rows]
+        if stored:  # empty: just opted in, the workouts there now are the starting point
+            announced = set(json.loads(stored))
+            for row in [r for r in rows if r["id"] not in announced][-NEW_WORKOUTS_MAX:]:
                 self.client.publish(ha.event_topic(cfg.mqtt, user_id, "new_workout"),
                                     json.dumps(ha.new_workout_event(dict(row))))
-        db.set_state(conn, _announced_key(user_id), rows[0]["start_time"])
+        if stored != (value := json.dumps(ids)):  # only the fresh ones are kept, so it stays small
+            db.set_state(conn, ha.announced_key(user_id), value)
 
     def sync_events(self, conn: sqlite3.Connection, cfg: AppConfig, user_id: str) -> None:
-        """A failed sync and an expired Garmin login, once each. What was already so when this process
-        started (or the person opted in) isn't announced."""
-        r = conn.execute("SELECT last_attempt, last_error FROM sync_status WHERE user_id = ?", (user_id,)).fetchone()
-        failed = r["last_attempt"] if r and r["last_error"] else None
+        """A sync that starts failing and an expired Garmin login, once each until it works again. What was
+        already so when this process started (or the person opted in) isn't announced."""
+        r = conn.execute("SELECT last_error FROM sync_status WHERE user_id = ?", (user_id,)).fetchone()
+        failed = bool(r and r["last_error"])
         expired = paused_for_login(conn, user_id)
         before = self.sync_seen.get(user_id)
         self.sync_seen[user_id] = (failed, expired)
         if before is None:
             return
-        if failed and failed != before[0]:
-            self.client.publish(ha.event_topic(cfg.mqtt, user_id, "sync_failed"),
-                                json.dumps({"event_type": "sync_failed", "error": r["last_error"]}))
         if expired and not before[1]:
             self.client.publish(ha.event_topic(cfg.mqtt, user_id, "login_expired"),
                                 json.dumps({"event_type": "login_expired"}))
+        elif failed and not before[0] and not expired:  # an expired login says more than "sync failed"
+            self.client.publish(ha.event_topic(cfg.mqtt, user_id, "sync_failed"),
+                                json.dumps({"event_type": "sync_failed", "error": r["last_error"]}))
 
 
 def api_sync(user_id: str) -> None:

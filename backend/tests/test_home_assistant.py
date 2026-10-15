@@ -99,9 +99,11 @@ def test_discovery_is_one_device_per_person_with_every_entity(setup):
     assert d["cmps"]["login_expired"]["state_topic"] == "fitvio/a/event/login_expired"
 
 
-def test_ids_become_valid_entity_ids_and_topics():
-    assert ha.slug("Anna-Lena.K") == "anna_lena_k"
-    assert ha.state_topic(M, "Anna-Lena.K") == "fitvio/anna_lena_k/state"
+def test_ids_become_valid_entity_ids_and_topics_without_colliding():
+    assert ha.slug("anna_b") == "anna_b" and ha.state_topic(M, "anna_b") == "fitvio/anna_b/state"
+    other = ha.slug("anna.b")
+    assert other.startswith("anna_b_") and other != "anna_b" and ha.slug("Anna_B") not in ("anna_b", other)
+    assert ha.slug("anna.b") == other  # stable
 
 
 def test_state_takes_the_wall_numbers(setup):
@@ -124,6 +126,13 @@ def test_state_of_someone_without_data():
     s = ha.state({"user_id": "x"})
     assert s["training_readiness"] is None and s["todays_workout"] == "Rest" and s["last_workout"] is None
     assert s["sync_status"] == "ok" and s["attrs"]["week_load"]["status"] is None
+
+
+def test_last_workout_skips_excluded_and_unrated_sessions():
+    recent = [{"verdict": "excluded", "name": "Walk"}, {"verdict": None, "name": "New"},
+              {"verdict": "worse", "name": "Run", "start_time": "2026-10-14T07:00:00"}]
+    s = ha.state({"recent": recent})
+    assert s["last_workout"] == "Worse" and s["attrs"]["last_workout"]["name"] == "Run"
 
 
 def test_state_says_why_a_sync_needs_attention():
@@ -211,6 +220,48 @@ def test_a_new_workout_is_announced_once_with_its_verdict(setup):
     assert not [t for t in topics(client.take()) if "/event/" in t]  # once
 
 
+def test_the_first_workout_of_someone_who_had_none_is_announced(setup):
+    cfg, conn = setup
+    client = FakeClient()
+    bridge = mqtt_bridge.Bridge(client, lambda uid: None)
+    ha.set_shared(conn, "a", True)
+    now = after_demo(conn, "a") + timedelta(days=2)  # nothing fresh when they opt in
+    bridge.tick(conn, cfg, now)
+    sid = add_workout(conn, "a", now - timedelta(minutes=30))
+    bridge.tick(conn, cfg, now)
+    assert [(e, p["session_id"]) for e, p in events(client)] == [("new_workout", sid)]
+
+
+def test_a_workout_that_arrives_late_is_still_announced(setup):
+    cfg, conn = setup
+    client = FakeClient()
+    bridge = mqtt_bridge.Bridge(client, lambda uid: None)
+    ha.set_shared(conn, "a", True)
+    now = after_demo(conn, "a") + timedelta(hours=3)
+    bridge.tick(conn, cfg, now)
+    add_workout(conn, "a", now - timedelta(hours=1))
+    bridge.tick(conn, cfg, now)
+    client.take()
+    earlier = add_workout(conn, "a", now - timedelta(hours=2))  # e.g. the other source synced it later
+    bridge.tick(conn, cfg, now)
+    assert [(e, p["session_id"]) for e, p in events(client)] == [("new_workout", earlier)]
+
+
+def test_sharing_again_does_not_announce_workouts_from_meanwhile(setup):
+    cfg, conn = setup
+    client = FakeClient()
+    bridge = mqtt_bridge.Bridge(client, lambda uid: None)
+    ha.set_shared(conn, "a", True)
+    now = after_demo(conn, "a")
+    bridge.tick(conn, cfg, now)
+    ha.set_shared(conn, "a", False)
+    bridge.tick(conn, cfg, now)
+    add_workout(conn, "a", now - timedelta(minutes=30))
+    ha.set_shared(conn, "a", True)
+    bridge.tick(conn, cfg, now)
+    assert events(client) == []
+
+
 def test_old_workouts_from_a_backfill_are_not_announced(setup):
     cfg, conn = setup
     client = FakeClient()
@@ -223,22 +274,61 @@ def test_old_workouts_from_a_backfill_are_not_announced(setup):
     assert not [t for t in topics(client.take()) if "/event/" in t]
 
 
-def test_a_failed_sync_and_an_expired_login_are_announced_once(setup):
+def sync_status(conn, uid, error):
+    db.upsert(conn, "sync_status", {"user_id": uid, "last_attempt": datetime.now().isoformat(), "last_error": error})
+    conn.commit()
+
+
+def events(client):
+    return [(t.rsplit("/", 1)[-1], json.loads(p)) for t, p, _ in client.take() if "/event/" in t]
+
+
+def test_a_failing_sync_is_announced_once_until_it_works_again(setup):
     cfg, conn = setup
     client = FakeClient()
     bridge = mqtt_bridge.Bridge(client, lambda uid: None)
     ha.set_shared(conn, "a", True)
     bridge.tick(conn, cfg)
     client.take()
-    db.upsert(conn, "sync_status", {"user_id": "a", "last_attempt": datetime.now().isoformat(), "last_error": "timeout"})
+    sync_status(conn, "a", "timeout")
+    bridge.tick(conn, cfg)
+    assert events(client) == [("sync_failed", {"event_type": "sync_failed", "error": "timeout"})]
+    sync_status(conn, "a", "timeout again")  # the next hourly attempt fails too: no second event
+    bridge.tick(conn, cfg)
+    assert events(client) == []
+    sync_status(conn, "a", None)
+    bridge.tick(conn, cfg)
+    sync_status(conn, "a", "timeout")  # works, then fails again: announced again
+    bridge.tick(conn, cfg)
+    assert [e for e, _ in events(client)] == ["sync_failed"]
+
+
+def test_an_expired_login_is_announced_once_instead_of_a_failed_sync(setup):
+    cfg, conn = setup
+    client = FakeClient()
+    bridge = mqtt_bridge.Bridge(client, lambda uid: None)
+    ha.set_shared(conn, "a", True)
+    bridge.tick(conn, cfg)
+    client.take()
+    sync_status(conn, "a", "login failed")
     db.set_state(conn, activity_watch._k("a", "paused_at"), datetime.now().isoformat())
     conn.commit()
     bridge.tick(conn, cfg)
-    events = {t: json.loads(p) for t, p, _ in client.take() if "/event/" in t}
-    assert events == {"fitvio/a/event/sync_failed": {"event_type": "sync_failed", "error": "timeout"},
-                      "fitvio/a/event/login_expired": {"event_type": "login_expired"}}
+    assert events(client) == [("login_expired", {"event_type": "login_expired"})]
     bridge.tick(conn, cfg)
-    assert not [t for t in topics(client.take()) if "/event/" in t]
+    assert events(client) == []
+
+
+def test_sync_now_with_a_nested_topic_prefix(setup):
+    cfg, conn = setup
+    cfg.mqtt.topic_prefix = "home/fitvio"
+    started = []
+    bridge = mqtt_bridge.Bridge(FakeClient(), started.append)
+    ha.set_shared(conn, "a", True)
+    bridge.on_message(cfg.mqtt, "home/fitvio/a/sync", b"PRESS")
+    bridge.on_message(cfg.mqtt, "home/fitvio/x/a/sync", b"PRESS")  # not a person's button
+    bridge.tick(conn, cfg)
+    assert started == ["a"]
 
 
 def test_sync_now_from_home_assistant_only_for_shared_people(setup):
@@ -310,8 +400,9 @@ def test_home_assistant_settings_api(client):
 def test_the_wall_cannot_be_framed_unless_an_origin_is_allowed(client):
     r = client.get("/api/health")
     assert r.headers["x-frame-options"] == "DENY" and "frame-ancestors 'none'" in r.headers["content-security-policy"]
-    main._cfg.wall.embed_origins = ["http://192.168.178.136:8123/", "http://x; script-src *"]
+    main._cfg.wall.embed_origins = ["http://192.168.178.136:8123/", "http://x; script-src *", "http://evil:1\n"]
     r = client.get("/api/health")
     assert "x-frame-options" not in r.headers
     csp = r.headers["content-security-policy"]
-    assert "frame-ancestors http://192.168.178.136:8123;" in csp and "script-src" not in csp
+    assert "frame-ancestors http://192.168.178.136:8123 http://evil:1;" in csp  # a pasted newline is trimmed
+    assert "script-src" not in csp and "\n" not in csp

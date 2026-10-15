@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import ipaddress
 import json
 import os
@@ -50,10 +51,11 @@ SECURITY_HEADERS = {
 EMBED_ORIGIN = re.compile(r"^https?://[A-Za-z0-9.\-]+(:[0-9]{1,5})?$|^https?://\[[0-9A-Fa-f:.]+\](:[0-9]{1,5})?$")
 
 
-def security_headers(embed_origins: list[str]) -> dict[str, str]:
+@functools.cache
+def security_headers(embed_origins: tuple[str, ...]) -> dict[str, str]:
     """No page may show the dashboard in a frame, except the ones listed in wall.embed_origins (e.g. a
     Home Assistant dashboard). X-Frame-Options can't name an origin, so it's left out then."""
-    origins = [o.rstrip("/") for o in embed_origins if EMBED_ORIGIN.match(o.rstrip("/"))]
+    origins = [o for o in (o.strip().rstrip("/") for o in embed_origins) if EMBED_ORIGIN.fullmatch(o)]
     if not origins:
         return SECURITY_HEADERS
     headers = {k: v for k, v in SECURITY_HEADERS.items() if k != "X-Frame-Options"}
@@ -91,7 +93,7 @@ async def guard(request: Request, call_next):
         if origin and urlsplit(origin).netloc.lower() != host.lower():
             return JSONResponse({"detail": "cross-origin request refused"}, status_code=403)
     response = await call_next(request)
-    for k, v in security_headers(cfg().wall.embed_origins).items():
+    for k, v in security_headers(tuple(cfg().wall.embed_origins)).items():
         response.headers.setdefault(k, v)
     if request.url.path.startswith("/api/"):
         response.headers.setdefault("Cache-Control", "no-store")

@@ -172,7 +172,7 @@ Per person, a device **Fitvio \<name\>** (entity ids use the person's id from `c
 | `sensor.fitvio_alex_last_sync`, `…_sync_status` | when it last synced, and `ok` / `stale` / `failed` / `login_expired` |
 | `button.fitvio_alex_sync_now` | starts a sync (same cooldown as the button in Accounts) |
 | `event.fitvio_alex_new_workout` | a new workout; its event type is the verdict: `better`, `in_line`, `worse`, `not_comparable`, `load_only` |
-| `event.fitvio_alex_sync_failed`, `…_login_expired` | a sync failed; the Garmin login expired |
+| `event.fitvio_alex_sync_failed`, `…_login_expired` | syncing started failing; the Garmin login expired (each once, until it works again) |
 
 ### Example automations
 
