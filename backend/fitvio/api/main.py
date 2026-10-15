@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import ipaddress
 import json
 import os
@@ -15,7 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .. import accounts, buddy, config, db, heat_response, pipeline, profile, removal, units, wall, weather
+from .. import accounts, buddy, config, db, heat_response, home_assistant, pipeline, profile, removal, units, wall, weather
 from ..analytics import load as load_model
 from ..config import PROJECT_ROOT, AppConfig, env, load_config
 from ..pipeline import user_sessions
@@ -46,6 +47,21 @@ SECURITY_HEADERS = {
                                 "font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; "
                                 "form-action 'self'"),
 }
+# an origin as browsers send it: scheme, host, optional port — nothing that could end the CSP directive
+EMBED_ORIGIN = re.compile(r"^https?://[A-Za-z0-9.\-]+(:[0-9]{1,5})?$|^https?://\[[0-9A-Fa-f:.]+\](:[0-9]{1,5})?$")
+
+
+@functools.cache
+def security_headers(embed_origins: tuple[str, ...]) -> dict[str, str]:
+    """No page may show the dashboard in a frame, except the ones listed in wall.embed_origins (e.g. a
+    Home Assistant dashboard). X-Frame-Options can't name an origin, so it's left out then."""
+    origins = [o for o in (o.strip().rstrip("/") for o in embed_origins) if EMBED_ORIGIN.fullmatch(o)]
+    if not origins:
+        return SECURITY_HEADERS
+    headers = {k: v for k, v in SECURITY_HEADERS.items() if k != "X-Frame-Options"}
+    headers["Content-Security-Policy"] = headers["Content-Security-Policy"].replace(
+        "frame-ancestors 'none'", "frame-ancestors " + " ".join(origins))
+    return headers
 
 
 def host_allowed(host: str) -> bool:
@@ -77,7 +93,7 @@ async def guard(request: Request, call_next):
         if origin and urlsplit(origin).netloc.lower() != host.lower():
             return JSONResponse({"detail": "cross-origin request refused"}, status_code=403)
     response = await call_next(request)
-    for k, v in SECURITY_HEADERS.items():
+    for k, v in security_headers(tuple(cfg().wall.embed_origins)).items():
         response.headers.setdefault(k, v)
     if request.url.path.startswith("/api/"):
         response.headers.setdefault("Cache-Control", "no-store")
@@ -659,6 +675,27 @@ def set_buddy(body: BuddyChoice, c: AppConfig = Depends(cfg), cn=Depends(conn)):
     if body.enabled is not None:
         buddy.set_shown(cn, body.user_id, body.enabled)
     return get_buddy(c, cn)
+
+
+class HomeAssistantChoice(BaseModel):
+    model_config = {"extra": "forbid"}
+    user_id: str = Field(max_length=64)
+    shared: bool = Field(strict=True)
+
+
+@app.get("/api/settings/home-assistant")
+def get_home_assistant(c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    """Whose data goes to Home Assistant (nobody's by default), and whether a broker is set up at all."""
+    return {"configured": c.mqtt is not None,
+            "users": {u.id: home_assistant.is_shared(cn, u.id) for u in c.users}}
+
+
+@app.post("/api/settings/home-assistant", dependencies=[Depends(local_network_only)])
+def set_home_assistant(body: HomeAssistantChoice, c: AppConfig = Depends(cfg), cn=Depends(conn)):
+    if body.user_id not in {u.id for u in c.users}:
+        raise HTTPException(400, "unknown person")
+    home_assistant.set_shared(cn, body.user_id, body.shared)  # `fitvio mqtt` picks it up within seconds
+    return get_home_assistant(c, cn)
 
 
 @app.get("/api/health")

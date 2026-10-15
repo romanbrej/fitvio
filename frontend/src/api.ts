@@ -163,6 +163,9 @@ export interface BuddySettings {
   enabled: Record<string, boolean>  // false: hidden everywhere, the animal is kept
 }
 
+/** Whose data goes to Home Assistant over MQTT (backend: home_assistant.py); `configured`: a broker is set up. */
+export interface HomeAssistantSettings { configured: boolean; users: Record<string, boolean> }
+
 export interface SweetSpot { low: number; high: number; load: number; fitness_at_start: number }
 
 export interface WeekTotals { [sport: string]: { count: number; duration_s: number; distance_m: number; load: number } }
@@ -342,4 +345,7 @@ export const api = {
   buddySettings: () => get<BuddySettings>('/api/settings/buddy'),
   setBuddy: (user_id: string, change: { animal?: string; enabled?: boolean }) =>
     post<BuddySettings>('/api/settings/buddy', { user_id, ...change }),
+  homeAssistant: () => get<HomeAssistantSettings>('/api/settings/home-assistant'),
+  setHomeAssistant: (user_id: string, shared: boolean) =>
+    post<HomeAssistantSettings>('/api/settings/home-assistant', { user_id, shared }),
 }

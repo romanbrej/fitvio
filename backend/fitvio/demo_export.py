@@ -96,7 +96,8 @@ def _export(out_dir: Path, days: int) -> dict[str, int]:
         counts["files"] += 1
         return data
 
-    for path in ("/api/config", "/api/wall", "/api/accounts", "/api/settings/buddy", "/api/settings/activity-check"):
+    for path in ("/api/config", "/api/wall", "/api/accounts", "/api/settings/buddy", "/api/settings/activity-check",
+                 "/api/settings/home-assistant"):
         save(path)
     for u in cfg.users:
         base = f"/api/users/{u.id}"

@@ -24,6 +24,7 @@ fitvio add-person                  connect a Garmin account (only asks email + p
 fitvio profile [--user ID]         what was read from Garmin, and from where
 fitvio sync [--user ID] [--full]   download (GarminDB) + ingest + verdicts
 fitvio watch                       auto-sync: new-activity check every 2 min + hourly sync
+fitvio mqtt                        Home Assistant: publish people who opted in to the MQTT broker
 fitvio ingest [--user ID] [--full] ingest only
 fitvio evaluate [--user ID]        recompute all verdicts (e.g. after changing max_hr)
 fitvio backfill-extras [--user ID] Garmin weather, heat acclimation + VO₂max history for the past
@@ -63,6 +64,8 @@ backend/fitvio/
   wall.py                     wall takeover rules, overview, validation
   coach.py                    Garmin plan week, today's workout, readiness, week streak, sweet spot, cadence
   buddy.py                    training buddy: animal per person + mood
+  home_assistant.py           Home Assistant opt-in, MQTT discovery and state payloads
+  mqtt_bridge.py              `fitvio mqtt`: publishes to the broker, events, sync now from HA
   api/main.py                 FastAPI + SSE, serves frontend/dist
   accounts.py                 Garmin login (incl. MFA) and sync jobs with live progress
   profile.py                  name, sex, max/resting HR, LTHR, FTP read from Garmin

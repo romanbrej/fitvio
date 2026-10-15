@@ -7,6 +7,7 @@
 # Optional .env: FITVIO_UID / FITVIO_GID = the host user owning those folders (id -u / id -g), TZ = your time zone,
 #   FITVIO_BIND = the LAN IP the dashboard listens on (default: every IPv4 address),
 #   FITVIO_UNITS = metric (default) or imperial: mi, °F, lb for everyone who hasn't picked their own on the phone.
+#   COMPOSE_PROFILES=mqtt + FITVIO_MQTT_PASSWORD = Home Assistant over MQTT (docs/setup.md → Home Assistant).
 # Rollback: FITVIO_TAG=sha-<commit> in .env, then docker compose up -d (remove it to follow latest again).
 
 x-common: &common
@@ -44,3 +45,20 @@ services:
     depends_on:
       - web
 
+
+  mqtt:
+    <<: *common
+    # Home Assistant (optional): shares the people who opted in through your MQTT broker. Off unless
+    # COMPOSE_PROFILES=mqtt is in .env and config/users.json has an "mqtt" block (docs/setup.md).
+    command: ["fitvio", "mqtt"]
+    profiles: ["mqtt"]
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      FITVIO_UNITS: ${FITVIO_UNITS:-metric}
+      FITVIO_MQTT_PASSWORD: ${FITVIO_MQTT_PASSWORD:-}
+      FITVIO_API_URL: http://web:8765  # "Sync now" from Home Assistant goes through the dashboard
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # a broker on this machine: "host": "host.docker.internal"
+    mem_limit: 128m
+    depends_on:
+      - web

@@ -5,7 +5,7 @@ import threading
 import pytest
 from fastapi.testclient import TestClient
 
-from fitvio import accounts, buddy, config, db, heat_response, removal, units, wall, weather
+from fitvio import accounts, buddy, config, db, heat_response, home_assistant, removal, units, wall, weather
 from fitvio.api import main
 from fitvio.pipeline import reprocess_key
 from fitvio.sync import activity_watch
@@ -60,6 +60,8 @@ def fill(conn, uid):
     wall.set_trend_period(conn, uid, 90)
     buddy.set_animal(conn, uid, "fox")
     buddy.set_shown(conn, uid, False)
+    home_assistant.set_shared(conn, uid, True)
+    db.set_state(conn, f"ha.{uid}.announced", "2026-10-01T07:00:00")
     for key in (reprocess_key(uid), f"analysis_version:{uid}", f"morning.{uid}", f"max_hr_dismissed:{uid}",
                 heat_response.STATE.format(user_id=uid, sport="running"), activity_watch._k(uid, "last_check")):
         db.set_state(conn, key, "1")

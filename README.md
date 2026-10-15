@@ -65,6 +65,7 @@ docker run --rm -p 8765:8765 -e FITVIO_CONFIG=/tmp/demo/users.json -e FITVIO_DB=
 - **Made for the wall** — big type, day and night screens, the newest activity takes over the screen, auto-scales to big tablets.
 - **For the whole household** — one Garmin login per person; tap an avatar to switch.
 - **On your phone too** — a personal app with Today, Plan, Trends and Me, plus every workout you ever did per sport (home Wi-Fi only).
+- **In Home Assistant** — optional: readiness, sleep, form, today's workout and every new verdict as entities in your own Home Assistant, through your MQTT broker. Flash the lights green after a *Better* run, or get a nudge on a low-readiness morning. Each person opts in.
 - **Private by design** — runs on your server, LAN only; your Garmin login and health data never leave your home. The weather lookup only sends a rough position (rounded to about 11 km) and the date.
 
 ## How it works
@@ -85,9 +86,11 @@ New activities show up on the wall about 2–3 minutes after your watch syncs: t
 
 **What hardware do I need?** Any always-on amd64 or arm64 machine with Docker: a Raspberry Pi, NAS, mini PC or home server. Prefer an SSD over an SD card. For the wall, any tablet with a browser in kiosk mode (I use Fully Kiosk Browser).
 
+**Does it work with Home Assistant?** Yes, optionally. Each person who opts in shows up as a device with sensors, a *Sync now* button and events for a new workout, a failed sync and an expired login, through MQTT discovery. The wall can also be shown inside a Home Assistant dashboard. Setup in [Home Assistant](docs/setup.md#home-assistant).
+
 **Can I see it outside my home?** No, by design — it's built for your home network only. Don't expose it to the internet.
 
-**Where does my data go?** Nowhere. Your Garmin login and data stay in the `data/` folder on your server. For the weather, Open-Meteo gets a rough position (a point every 30 minutes, rounded to about 11 km) and the dates, never your exact route or anything about you; it can be switched off per person. Details in [Security and privacy](docs/security.md).
+**Where does my data go?** Nowhere. Your Garmin login and data stay in the `data/` folder on your server. If you turn on Home Assistant, the people who opt in are shared with your own MQTT broker, and nothing else. For the weather, Open-Meteo gets a rough position (a point every 30 minutes, rounded to about 11 km) and the dates, never your exact route or anything about you; it can be switched off per person. Details in [Security and privacy](docs/security.md).
 
 ## Feedback and contributing
 
@@ -97,7 +100,7 @@ This is a young project and I'd love to hear how it works for you. Found a bug, 
 
 | | |
 |---|---|
-| [Setup and hosting](docs/setup.md) | Docker, automatic updates, connecting Garmin, without Docker, putting it on the wall |
+| [Setup and hosting](docs/setup.md) | Docker, automatic updates, connecting Garmin, without Docker, putting it on the wall, Home Assistant |
 | [How it works](docs/how-it-works.md) | Verdicts per sport, heat adjustment, the Garmin plan, the buddy, syncing, limitations |
 | [Security and privacy](docs/security.md) | What's stored where, how the web app is protected, reporting issues |
 | [Development](docs/development.md) | Local setup with demo data, tests, CLI, project layout |

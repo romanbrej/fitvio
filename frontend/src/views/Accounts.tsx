@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../App'
 import { api } from '../api'
 import { DEMO, DEMO_LOCKED } from '../demo/demo'
-import type { Account, ActivityCheck, BuddySettings } from '../api'
+import type { Account, ActivityCheck, BuddySettings, HomeAssistantSettings } from '../api'
 import { ANIMALS, Buddy } from '../components/Buddy'
 import type { Animal } from '../components/Buddy'
 import { ConnectForm } from '../components/ConnectForm'
@@ -65,6 +65,13 @@ export function Accounts() {
   const hideBuddy = async (uid: string) => {
     setErr(null)
     try { setBuddies(await api.setBuddy(uid, { enabled: false })); reload() } catch (e) { setErr(String(e).replace(/^Error: /, '')) }
+  }
+  // Home Assistant: off for everyone until each person shares (only shown once a broker is set up)
+  const [ha, setHa] = useState<HomeAssistantSettings | null>(null)
+  useEffect(() => { api.homeAssistant().then(setHa).catch(() => setHa(null)) }, [])
+  const shareWithHa = async (uid: string, shared: boolean) => {
+    setErr(null)
+    try { setHa(await api.setHomeAssistant(uid, shared)) } catch (e) { setErr(String(e).replace(/^Error: /, '')) }
   }
   const buddyShown = (uid: string) => buddies?.enabled?.[uid] ?? true  // missing (older backend): shown, like the backend default
 
@@ -158,6 +165,17 @@ export function Accounts() {
                   })}
                 </div>
               </div>
+              {ha?.configured && (
+                <div className="between" style={{ marginTop: 14 }}>
+                  <div className="label">Home Assistant</div>
+                  <div className="segmented" role="group" aria-label={`Share ${a.name} with Home Assistant`}>
+                    {([[false, 'None'], [true, 'Share readiness, sleep, workouts']] as const).map(([shared, label]) => {
+                      const on = !!ha.users[a.id] === shared
+                      return <button key={label} className="btn" aria-pressed={on} onClick={() => !on && shareWithHa(a.id, shared)}>{label}</button>
+                    })}
+                  </div>
+                </div>
+              )}
               {a.profile.ftp.value != null && (
                 <div className="muted" style={{ marginTop: 8, fontSize: 15 }}>FTP <b className="num" style={{ color: 'var(--text)' }}>{Math.round(Number(a.profile.ftp.value))} W</b></div>
               )}

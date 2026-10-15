@@ -9,6 +9,7 @@ dependencies = [
   "fitdecode>=0.10",
   "fastapi>=0.110",
   "uvicorn>=0.29",
+  "paho-mqtt>=2.1",  # Home Assistant (fitvio mqtt)
 ]
 
 [project.optional-dependencies]
