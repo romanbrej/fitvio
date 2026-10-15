@@ -225,7 +225,7 @@ export function MiniPmc({ days }: { days: Ambient['pmc'] }) {
 function LoadCard({ a }: { a: Ambient }) {
   const nav = useNavigate()
   const f = a.form
-  const fs = formState(f?.form)
+  const fs = formState(f)
   const ss = a.sweet_spot
   const w = a.today_workout
   const planned = w && !w.done ? w.est_load ?? 0 : 0

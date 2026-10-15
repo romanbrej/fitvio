@@ -10,7 +10,7 @@ import { weekState, weeklyLoads } from '../weeks'
 import './Detail.css'
 
 const RANGES = [42, 90, 180, 365]
-// the same bands as formState()
+// the scale of the form zones (backend: analytics/load.py FORM_STATES)
 const BANDS = [
   { label: 'Overreaching', range: 'below −30', lo: -Infinity, hi: -30, w: 20, c: '#7f1d1d' },
   { label: 'Productive', range: '−30 to −10', lo: -30, hi: -10, w: 20, c: 'rgba(61,220,132,.75)' },
@@ -77,7 +77,7 @@ export function LoadDetail() {
   const { data: prof } = useFetch(() => api.profile(user!), [user])
   const { data: amb } = useFetch(() => api.ambient(user!), [user])
   const last = data?.at(-1)
-  const fs = formState(last?.form)
+  const fs = formState(last)
   const firstDay = data?.[0]
   const gain = last && firstDay ? last.fitness - firstDay.fitness : null
   const since = firstDay ? new Date(firstDay.day).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''

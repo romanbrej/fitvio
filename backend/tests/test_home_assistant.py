@@ -1,12 +1,13 @@
 """Home Assistant: discovery and state payloads, the opt-in, the MQTT bridge and the embed headers."""
 import json
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
 from fitvio import db, mqtt_bridge, wall
 from fitvio import home_assistant as ha
+from fitvio.analytics import load as load_model
 from fitvio.api import main
 from fitvio.config import MqttConfig, load_config
 from fitvio.demo import generate
@@ -40,10 +41,10 @@ def setup(tmp_path, monkeypatch):
     return cfg, conn
 
 
-def add_workout(conn, uid, start: datetime, verdict="better"):
+def add_workout(conn, uid, start: datetime, verdict="better", sport="running"):
     sid = f"{uid}:{start:%Y%m%d%H%M}"
     db.upsert(conn, "sessions", {"id": sid, "user_id": uid, "activity_id": sid, "name": "Morning Run",
-                                 "sport": "running", "start_time": start.isoformat(timespec="seconds")})
+                                 "sport": sport, "start_time": start.isoformat(timespec="seconds")})
     db.upsert(conn, "verdicts", {"session_id": sid, "user_id": uid, "created_at": datetime.now().isoformat(),
                                  "verdict": verdict, "confidence": "high", "headline": "Faster at the same heart rate",
                                  "trend": "{}"})
@@ -110,7 +111,9 @@ def test_state_takes_the_wall_numbers(setup):
     cfg, conn = setup
     amb = wall.ambient(conn, cfg, "a")
     s = ha.state(amb)
-    assert set(ha.SENSORS) <= set(s) and set(s["attrs"]) == ha.ATTRIBUTES
+    assert set(ha.SENSORS) <= set(s) and set(s["attrs"]) == ha.ATTRIBUTES | set(s["sports"])
+    assert s["sports"] == ["cycling", "gym", "running", "swimming"]  # the demo people do all four
+    assert s["training_status"] == ha.FORM_LABEL[amb["form"]["state"]]
     h = amb["health_latest"]
     assert (s["hrv"], s["resting_hr"], s["body_battery"], s["sleep_score"]) == \
         (h["hrv_last_night"], h["rhr"], h["bb_max"], h["sleep_score"])
@@ -406,3 +409,76 @@ def test_the_wall_cannot_be_framed_unless_an_origin_is_allowed(client):
     csp = r.headers["content-security-policy"]
     assert "frame-ancestors http://192.168.178.136:8123 http://evil:1;" in csp  # a pasted newline is trimmed
     assert "script-src" not in csp and "\n" not in csp
+
+
+@pytest.mark.parametrize("form,state", [(30, "very_fresh"), (25, "fresh"), (6, "fresh"), (5, "neutral"),
+                                        (-10, "productive"), (-29.9, "productive"), (-30, "overreaching")])
+def test_form_zones(form, state):
+    assert load_model.form_state(form) == state
+
+
+def test_every_pmc_day_has_its_form_zone():
+    rows = load_model.pmc({date(2026, 10, 1): 300.0}, end=date(2026, 10, 3))
+    assert [r["state"] for r in rows] == [load_model.form_state(r["form"]) for r in rows]
+
+
+NOW = datetime(2026, 10, 15, 12, 0)
+
+
+def trends(**sports):
+    return {"trends": {k: {"last_verdict": "better", "last_time": "2026-10-14T07:00:00", **v} for k, v in sports.items()}}
+
+
+def test_each_sport_says_where_it_is_heading_like_the_wall_tile():
+    states, attrs = ha.sport_states({**trends(
+        running={"status": {"pace_s_per_km": 300, "change_s_per_km": 5}},
+        cycling={"status": {"w_per_beat": 1.2, "w_per_beat_change_pct": 1.0}, "last_verdict": "in_line"},
+        strength={"status": {"sessions_6w": 6, "sessions_prev_6w": 9, "e1rm_change_pct": None}},
+        swimming={"pct_per_week": -0.5, "last_verdict": "worse"})}, NOW)
+    assert states == {"running": "Better", "cycling": "In line", "gym": "Better", "swimming": "Worse"}
+    assert attrs["running"] == {"trend": "improving", "change": 5, "unit": "s/km", "days": 42, "verdict": "better",
+                                "last_session": attrs["running"]["last_session"]}
+    assert attrs["cycling"]["trend"] == "steady" and attrs["cycling"]["days"] == 91
+    assert (attrs["gym"]["trend"], attrs["gym"]["change"], attrs["gym"]["unit"]) == ("declining", -3, "sessions")
+    assert (attrs["swimming"]["trend"], attrs["swimming"]["change"]) == ("declining", -3.0)
+
+
+def test_a_picked_period_counts_and_old_or_thin_trends_have_no_direction():
+    amb = {**trends(running={"status": {"pace_s_per_km": 300, "change_s_per_km": 5},
+                             "periods": {"91": {"change": -6, "n": 12}}},
+                    cycling={"status": {"w_per_beat": 1.2, "w_per_beat_change_pct": 4}, "last_time": "2026-08-01T07:00:00"},
+                    swimming={"pct_per_week": 9}), "trend_period": 91}
+    _, attrs = ha.sport_states(amb, NOW)
+    assert (attrs["running"]["trend"], attrs["running"]["change"], attrs["running"]["days"]) == ("declining", -6, 91)
+    assert attrs["cycling"]["trend"] is None  # nothing in 6 weeks
+    assert attrs["swimming"]["trend"] is None  # 54 % in 6 weeks: too few swims to believe
+
+
+def test_sport_sensors_are_enums_and_only_for_the_persons_sports(setup):
+    cfg, _ = setup
+    d = ha.discovery(M, cfg.user("a"), ["running"])
+    assert d["cmps"]["running"] == {**d["cmps"]["running"], "device_class": "enum", "options": list(ha.VERDICT_LABEL.values()),
+                                    "default_entity_id": "sensor.fitvio_a_running",
+                                    "json_attributes_template": "{{ value_json.attrs.running | tojson }}"}
+    assert "state_class" not in d["cmps"]["running"] and "cycling" not in d["cmps"]
+    assert d["cmps"]["training_status"]["options"] == ["Very fresh", "Fresh", "Neutral", "Productive", "Overreaching"]
+
+
+def test_a_new_sport_adds_its_sensor_to_the_device(setup):
+    cfg, conn = setup
+    conn.execute("DELETE FROM verdicts WHERE user_id = 'a' AND session_id IN "
+                 "(SELECT id FROM sessions WHERE user_id = 'a' AND sport = 'swimming')")
+    conn.commit()
+    client = FakeClient()
+    bridge = mqtt_bridge.Bridge(client, lambda uid: None)
+    ha.set_shared(conn, "a", True)
+    bridge.tick(conn, cfg)
+    discovery = [json.loads(p) for t, p, _ in client.take() if t.endswith("/config")]
+    assert len(discovery) == 1 and "swimming" not in discovery[0]["cmps"]
+    bridge.tick(conn, cfg)
+    assert client.take() == []
+    add_workout(conn, "a", after_demo(conn, "a"), sport="swimming")
+    bridge.tick(conn, cfg)
+    sent = client.take()
+    assert topics(sent)[:2] == ["homeassistant/device/fitvio_a/config", "fitvio/a/state"]
+    assert "swimming" in json.loads(sent[0][1])["cmps"] and json.loads(sent[1][1])["swimming"] == "Better"

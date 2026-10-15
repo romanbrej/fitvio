@@ -21,6 +21,15 @@ ORIGIN = {"name": "Fitvio", "url": "https://github.com/romanbrej/fitvio"}
 VERDICTS = ("better", "in_line", "worse", "not_comparable", "load_only")
 VERDICT_LABEL = {"better": "Better", "in_line": "In line", "worse": "Worse", "not_comparable": "Not comparable",
                  "load_only": "Load only"}
+FORM_LABEL = {"very_fresh": "Very fresh", "fresh": "Fresh", "neutral": "Neutral", "productive": "Productive",
+              "overreaching": "Overreaching"}
+# per sport: its sensor's key and name; a person gets one only for the sports they have verdicts in
+SPORTS = {"running": ("running", "Running", "mdi:run"), "cycling": ("cycling", "Cycling", "mdi:bike"),
+          "swimming": ("swimming", "Swimming", "mdi:swim"), "strength": ("gym", "Gym", "mdi:dumbbell")}
+# Where a sport is heading, like the wall's sport tiles (WallAmbient.tsx): a move inside the steady band
+# is noise, and a sport without a session in STALE_DAYS has no direction.
+STEADY = {"run_s_per_km": 4, "pct": 1.5, "gym_sessions": 2}
+STALE_DAYS = 42
 
 # key: (name, unit, device_class, icon). The value is `value_json.<key>` of the person's state topic;
 # keys in ATTRIBUTES also get `value_json.attrs.<key>` as entity attributes.
@@ -41,8 +50,10 @@ SENSORS: dict[str, tuple[str, str | None, str | None, str]] = {
     "last_workout": ("Last workout", None, None, "mdi:run"),
     "last_sync": ("Last sync", None, "timestamp", "mdi:cloud-sync"),
     "sync_status": ("Sync status", None, None, "mdi:cloud-check"),
+    "training_status": ("Training status", None, "enum", "mdi:run-fast"),
 }
-TEXT = {"todays_workout", "last_workout", "last_sync", "sync_status"}  # no long-term statistics for these
+OPTIONS = {"training_status": list(FORM_LABEL.values())}  # enum sensors: the states they can have
+TEXT = {"todays_workout", "last_workout", "last_sync", "sync_status", "training_status"}  # no long-term statistics
 ATTRIBUTES = {"training_readiness", "hrv", "resting_hr", "week_load", "week_streak", "todays_workout", "last_workout"}
 # key: (name, event types, icon)
 EVENTS: dict[str, tuple[str, list[str], str]] = {
@@ -95,20 +106,24 @@ def discovery_topic(m: MqttConfig, user_id: str) -> str:
     return f"{m.discovery_prefix}/device/fitvio_{slug(user_id)}/config"
 
 
-def discovery(m: MqttConfig, user: UserConfig) -> dict:
-    """One device per person with all its entities (Home Assistant's device discovery)."""
+def discovery(m: MqttConfig, user: UserConfig, sports: list[str] = ()) -> dict:
+    """One device per person with all its entities (Home Assistant's device discovery). `sports`: the
+    sport sensors' keys this person has (state()["sports"])."""
     s = slug(user.id)
     cmps: dict[str, dict] = {}
-    for key, (name, unit, device_class, icon) in SENSORS.items():
+    sensors = {**SENSORS, **{key: (name, None, "enum", icon) for key, name, icon in SPORTS.values() if key in sports}}
+    for key, (name, unit, device_class, icon) in sensors.items():
         c = {"p": "sensor", "name": name, "unique_id": f"fitvio_{s}_{key}", "default_entity_id": f"sensor.fitvio_{s}_{key}",
              "state_topic": state_topic(m, user.id), "value_template": f"{{{{ value_json.{key} }}}}", "icon": icon}
         if unit:
             c["unit_of_measurement"] = unit
         if device_class:
             c["device_class"] = device_class
-        if key not in TEXT:
+        if device_class == "enum":
+            c["options"] = OPTIONS.get(key, list(VERDICT_LABEL.values()))
+        elif key not in TEXT:
             c["state_class"] = "measurement"
-        if key in ATTRIBUTES:
+        if key in ATTRIBUTES or key in sports:
             c["json_attributes_topic"] = state_topic(m, user.id)
             c["json_attributes_template"] = f"{{{{ value_json.attrs.{key} | tojson }}}}"
         cmps[key] = c
@@ -128,6 +143,45 @@ def _local_iso(value: str | None) -> str | None:
     return datetime.fromisoformat(value).astimezone().isoformat() if value else None
 
 
+def _trend(sport: str, t: dict, days: int) -> tuple[float | None, str | None, float]:
+    """(change, unit, steady band) of a sport over `days`, as the wall's sport tile works it out."""
+    st, p = t.get("status") or {}, (t.get("periods") or {}).get(str(days))
+    if sport == "running" and st.get("pace_s_per_km"):
+        return (p["change"] if p else st.get("change_s_per_km")), "s/km", STEADY["run_s_per_km"]
+    if sport == "cycling" and st.get("w_per_beat") is not None:
+        return (p["change"] if p else st.get("w_per_beat_change_pct")), "% per heartbeat", STEADY["pct"]
+    if sport == "strength" and st.get("sessions_6w") is not None:
+        e1rm = p["change"] if p else st.get("e1rm_change_pct")
+        if e1rm is not None:
+            return e1rm, "% e1RM", STEADY["pct"]
+        n, prev = (p["n"], p.get("n_prev") or 0) if p else (st["sessions_6w"], st.get("sessions_prev_6w") or 0)
+        return n - prev, "sessions", STEADY["gym_sessions"]
+    pct6 = t["pct_per_week"] * 6 if t.get("pct_per_week") is not None else None
+    return (pct6 if pct6 is not None and abs(pct6) <= 30 else None), "%", STEADY["pct"]  # steeper: too few
+
+
+def sport_states(amb: dict, now: datetime | None = None) -> tuple[dict, dict]:
+    """Per sport the person has verdicts in: the newest verdict (state) and where it's heading (attributes)."""
+    now = now or datetime.now()
+    from .wall import DEFAULT_DAYS
+
+    states, attrs = {}, {}
+    for sport, t in (amb.get("trends") or {}).items():
+        if sport not in SPORTS:
+            continue
+        key = SPORTS[sport][0]
+        days = amb.get("trend_period") or DEFAULT_DAYS.get(sport, 42)
+        change, unit, band = _trend(sport, t, days)
+        stale = (now - datetime.fromisoformat(t["last_time"])).days > STALE_DAYS
+        direction = (None if stale or change is None else "improving" if change >= band
+                     else "declining" if change <= -band else "steady")
+        states[key] = VERDICT_LABEL.get(t.get("last_verdict"))
+        attrs[key] = {"trend": direction, "change": round(change, 1) if change is not None else None, "unit": unit,
+                      "days": days if sport != "swimming" else 42, "verdict": t.get("last_verdict"),
+                      "last_session": _local_iso(t.get("last_time"))}
+    return states, attrs
+
+
 def state(amb: dict) -> dict:
     """The sensor values of one person, from their wall data (wall.ambient)."""
     health, base = amb.get("health_latest") or {}, amb.get("health_baseline") or {}
@@ -139,7 +193,11 @@ def state(amb: dict) -> dict:
     sync = amb.get("sync") or {}
     sleep = health.get("sleep_total_min")
     load, low, high = sweet.get("load"), sweet.get("low"), sweet.get("high")
+    sports, sport_attrs = sport_states(amb)
     return {
+        **sports,
+        "sports": sorted(sports),  # which sport sensors the device has (discovery)
+        "training_status": FORM_LABEL.get(form.get("state")),
         "training_readiness": readiness.get("score"),
         "hrv": health.get("hrv_last_night"),
         "resting_hr": health.get("rhr"),
@@ -162,6 +220,7 @@ def state(amb: dict) -> dict:
             "hrv": {"status": health.get("hrv_status"), "normal_low": health.get("hrv_baseline_low"),
                     "normal_high": health.get("hrv_baseline_high"), "weekly_average": health.get("hrv_weekly")},
             "resting_hr": {"normal": base.get("rhr")},
+            **sport_attrs,
             "week_load": {"sweet_spot_low": low, "sweet_spot_high": high,
                           "status": None if None in (load, low, high)
                           else "below" if load < low else "above" if load > high else "in"},
